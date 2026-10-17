@@ -15,6 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Set test environment
@@ -23,6 +24,7 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 
 from app.agent.state import AgentState
 from app.config import Settings, get_settings
+import app.models  # Ensure all models (User, Room, etc.) are registered
 from app.database import Base, get_db
 from app.main import app
 from app.providers.factory import ModelFactory
@@ -61,7 +63,7 @@ class DeterministicMockChatModel(BaseChatModel):
         else:
             text = "This is a deterministic grounded answer from mock LLM."
 
-        return {"generations": [{"text": text, "message": AIMessage(content=text)}]}
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=text))])
 
     async def astream(self, messages: List[BaseMessage], stop=None, **kwargs):
         tokens = ["This", " is", " a", " test", " grounded", " response."]

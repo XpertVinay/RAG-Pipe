@@ -9,12 +9,14 @@ class SSEClient {
   async streamQuery({
     message,
     conversationId,
+    roomId,
     documentIds,
     provider,
     model,
     temperature,
     topK,
     onStatus,
+    onMeta,
     onToken,
     onCitations,
     onDone,
@@ -25,16 +27,23 @@ class SSEClient {
     }
     this.abortController = new AbortController();
 
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    };
+    const token = window.API?.getAccessToken ? window.API.getAccessToken() : null;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     try {
       const response = await fetch('/api/chat/stream', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
-        },
+        headers,
         body: JSON.stringify({
           message,
           conversation_id: conversationId,
+          room_id: roomId || null,
           document_ids: documentIds && documentIds.length > 0 ? documentIds : null,
           provider: provider || null,
           model: model || null,
@@ -83,6 +92,8 @@ class SSEClient {
 
             if (eventType === 'status' && onStatus) {
               onStatus(parsed.message || parsed);
+            } else if (eventType === 'meta' && onMeta) {
+              onMeta(parsed);
             } else if (eventType === 'token' && onToken) {
               onToken(parsed.token || '');
             } else if (eventType === 'citations' && onCitations) {

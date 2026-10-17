@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -22,6 +23,11 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Application lifespan: initialize local directories, SQLite DB, and tracing."""
     logger.info("Initializing Production RAG Agent...")
+    if settings.APP_ENV.lower() == "production" and "dev-secret-key" in settings.SECRET_KEY:
+        logger.critical(
+            "SECURITY WARNING: Running in production with default insecure SECRET_KEY! "
+            "Please configure a cryptographically secure SECRET_KEY in your environment."
+        )
     settings.ensure_directories()
     await init_db()
     configure_langsmith_tracing()
@@ -39,14 +45,38 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS Middleware
+# GZip Compression Middleware (compresses responses > 1KB)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Hardened CORS Middleware (avoid invalid wildcard credentials)
+is_wildcard = "*" in settings.allowed_origins_list
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=settings.allowed_origins_list,
+    allow_credentials=not is_wildcard,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+# Security Headers Middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "img-src 'self' data: https:; "
+        "connect-src 'self' http: https: ws: wss:;"
+    )
+    return response
 
 # Exception handlers
 app.add_exception_handler(RAGException, rag_exception_handler)

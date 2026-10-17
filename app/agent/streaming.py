@@ -75,6 +75,31 @@ async def stream_rag_agent(
 
         intent = final_state.get("intent", "qa")
         documents = final_state.get("documents", [])
+        is_relevant = final_state.get("is_relevant", False)
+        retrieval_retry_count = final_state.get("retrieval_retry_count", 0)
+        generation_grounded = final_state.get("generation_grounded", True)
+
+        # Classify response style differentiator
+        if intent == "greeting":
+            response_type = "greeting"
+        elif not documents or not is_relevant:
+            response_type = "insufficient_info"
+        elif citations_list:
+            response_type = "grounded"
+        else:
+            response_type = "general"
+
+        meta_payload = {
+            "response_type": response_type,
+            "intent": intent,
+            "has_citations": len(citations_list) > 0,
+            "citation_count": len(citations_list),
+            "retrieval_retry_count": retrieval_retry_count,
+            "generation_grounded": generation_grounded,
+            "provider": provider,
+            "model": model,
+        }
+        yield format_sse("meta", meta_payload)
 
         yield format_sse("status", {"message": "Synthesizing answer from verified evidence..."})
 
@@ -127,7 +152,7 @@ async def stream_rag_agent(
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
 
-        # Save assistant message with citations to database
+        # Save assistant message with citations and rich differentiator metadata to database
         if conversation_id and accumulated_answer:
             try:
                 async with database.AsyncSessionLocal() as db:
@@ -136,7 +161,7 @@ async def stream_rag_agent(
                         role="assistant",
                         content=accumulated_answer,
                         citations=citations_list,
-                        metadata_info={"provider": provider, "model": model},
+                        metadata_info=meta_payload,
                     )
                     db.add(assistant_msg)
                     await db.commit()
@@ -147,6 +172,12 @@ async def stream_rag_agent(
             "answer": accumulated_answer,
             "citations": citations_list,
             "conversation_id": conversation_id,
+            "response_type": response_type,
+            "intent": intent,
+            "retrieval_retry_count": retrieval_retry_count,
+            "generation_grounded": generation_grounded,
+            "provider": provider,
+            "model": model,
         })
 
     except Exception as e:
@@ -157,4 +188,8 @@ async def stream_rag_agent(
             "answer": user_safe_error,
             "citations": [],
             "conversation_id": conversation_id,
+            "response_type": "error",
+            "intent": "error",
+            "provider": provider,
+            "model": model,
         })

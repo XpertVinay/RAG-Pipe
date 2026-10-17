@@ -18,8 +18,13 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy source code and static assets
 COPY . .
 
-# Ensure data directories exist
-RUN mkdir -p /app/data/uploads /app/data/chroma
+# Create non-root user and ensure data directories exist with proper permissions
+RUN groupadd -g 1001 appgroup && \
+    useradd -u 1001 -g appgroup -s /bin/bash -m appuser && \
+    mkdir -p /app/data/uploads /app/data/chroma && \
+    chown -R appuser:appgroup /app
+
+USER appuser
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \

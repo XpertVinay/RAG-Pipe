@@ -21,7 +21,7 @@ from app.schemas.chat import Citation
 
 
 GREETING_PATTERNS = [
-    r"^(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)[\s!.]*$",
+    r"^(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)(\s+(there|assistant|bot|everyone|all))?[\s!.]*$",
     r"^who\s+are\s+you[\s?.]*$",
     r"^what\s+can\s+you\s+do[\s?.]*$",
 ]

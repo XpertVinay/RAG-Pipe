@@ -10,12 +10,15 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.core.auth import get_optional_user
 from app.core.exceptions import EntityNotFoundError, FileValidationError
 from app.core.logging import logger
+from app.core.rate_limit import RateLimiter
 from app.core.security import validate_file_upload, verify_safe_path
 from app.database import get_db
 from app.ingestion.pipeline import ingestion_pipeline
 from app.models.document import Document
+from app.models.user import User
 from app.schemas.document import (
     DocumentDetailResponse,
     DocumentListResponse,
@@ -26,11 +29,19 @@ from app.schemas.document import (
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 settings = get_settings()
 
+document_upload_rate_limiter = RateLimiter(max_requests=15, window_seconds=60)
 
-@router.post("/upload", response_model=DocumentUploadResult, status_code=status.HTTP_202_ACCEPTED)
+
+@router.post(
+    "/upload",
+    response_model=DocumentUploadResult,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(document_upload_rate_limiter)],
+)
 async def upload_documents(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
+    current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload one or more documents, validate them, and trigger background ingestion."""
@@ -43,7 +54,7 @@ async def upload_documents(
             content = await file.read()
             content_length = len(content)
 
-            sanitized_name, extension = validate_file_upload(file, content_length)
+            sanitized_name, extension = validate_file_upload(file, content_length, content_bytes=content)
 
             if content_length == 0:
                 raise FileValidationError(f"File '{file.filename}' is empty.")
@@ -62,6 +73,7 @@ async def upload_documents(
             # Insert document row into database
             doc = Document(
                 id=doc_id,
+                user_id=current_user.id if current_user else None,
                 filename=sanitized_name,
                 file_type=extension,
                 file_size=content_length,
@@ -135,8 +147,29 @@ async def get_document_details(document_id: str, db: AsyncSession = Depends(get_
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_200_OK)
-async def delete_document(document_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_document(
+    document_id: str,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Delete a document, its file on disk, DB chunks, and vector store embeddings."""
+    res = await db.execute(select(Document).where(Document.id == document_id))
+    doc = res.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    if doc.user_id is not None:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required to delete this document.",
+            )
+        if doc.user_id != current_user.id and getattr(current_user, "role", "user") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied to delete this document.",
+            )
+
     success = await ingestion_pipeline.delete_document(db, document_id)
     if not success:
         raise HTTPException(status_code=404, detail="Document not found.")
@@ -148,6 +181,7 @@ async def delete_document(document_id: str, db: AsyncSession = Depends(get_db)):
 async def reprocess_document(
     document_id: str,
     background_tasks: BackgroundTasks,
+    current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger re-ingestion of an existing document."""
@@ -155,6 +189,18 @@ async def reprocess_document(
     doc = res.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
+
+    if doc.user_id is not None:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required to reprocess this document.",
+            )
+        if doc.user_id != current_user.id and getattr(current_user, "role", "user") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied to reprocess this document.",
+            )
 
     doc.status = "queued"
     doc.error_message = None

@@ -73,6 +73,8 @@ class ModelFactory:
             **kwargs,
         )
 
+    _cached_embeddings: Dict[str, Embeddings] = {}
+
     @classmethod
     def get_embeddings(
         cls,
@@ -80,18 +82,27 @@ class ModelFactory:
         model_name: Optional[str] = None,
         **kwargs: Any,
     ) -> Embeddings:
-        """Resolve and instantiate the requested embedding model."""
+        """Resolve, instantiate, and cache the requested embedding model."""
         cls._init_providers()
         name = (provider_name or settings.DEFAULT_EMBEDDING_PROVIDER).lower()
-        provider = cls._embedding_providers.get(name)
+        model = (model_name or "").lower()
+        cache_key = f"{name}:{model}"
 
+        # Return cached instance if no custom kwargs are passed
+        if not kwargs and cache_key in cls._cached_embeddings:
+            return cls._cached_embeddings[cache_key]
+
+        provider = cls._embedding_providers.get(name)
         if not provider:
             raise ProviderUnavailableError(
                 f"Unknown or unsupported embedding provider: '{name}'. Supported: {list(cls._embedding_providers.keys())}"
             )
 
         logger.info(f"Instantiating embeddings with provider='{name}', model='{model_name or 'default'}'")
-        return provider.get_embeddings(model_name=model_name, **kwargs)
+        emb = provider.get_embeddings(model_name=model_name, **kwargs)
+        if not kwargs:
+            cls._cached_embeddings[cache_key] = emb
+        return emb
 
     @classmethod
     async def get_providers_info(cls) -> Dict[str, List[ProviderInfo]]:

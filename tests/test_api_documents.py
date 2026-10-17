@@ -13,7 +13,8 @@ async def test_upload_invalid_extension(client: AsyncClient):
     assert response.status_code == 202
     data = response.json()
     assert len(data["failed"]) == 1
-    assert "not permitted" in data["failed"][0]["error"]
+    err = data["failed"][0]["error"].lower()
+    assert "not permitted" in err or "forbidden" in err
 
 
 @pytest.mark.asyncio

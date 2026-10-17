@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     SECRET_KEY: str = "dev-secret-key-change-in-production-rag-agent-key-32"
+    ALLOWED_ORIGINS: str = "http://localhost:8000,http://127.0.0.1:8000"
 
     # Directory Paths
     BASE_DIR: Path = Path(__file__).resolve().parent.parent
@@ -37,8 +38,8 @@ class Settings(BaseSettings):
     # Default LLM & Embedding Providers
     DEFAULT_CHAT_PROVIDER: Literal["ollama", "openai", "anthropic", "openai-compatible", "gemini", "google"] = "ollama"
     DEFAULT_CHAT_MODEL: str = "llama3.2"
-    DEFAULT_EMBEDDING_PROVIDER: Literal["ollama", "openai", "huggingface", "gemini", "google"] = "gemini"
-    DEFAULT_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
+    DEFAULT_EMBEDDING_PROVIDER: Literal["ollama", "openai", "huggingface", "gemini", "google"] = "ollama"
+    DEFAULT_EMBEDDING_MODEL: str = "nomic-embed-text"
 
     # Ollama Settings
     OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
@@ -78,6 +79,14 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.strip().lower()
         return v
+
+    @property
+    def allowed_origins_list(self) -> List[str]:
+        """Return allowed CORS origins as a list."""
+        raw = self.ALLOWED_ORIGINS.strip()
+        if raw == "*":
+            return ["*"]
+        return [o.strip() for o in raw.split(",") if o.strip()]
 
     @property
     def allowed_extensions_list(self) -> List[str]:

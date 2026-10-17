@@ -77,3 +77,27 @@ async def test_query_endpoint_with_gemini_provider(client: AsyncClient):
     data = res.json()
     assert "content" in data
     assert data["role"] == "assistant"
+
+
+@pytest.mark.asyncio
+async def test_response_differentiator_metadata(client: AsyncClient):
+    """Verify response_type differentiator is returned in metadata_info."""
+    # Greeting query -> greeting differentiator
+    greeting_res = await client.post("/api/chat/query", json={"message": "hello!"})
+    assert greeting_res.status_code == 200
+    greeting_data = greeting_res.json()
+    assert "metadata_info" in greeting_data
+    assert greeting_data["metadata_info"].get("response_type") == "greeting"
+
+    # Streaming query -> meta event and done payload include response_type
+    stream_res = await client.post("/api/chat/stream", json={"message": "hey there"})
+    assert stream_res.status_code == 200
+    body = stream_res.text
+    assert "event: meta" in body
+    assert '"response_type": "greeting"' in body
+
+    # Complex specific question on empty doc scope -> insufficient_info differentiator
+    qa_res = await client.post("/api/chat/query", json={"message": "What is the secret deployment protocol code?", "document_ids": ["non-existent-doc"]})
+    assert qa_res.status_code == 200
+    qa_data = qa_res.json()
+    assert qa_data["metadata_info"].get("response_type") == "insufficient_info"

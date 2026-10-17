@@ -1,39 +1,251 @@
 /**
  * Production RAG Agent Client API Service
+ * Comprehensive JWT Token Management, Auto-Refresh, Room Workspaces, and Database References
  */
 const API = {
-  async get(url) {
-    const res = await fetch(url);
+  TOKEN_KEY: 'rag_access_token',
+  ID_TOKEN_KEY: 'rag_id_token',
+  REFRESH_TOKEN_KEY: 'rag_refresh_token',
+  USER_KEY: 'rag_user',
+  ACTIVE_ROOM_KEY: 'rag_active_room_id',
+
+  // --------------------------------------------------------------------------
+  // Token & Session Storage Management
+  // --------------------------------------------------------------------------
+  getAccessToken() {
+    return localStorage.getItem(this.TOKEN_KEY);
+  },
+
+  getIdToken() {
+    return localStorage.getItem(this.ID_TOKEN_KEY);
+  },
+
+  getRefreshToken() {
+    return localStorage.getItem(this.REFRESH_TOKEN_KEY);
+  },
+
+  getCurrentUser() {
+    try {
+      const u = localStorage.getItem(this.USER_KEY);
+      return u ? JSON.parse(u) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  getActiveRoomId() {
+    return localStorage.getItem(this.ACTIVE_ROOM_KEY);
+  },
+
+  setActiveRoomId(roomId) {
+    if (roomId) {
+      localStorage.setItem(this.ACTIVE_ROOM_KEY, roomId);
+    } else {
+      localStorage.removeItem(this.ACTIVE_ROOM_KEY);
+    }
+  },
+
+  setAuthSession(tokenData) {
+    if (tokenData.access_token) {
+      localStorage.setItem(this.TOKEN_KEY, tokenData.access_token);
+    }
+    if (tokenData.id_token) {
+      localStorage.setItem(this.ID_TOKEN_KEY, tokenData.id_token);
+    }
+    if (tokenData.refresh_token) {
+      localStorage.setItem(this.REFRESH_TOKEN_KEY, tokenData.refresh_token);
+    }
+    if (tokenData.user) {
+      localStorage.setItem(this.USER_KEY, JSON.stringify(tokenData.user));
+    }
+  },
+
+  clearAuthSession() {
+    localStorage.removeItem(this.TOKEN_KEY);
+    localStorage.removeItem(this.ID_TOKEN_KEY);
+    localStorage.removeItem(this.REFRESH_TOKEN_KEY);
+    localStorage.removeItem(this.USER_KEY);
+  },
+
+  // --------------------------------------------------------------------------
+  // Core Fetch with Authorization and Automatic Token Refresh
+  // --------------------------------------------------------------------------
+  async request(url, options = {}, isRetry = false) {
+    const headers = options.headers || {};
+    const token = this.getAccessToken();
+
+    if (token && !headers['Authorization']) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(url, { ...options, headers });
+
+    // Handle 401 Unauthorized by attempting a token refresh once
+    if (res.status === 401 && !isRetry && !url.includes('/api/auth/')) {
+      const refreshed = await this.refreshAuth();
+      if (refreshed) {
+        return this.request(url, options, true);
+      }
+    }
+
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(err.message || 'API request failed');
+      throw new Error(err.detail || err.message || 'API request failed');
     }
+
     return res.json();
   },
 
+  async get(url) {
+    return this.request(url, { method: 'GET' });
+  },
+
   async post(url, data) {
-    const res = await fetch(url, {
+    return this.request(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(err.message || 'API request failed');
-    }
-    return res.json();
+  },
+
+  async put(url, data) {
+    return this.request(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
   },
 
   async delete(url) {
-    const res = await fetch(url, { method: 'DELETE' });
+    return this.request(url, { method: 'DELETE' });
+  },
+
+  // --------------------------------------------------------------------------
+  // Authentication & Authorization Endpoints
+  // --------------------------------------------------------------------------
+  async register(email, username, password, fullName = '') {
+    const data = await this.post('/api/auth/register', {
+      email,
+      username,
+      password,
+      full_name: fullName || null,
+    });
+    this.setAuthSession(data);
+    return data;
+  },
+
+  async login(username, password) {
+    const data = await this.post('/api/auth/login', {
+      username,
+      password,
+    });
+    this.setAuthSession(data);
+    return data;
+  },
+
+  async refreshAuth() {
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) {
+      this.clearAuthSession();
+      return false;
+    }
+
+    try {
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+
+      if (!res.ok) {
+        this.clearAuthSession();
+        return false;
+      }
+
+      const data = await res.json();
+      this.setAuthSession(data);
+      return true;
+    } catch {
+      this.clearAuthSession();
+      return false;
+    }
+  },
+
+  async logout() {
+    const refreshToken = this.getRefreshToken();
+    if (refreshToken) {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      }).catch(() => {});
+    }
+    this.clearAuthSession();
+  },
+
+  async getMe() {
+    return this.get('/api/auth/me');
+  },
+
+  // --------------------------------------------------------------------------
+  // Room Workspace Endpoints
+  // --------------------------------------------------------------------------
+  async getRooms() {
+    return this.get('/api/rooms');
+  },
+
+  async createRoom(name, description = '') {
+    return this.post('/api/rooms', { name, description });
+  },
+
+  async getRoom(roomId) {
+    return this.get(`/api/rooms/${roomId}`);
+  },
+
+  async updateRoom(roomId, data) {
+    return this.put(`/api/rooms/${roomId}`, data);
+  },
+
+  async deleteRoom(roomId) {
+    return this.delete(`/api/rooms/${roomId}`);
+  },
+
+  async uploadFilesToRoom(roomId, fileList) {
+    const formData = new FormData();
+    for (const file of fileList) {
+      formData.append('files', file);
+    }
+    const headers = {};
+    const token = this.getAccessToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`/api/rooms/${roomId}/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(err.message || 'API request failed');
+      throw new Error(err.detail || err.message || 'Upload to room failed');
     }
     return res.json();
   },
 
+  async attachDocumentToRoom(roomId, docId) {
+    return this.post(`/api/rooms/${roomId}/documents/${docId}`, {});
+  },
+
+  async detachDocumentFromRoom(roomId, docId) {
+    return this.delete(`/api/rooms/${roomId}/documents/${docId}`);
+  },
+
+  async getRoomReferences(roomId) {
+    return this.get(`/api/rooms/${roomId}/references`);
+  },
+
+  // --------------------------------------------------------------------------
   // Document Endpoints
+  // --------------------------------------------------------------------------
   async getDocuments(status = null) {
     const q = status ? `?status=${encodeURIComponent(status)}` : '';
     return this.get(`/api/documents${q}`);
@@ -44,13 +256,18 @@ const API = {
     for (const file of fileList) {
       formData.append('files', file);
     }
+    const headers = {};
+    const token = this.getAccessToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     const res = await fetch('/api/documents/upload', {
       method: 'POST',
+      headers,
       body: formData,
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(err.message || 'Upload failed');
+      throw new Error(err.detail || err.message || 'Upload failed');
     }
     return res.json();
   },
@@ -63,13 +280,18 @@ const API = {
     return this.post(`/api/documents/${docId}/reprocess`, {});
   },
 
+  // --------------------------------------------------------------------------
   // Chat & Conversation Endpoints
-  async getConversations() {
-    return this.get('/api/chat/conversations');
+  // --------------------------------------------------------------------------
+  async getConversations(roomId = null) {
+    const q = roomId ? `?room_id=${encodeURIComponent(roomId)}` : '';
+    return this.get(`/api/chat/conversations${q}`);
   },
 
-  async createConversation(title = 'New Chat') {
-    return this.post(`/api/chat/conversations?title=${encodeURIComponent(title)}`, {});
+  async createConversation(title = 'New Chat', roomId = null) {
+    const q = new URLSearchParams({ title });
+    if (roomId) q.append('room_id', roomId);
+    return this.post(`/api/chat/conversations?${q.toString()}`, {});
   },
 
   async getConversation(convId) {
@@ -80,7 +302,9 @@ const API = {
     return this.delete(`/api/chat/conversations/${convId}`);
   },
 
+  // --------------------------------------------------------------------------
   // Settings & Health
+  // --------------------------------------------------------------------------
   async getSettings() {
     return this.get('/api/settings');
   },

@@ -19,6 +19,7 @@ class ChatRequest(BaseModel):
     """Payload for asking a question."""
     message: str = Field(..., min_length=1, max_length=4000, description="The user query text")
     conversation_id: Optional[str] = Field(None, description="Optional conversation UUID to continue context")
+    room_id: Optional[str] = Field(None, description="Optional room workspace UUID to scope documents and context")
     document_ids: Optional[List[str]] = Field(None, description="Optional filter to only query specific documents")
     provider: Optional[Literal["ollama", "openai", "anthropic", "openai-compatible", "gemini", "google"]] = None
     model: Optional[str] = None
@@ -35,6 +36,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     citations: List[Citation] = Field(default_factory=list)
+    metadata_info: Optional[Dict[str, Any]] = Field(default_factory=dict)
     created_at: datetime
 
 
@@ -56,5 +58,5 @@ class ConversationDetailResponse(ConversationResponse):
 
 class StreamEvent(BaseModel):
     """Server-Sent Event payload."""
-    event: Literal["status", "token", "citations", "error", "done"]
+    event: Literal["status", "token", "citations", "meta", "error", "done"]
     data: Any
