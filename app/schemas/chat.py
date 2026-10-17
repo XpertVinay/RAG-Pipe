@@ -20,7 +20,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000, description="The user query text")
     conversation_id: Optional[str] = Field(None, description="Optional conversation UUID to continue context")
     document_ids: Optional[List[str]] = Field(None, description="Optional filter to only query specific documents")
-    provider: Optional[Literal["ollama", "openai", "anthropic", "openai-compatible"]] = None
+    provider: Optional[Literal["ollama", "openai", "anthropic", "openai-compatible", "gemini", "google"]] = None
     model: Optional[str] = None
     temperature: Optional[float] = Field(0.2, ge=0.0, le=2.0)
     top_k: Optional[int] = Field(4, ge=1, le=20)

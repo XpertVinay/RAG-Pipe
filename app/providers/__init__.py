@@ -5,6 +5,7 @@ from app.providers.factory import ModelFactory
 from app.providers.ollama import OllamaChatProvider, OllamaEmbeddingProvider
 from app.providers.openai import OpenAIChatProvider, OpenAIEmbeddingProvider
 from app.providers.anthropic import AnthropicChatProvider
+from app.providers.gemini import GeminiChatProvider, GeminiEmbeddingProvider
 
 __all__ = [
     "BaseChatProvider",
@@ -15,4 +16,6 @@ __all__ = [
     "OpenAIChatProvider",
     "OpenAIEmbeddingProvider",
     "AnthropicChatProvider",
+    "GeminiChatProvider",
+    "GeminiEmbeddingProvider",
 ]

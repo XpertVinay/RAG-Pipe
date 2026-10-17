@@ -35,9 +35,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/sqlite.db"
 
     # Default LLM & Embedding Providers
-    DEFAULT_CHAT_PROVIDER: Literal["ollama", "openai", "anthropic", "openai-compatible"] = "ollama"
+    DEFAULT_CHAT_PROVIDER: Literal["ollama", "openai", "anthropic", "openai-compatible", "gemini", "google"] = "ollama"
     DEFAULT_CHAT_MODEL: str = "llama3.2"
-    DEFAULT_EMBEDDING_PROVIDER: Literal["ollama", "openai", "huggingface"] = "ollama"
+    DEFAULT_EMBEDDING_PROVIDER: Literal["ollama", "openai", "huggingface", "gemini", "google"] = "ollama"
     DEFAULT_EMBEDDING_MODEL: str = "nomic-embed-text"
 
     # Ollama Settings
@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     ANTHROPIC_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY: Optional[str] = None
 
     # Ingestion & Chunking
     CHUNK_SIZE: int = 800

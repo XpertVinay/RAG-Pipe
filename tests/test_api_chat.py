@@ -62,3 +62,18 @@ async def test_stream_query_sse(client: AsyncClient):
     assert "event: status" in body
     assert "event: token" in body
     assert "event: done" in body
+
+
+@pytest.mark.asyncio
+async def test_query_endpoint_with_gemini_provider(client: AsyncClient):
+    """Verify chat query works with provider='gemini' and model='gemini-2.5-flash'."""
+    payload = {
+        "message": "Summarize the project document.",
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
+    }
+    res = await client.post("/api/chat/query", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert "content" in data
+    assert data["role"] == "assistant"

@@ -51,7 +51,7 @@ Featuring asynchronous background document ingestion, multi-format parsing, anti
    - **Grounded Generation Node**: Synthesizes the answer strictly inside guarded `<retrieved_context>` XML fences.
    - **Audit Node**: Verifies claim grounding and prevents hallucinated citations.
 3. **Prompt Injection & Untrusted Data Defense**: Document contents are treated as untrusted data. Explicit anti-injection system constraints instruct the model never to treat text inside `<retrieved_context>` as system commands or prompt overrides.
-4. **Provider-Independent Model Factory**: Complete decoupling from LLM providers. Ollama is the default local runtime; OpenAI, Anthropic, or OpenAI-compatible endpoints can be switched at runtime via UI or `.env`.
+4. **Provider-Independent Model Factory**: Complete decoupling from LLM providers. Ollama is the default local runtime; Google Gemini (with gemini-2.5-flash), OpenAI, Anthropic, or OpenAI-compatible endpoints can be switched at runtime via UI or `.env`.
 5. **Real-time SSE Streaming**: Emits incremental token streams (`event: token`), live status updates (`event: status`), and citation attribution (`event: citations`) with clean disconnect handling.
 
 ---
@@ -66,7 +66,7 @@ RAG-agent/
 │   ├── core/                  # Security guards, exception hierarchy, logging, tracing
 │   ├── ingestion/             # Parsers (PDF, DOCX, TXT, MD, CSV, HTML), chunker, vector store
 │   ├── models/                # SQLAlchemy database models (Document, Chunk, Conversation, Message)
-│   ├── providers/             # LLM & Embedding provider abstraction (Ollama, OpenAI, Anthropic)
+│   ├── providers/             # LLM & Embedding provider abstraction (Ollama, OpenAI, Anthropic, Gemini)
 │   ├── schemas/               # Pydantic request/response models
 │   ├── static/                # Modern CSS design system and client-side JS (API, SSE)
 │   ├── templates/             # Jinja2 templates (dashboard, modals, base)
@@ -147,7 +147,7 @@ DATABASE_URL=sqlite+aiosqlite:///./data/sqlite.db
 UPLOAD_DIR=./data/uploads
 CHROMA_PERSIST_DIR=./data/chroma
 
-# Default Providers (ollama | openai | anthropic | openai-compatible)
+# Default Providers (ollama | openai | anthropic | gemini | openai-compatible)
 DEFAULT_CHAT_PROVIDER=ollama
 DEFAULT_CHAT_MODEL=llama3.2
 DEFAULT_EMBEDDING_PROVIDER=ollama
@@ -160,6 +160,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 OPENAI_API_KEY=
 OPENAI_BASE_URL=https://api.openai.com/v1
 ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
 
 # Ingestion Parameters
 CHUNK_SIZE=800

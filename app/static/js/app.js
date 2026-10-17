@@ -86,8 +86,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Render Knowledge Library Loader
+  function showLibraryLoader() {
+    if (docsCount) docsCount.textContent = 'Loading...';
+    if (docsList) {
+      docsList.innerHTML = `
+        <div class="docs-loader-container" id="docs-library-loader">
+          <div class="docs-loader-spinner"></div>
+          <div class="docs-loader-text">Loading Knowledge Library...</div>
+          <div class="docs-skeleton-list">
+            <div class="doc-skeleton-card">
+              <div class="skeleton-line skeleton-header"></div>
+              <div class="skeleton-line skeleton-sub"></div>
+            </div>
+            <div class="doc-skeleton-card">
+              <div class="skeleton-line skeleton-header"></div>
+              <div class="skeleton-line skeleton-sub"></div>
+            </div>
+            <div class="doc-skeleton-card">
+              <div class="skeleton-line skeleton-header"></div>
+              <div class="skeleton-line skeleton-sub"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
   // Load Document Library
-  async function loadDocuments() {
+  async function loadDocuments(forceLoader = false) {
+    if (forceLoader || !docsList.querySelector('.doc-card')) {
+      showLibraryLoader();
+    }
     try {
       const data = await API.getDocuments();
       activeDocuments = data.items || [];
@@ -144,8 +174,20 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (e) {
       console.error('Error fetching documents:', e);
+      if (!docsList.querySelector('.doc-card')) {
+        docsList.innerHTML = `
+          <div style="text-align: center; padding: 24px 10px; color: var(--status-failed); font-size: 0.8rem;">
+            Failed to load documents.<br>
+            <button class="btn btn-outline" style="margin-top: 10px; font-size: 0.75rem; padding: 4px 10px;" onclick="window.retryLoadDocs()">Retry</button>
+          </div>
+        `;
+      }
     }
   }
+
+  window.retryLoadDocs = function () {
+    loadDocuments(true);
+  };
 
   // Delete Document
   window.deleteDoc = async function (docId) {

@@ -9,6 +9,7 @@ from app.core.exceptions import ProviderUnavailableError
 from app.core.logging import logger
 from app.providers.anthropic import AnthropicChatProvider
 from app.providers.base import BaseChatProvider, BaseEmbeddingProvider
+from app.providers.gemini import GeminiChatProvider, GeminiEmbeddingProvider
 from app.providers.ollama import OllamaChatProvider, OllamaEmbeddingProvider
 from app.providers.openai import OpenAIChatProvider, OpenAIEmbeddingProvider
 from app.schemas.health import ProviderInfo
@@ -33,12 +34,16 @@ class ModelFactory:
                     base_url=settings.OPENAI_BASE_URL,
                 ),
                 "anthropic": AnthropicChatProvider(),
+                "gemini": GeminiChatProvider(),
+                "google": GeminiChatProvider(),
             }
 
         if not cls._embedding_providers:
             cls._embedding_providers = {
                 "ollama": OllamaEmbeddingProvider(),
                 "openai": OpenAIEmbeddingProvider(),
+                "gemini": GeminiEmbeddingProvider(),
+                "google": GeminiEmbeddingProvider(),
             }
 
     @classmethod
@@ -94,6 +99,8 @@ class ModelFactory:
         cls._init_providers()
         chat_info: List[ProviderInfo] = []
         for name, provider in cls._chat_providers.items():
+            if name == "google":
+                continue
             try:
                 health = await provider.check_health()
                 models = await provider.list_available_models()
@@ -103,7 +110,7 @@ class ModelFactory:
                         configured=health.get("available", False) or bool(health.get("configured", False)),
                         available=health.get("available", False),
                         models=models,
-                        default_model=settings.DEFAULT_CHAT_MODEL if name == "ollama" else models[0] if models else None,
+                        default_model=settings.DEFAULT_CHAT_MODEL if name == "ollama" else ("gemini-2.5-flash" if name == "gemini" else (models[0] if models else None)),
                         note=health.get("message"),
                     )
                 )
@@ -120,15 +127,27 @@ class ModelFactory:
 
         embedding_info: List[ProviderInfo] = []
         for name, provider in cls._embedding_providers.items():
+            if name == "google":
+                continue
             try:
                 health = await provider.check_health()
+                if name == "ollama":
+                    emb_models = [settings.DEFAULT_EMBEDDING_MODEL]
+                    default_emb = settings.DEFAULT_EMBEDDING_MODEL
+                elif name == "gemini":
+                    emb_models = ["models/text-embedding-004"]
+                    default_emb = "models/text-embedding-004"
+                else:
+                    emb_models = ["text-embedding-3-small"]
+                    default_emb = "text-embedding-3-small"
+
                 embedding_info.append(
                     ProviderInfo(
                         name=name,
-                        configured=health.get("available", False),
+                        configured=health.get("available", False) or bool(health.get("configured", False)),
                         available=health.get("available", False),
-                        models=[settings.DEFAULT_EMBEDDING_MODEL] if name == "ollama" else ["text-embedding-3-small"],
-                        default_model=settings.DEFAULT_EMBEDDING_MODEL if name == "ollama" else "text-embedding-3-small",
+                        models=emb_models,
+                        default_model=default_emb,
                     )
                 )
             except Exception as e:

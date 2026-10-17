@@ -33,12 +33,29 @@
     <!-- Document Library Header -->
     <div class="docs-header">
       <span class="docs-title">Knowledge Library</span>
-      <span id="docs-count" class="docs-count">0 files</span>
+      <span id="docs-count" class="docs-count">Loading...</span>
     </div>
 
     <!-- Document Cards List -->
     <div id="docs-list" class="docs-list">
-      <!-- Injected via JavaScript -->
+      <div class="docs-loader-container" id="docs-library-loader">
+        <div class="docs-loader-spinner"></div>
+        <div class="docs-loader-text">Loading Knowledge Library...</div>
+        <div class="docs-skeleton-list">
+          <div class="doc-skeleton-card">
+            <div class="skeleton-line skeleton-header"></div>
+            <div class="skeleton-line skeleton-sub"></div>
+          </div>
+          <div class="doc-skeleton-card">
+            <div class="skeleton-line skeleton-header"></div>
+            <div class="skeleton-line skeleton-sub"></div>
+          </div>
+          <div class="doc-skeleton-card">
+            <div class="skeleton-line skeleton-header"></div>
+            <div class="skeleton-line skeleton-sub"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </aside>
 
@@ -104,6 +121,7 @@
       <label for="provider-select">Chat Provider</label>
       <select id="provider-select" class="form-control">
         <option value="ollama">OLLAMA (Local)</option>
+        <option value="gemini">Google Gemini</option>
         <option value="openai">OpenAI</option>
         <option value="anthropic">Anthropic Claude</option>
         <option value="openai-compatible">OpenAI-Compatible</option>
