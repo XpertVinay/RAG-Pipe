@@ -86,7 +86,7 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
                 "Gemini API key is missing for embeddings. Set GEMINI_API_KEY in .env."
             )
 
-        model = model_name or "models/text-embedding-004"
+        model = model_name or "models/gemini-embedding-001"
         try:
             return GoogleGenerativeAIEmbeddings(
                 google_api_key=api_key,
@@ -96,6 +96,13 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
         except Exception as e:
             logger.error(f"Failed to initialize GoogleGenerativeAIEmbeddings with model '{model}': {e}")
             raise ProviderUnavailableError(f"Gemini embeddings error: {str(e)}")
+
+    async def list_available_models(self) -> List[str]:
+        return [
+            "models/gemini-embedding-001",
+            "models/gemini-embedding-2-preview",
+            "models/gemini-embedding-2",
+        ]
 
     async def check_health(self) -> Dict[str, Any]:
         api_key = self.api_key if self.api_key is not None else (settings.GEMINI_API_KEY or settings.GOOGLE_API_KEY)

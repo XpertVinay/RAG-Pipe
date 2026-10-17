@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from app.config import get_settings
+from app.ingestion.vector_store import vector_store
 from app.providers.factory import ModelFactory
 from app.schemas.health import SettingsResponse
 
@@ -16,6 +17,8 @@ class UpdateRuntimeSettingsRequest(BaseModel):
     """Schema for updating active runtime preferences."""
     default_chat_provider: Optional[str] = None
     default_chat_model: Optional[str] = None
+    default_embedding_provider: Optional[str] = None
+    default_embedding_model: Optional[str] = None
     retrieval_top_k: Optional[int] = Field(None, ge=1, le=20)
     similarity_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
 
@@ -47,6 +50,12 @@ async def update_runtime_settings(request: UpdateRuntimeSettingsRequest):
         settings.DEFAULT_CHAT_PROVIDER = request.default_chat_provider
     if request.default_chat_model:
         settings.DEFAULT_CHAT_MODEL = request.default_chat_model
+    if request.default_embedding_provider:
+        settings.DEFAULT_EMBEDDING_PROVIDER = request.default_embedding_provider
+        vector_store._store = None
+    if request.default_embedding_model:
+        settings.DEFAULT_EMBEDDING_MODEL = request.default_embedding_model
+        vector_store._store = None
     if request.retrieval_top_k is not None:
         settings.RETRIEVAL_TOP_K = request.retrieval_top_k
     if request.similarity_threshold is not None:
@@ -56,6 +65,8 @@ async def update_runtime_settings(request: UpdateRuntimeSettingsRequest):
         "message": "Settings updated successfully.",
         "active_chat_provider": settings.DEFAULT_CHAT_PROVIDER,
         "active_chat_model": settings.DEFAULT_CHAT_MODEL,
+        "active_embedding_provider": settings.DEFAULT_EMBEDDING_PROVIDER,
+        "active_embedding_model": settings.DEFAULT_EMBEDDING_MODEL,
         "retrieval_top_k": settings.RETRIEVAL_TOP_K,
         "similarity_threshold": settings.SIMILARITY_THRESHOLD,
     }

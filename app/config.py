@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     # Default LLM & Embedding Providers
     DEFAULT_CHAT_PROVIDER: Literal["ollama", "openai", "anthropic", "openai-compatible", "gemini", "google"] = "ollama"
     DEFAULT_CHAT_MODEL: str = "llama3.2"
-    DEFAULT_EMBEDDING_PROVIDER: Literal["ollama", "openai", "huggingface", "gemini", "google"] = "ollama"
-    DEFAULT_EMBEDDING_MODEL: str = "nomic-embed-text"
+    DEFAULT_EMBEDDING_PROVIDER: Literal["ollama", "openai", "huggingface", "gemini", "google"] = "gemini"
+    DEFAULT_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 
     # Ollama Settings
     OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"

@@ -135,8 +135,8 @@ class ModelFactory:
                     emb_models = [settings.DEFAULT_EMBEDDING_MODEL]
                     default_emb = settings.DEFAULT_EMBEDDING_MODEL
                 elif name == "gemini":
-                    emb_models = ["models/text-embedding-004"]
-                    default_emb = "models/text-embedding-004"
+                    emb_models = ["models/gemini-embedding-001", "models/gemini-embedding-2-preview"]
+                    default_emb = "models/gemini-embedding-001"
                 else:
                     emb_models = ["text-embedding-3-small"]
                     default_emb = "text-embedding-3-small"

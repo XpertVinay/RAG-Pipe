@@ -28,6 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveSettingsBtn = document.getElementById('save-settings-btn');
   const providerSelect = document.getElementById('provider-select');
   const modelInput = document.getElementById('model-input');
+  const embeddingProviderSelect = document.getElementById('embedding-provider-select');
+  const embeddingModelInput = document.getElementById('embedding-model-input');
   const topkSlider = document.getElementById('topk-slider');
   const topkVal = document.getElementById('topk-val');
   const toastContainer = document.getElementById('toast-container');
@@ -77,6 +79,19 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (modelInput) modelInput.value = data.default_chat_model;
+
+      if (embeddingProviderSelect && data.available_embedding_providers) {
+        embeddingProviderSelect.innerHTML = '';
+        data.available_embedding_providers.forEach((p) => {
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          opt.textContent = `${p.name.toUpperCase()} ${p.available ? '(Ready)' : '(Not Configured)'}`;
+          if (p.name === data.default_embedding_provider) opt.selected = true;
+          embeddingProviderSelect.appendChild(opt);
+        });
+      }
+      if (embeddingModelInput) embeddingModelInput.value = data.default_embedding_model || '';
+
       if (topkSlider) {
         topkSlider.value = data.retrieval_top_k;
         topkVal.textContent = data.retrieval_top_k;
@@ -422,15 +437,26 @@ document.addEventListener('DOMContentLoaded', () => {
     topkVal.textContent = e.target.value;
   });
 
+  embeddingProviderSelect?.addEventListener('change', () => {
+    const prov = activeSettings?.available_embedding_providers?.find((p) => p.name === embeddingProviderSelect.value);
+    if (prov && prov.default_model) {
+      embeddingModelInput.value = prov.default_model;
+    }
+  });
+
   saveSettingsBtn.addEventListener('click', async () => {
     try {
       const updated = await API.updateSettings({
         default_chat_provider: providerSelect.value,
         default_chat_model: modelInput.value.trim() || undefined,
+        default_embedding_provider: embeddingProviderSelect?.value || undefined,
+        default_embedding_model: embeddingModelInput?.value.trim() || undefined,
         retrieval_top_k: parseInt(topkSlider.value, 10),
       });
       activeSettings.default_chat_provider = updated.active_chat_provider;
       activeSettings.default_chat_model = updated.active_chat_model;
+      activeSettings.default_embedding_provider = updated.active_embedding_provider;
+      activeSettings.default_embedding_model = updated.active_embedding_model;
       activeSettings.retrieval_top_k = updated.retrieval_top_k;
       providerBadge.textContent = `${updated.active_chat_provider.toUpperCase()} / ${updated.active_chat_model}`;
       settingsModal.classList.remove('active');

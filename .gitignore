@@ -34,6 +34,7 @@ data/
 
 # Environment & Secrets
 .env
+.env.prod
 .env.local
 
 # IDE

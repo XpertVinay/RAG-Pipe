@@ -70,7 +70,7 @@ def test_gemini_embedding_provider():
 
     configured = GeminiEmbeddingProvider(api_key="fake-key")
     emb = configured.get_embeddings()
-    assert emb.model == "models/text-embedding-004"
+    assert emb.model == "models/gemini-embedding-001"
 
 
 @pytest.mark.asyncio
