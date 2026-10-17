@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     LANGCHAIN_API_KEY: Optional[str] = None
     LANGCHAIN_PROJECT: str = "rag-agent-production"
     REDACT_SENSITIVE_TRACES: bool = True
+
+    @field_validator("DEFAULT_CHAT_PROVIDER", "DEFAULT_EMBEDDING_PROVIDER", mode="before")
+    @classmethod
+    def normalize_provider(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
 
     @property
     def allowed_extensions_list(self) -> List[str]:
