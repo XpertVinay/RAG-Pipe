@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}RAG Agent — Grounded Document Intelligence{% endblock %}
+
+{% block content %}
+<div class="app-container">
+  <!-- Left Sidebar: Document Management -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-badge">
+        <div class="logo-icon">⚡</div>
+        <span>RAG Agent</span>
+      </div>
+      <button id="new-chat-btn" class="btn btn-outline" title="Start a fresh conversation">
+        <span>+</span> New Chat
+      </button>
+    </div>
+
+    <!-- Drag & Drop Upload Area -->
+    <div class="upload-section">
+      <input type="file" id="file-input" multiple accept=".pdf,.docx,.txt,.md,.csv,.html" style="display: none;">
+      <div id="dropzone" class="dropzone">
+        <div class="dropzone-icon">📁</div>
+        <div class="dropzone-text">
+          Drag & drop files or <span>browse</span>
+        </div>
+        <div class="dropzone-hint">
+          Supports PDF, DOCX, TXT, MD, CSV, HTML (Max 25MB)
+        </div>
+      </div>
+    </div>
+
+    <!-- Document Library Header -->
+    <div class="docs-header">
+      <span class="docs-title">Knowledge Library</span>
+      <span id="docs-count" class="docs-count">0 files</span>
+    </div>
+
+    <!-- Document Cards List -->
+    <div id="docs-list" class="docs-list">
+      <!-- Injected via JavaScript -->
+    </div>
+  </aside>
+
+  <!-- Right Area: Interactive RAG Chat -->
+  <main class="main-chat">
+    <header class="chat-navbar">
+      <div class="chat-nav-left">
+        <div class="chat-title-group">
+          <h2 id="conv-title">Document Q&amp;A Session</h2>
+          <p>Strictly grounded answers with verifiable source attribution</p>
+        </div>
+      </div>
+
+      <div class="chat-nav-right">
+        <div class="badge-pill">
+          <span class="status-pulse" style="color: var(--status-completed);"></span>
+          <span id="provider-badge">OLLAMA / LLAMA3.2</span>
+        </div>
+        <button id="open-settings-btn" class="btn btn-outline" title="Model & Retrieval Configuration">
+          ⚙️ Settings
+        </button>
+      </div>
+    </header>
+
+    <!-- Chat Messages Stream Container -->
+    <div id="messages-container" class="messages-container">
+      <!-- Injected via JavaScript -->
+    </div>
+
+    <!-- Bottom Chat Input Bar -->
+    <footer class="chat-input-area">
+      <form id="chat-form">
+        <div class="input-box-container">
+          <textarea
+            id="chat-input"
+            class="chat-textarea"
+            placeholder="Ask a question about your indexed documents..."
+            rows="1"
+            required
+          ></textarea>
+          <button id="send-btn" type="submit" class="send-btn" title="Send Question (Enter)">
+            ➤
+          </button>
+        </div>
+        <div class="input-hint">
+          <span>Press <strong>Enter</strong> to send, <strong>Shift + Enter</strong> for a new line</span>
+          <span>Hallucination check active • Grounded search</span>
+        </div>
+      </form>
+    </footer>
+  </main>
+</div>
+
+<!-- Settings Modal Dialog -->
+<div id="settings-modal" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>Model &amp; Retrieval Settings</h3>
+      <button id="close-settings-btn" class="modal-close">&times;</button>
+    </div>
+
+    <div class="form-group">
+      <label for="provider-select">Chat Provider</label>
+      <select id="provider-select" class="form-control">
+        <option value="ollama">OLLAMA (Local)</option>
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic Claude</option>
+        <option value="openai-compatible">OpenAI-Compatible</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="model-input">Chat Model Name</label>
+      <input type="text" id="model-input" class="form-control" placeholder="e.g. llama3.2, gpt-4o-mini">
+    </div>
+
+    <div class="form-group">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+        <label for="topk-slider" style="margin-bottom: 0;">Top-K Retrieval Chunks</label>
+        <span id="topk-val" style="font-weight: 600; color: var(--accent-primary);">4</span>
+      </div>
+      <input type="range" id="topk-slider" min="1" max="12" value="4" class="form-control" style="padding: 0;">
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+      <button type="button" class="btn btn-primary" id="save-settings-btn">Save Preferences</button>
+    </div>
+  </div>
+</div>
+
+<!-- Citation Detail Modal Dialog -->
+<div id="citation-modal" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>Source Evidence Inspector</h3>
+      <button id="close-citation-btn" class="modal-close">&times;</button>
+    </div>
+    <div id="citation-modal-body"></div>
+  </div>
+</div>
+{% endblock %}

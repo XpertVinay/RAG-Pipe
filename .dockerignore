@@ -1,0 +1,11 @@
+.venv/
+venv/
+data/
+*.db
+*.sqlite
+__pycache__/
+*.py[cod]
+.git/
+.gitignore
+.pytest_cache/
+tests/

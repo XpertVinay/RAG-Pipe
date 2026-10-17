@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  rag-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-agent-app
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      - APP_NAME=Production RAG Agent
+      - APP_ENV=production
+      - DEBUG=false
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DATABASE_URL=sqlite+aiosqlite:///./data/sqlite.db
+      - DEFAULT_CHAT_PROVIDER=${DEFAULT_CHAT_PROVIDER:-ollama}
+      - DEFAULT_CHAT_MODEL=${DEFAULT_CHAT_MODEL:-qwen2.5:3b}
+      - DEFAULT_EMBEDDING_PROVIDER=${DEFAULT_EMBEDDING_PROVIDER:-ollama}
+      - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-nomic-embed-text}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2:-false}
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+      - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT:-rag-agent-production}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - rag_data:/app/data
+    networks:
+      - rag_network
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: rag-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_models:/root/.ollama
+  #   networks:
+  #     - rag_network
+  #   healthcheck:
+  #     test: [ "CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1" ]
+  #     interval: 15s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 10s
+
+volumes:
+  rag_data:
+    name: rag_agent_data
+  # ollama_models:
+  #   name: rag_ollama_models
+
+networks:
+  rag_network:
+    name: rag_network
+    driver: bridge
