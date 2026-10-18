@@ -30,6 +30,32 @@
       if (logoutBtn) logoutBtn.style.display = 'none';
     }
 
+    // Role-based visibility for Short & Long Term Memory (Admin & Staff only)
+    const isAdminOrStaff = Boolean(user && accessToken && (user.role === 'admin' || user.role === 'staff' || user.role === 'staffs'));
+    const tabBtnMemory = document.getElementById('tab-btn-memory');
+    const panelMemory = document.getElementById('panel-memory');
+
+    if (tabBtnMemory) {
+      tabBtnMemory.style.display = isAdminOrStaff ? 'flex' : 'none';
+    }
+
+    if (!isAdminOrStaff) {
+      if (tabBtnMemory?.classList.contains('active') || panelMemory?.classList.contains('active')) {
+        if (window.switchSidebarTab) {
+          window.switchSidebarTab('rooms');
+        } else {
+          document.getElementById('tab-btn-rooms')?.click();
+        }
+      }
+    } else {
+      if (API.getMemoryStats) {
+        API.getMemoryStats().then((stats) => {
+          const tabMemoryBadge = document.getElementById('tab-memory-badge');
+          if (tabMemoryBadge) tabMemoryBadge.textContent = stats.active_memories || stats.total_memories || 0;
+        }).catch(() => {});
+      }
+    }
+
     const dropzoneHint = document.querySelector('.dropzone-hint');
     if (dropzoneHint) {
       if (user && accessToken) {
@@ -77,6 +103,12 @@
     [authTabSignin, authTabRegister, authTabTokens].forEach((t) => t?.classList.remove('active'));
     [authPanelSignin, authPanelRegister, authPanelTokens].forEach((p) => {
       if (p) p.style.display = 'none';
+    });
+
+    // Clear previous field validation errors when switching tabs
+    ['login-username', 'login-password', 'reg-email', 'reg-username', 'reg-fullname', 'reg-password'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el && RAG.validator) RAG.validator.clearError(el);
     });
 
     if (tabName === 'signin') {
@@ -182,6 +214,7 @@
     const loginForm = document.getElementById('login-form');
     const registerForm = document.getElementById('register-form');
     const demoLoginBtn = document.getElementById('demo-login-btn');
+    const demoStaffBtn = document.getElementById('demo-staff-btn');
     const logoutBtn = document.getElementById('logout-btn');
     const refreshNowBtn = document.getElementById('refresh-now-btn');
 
@@ -197,10 +230,49 @@
 
     closeAuthBtn?.addEventListener('click', () => authModal?.classList.remove('active'));
 
+    const loginUsernameInput = document.getElementById('login-username');
+    const loginPasswordInput = document.getElementById('login-password');
+    const regEmailInput = document.getElementById('reg-email');
+    const regUsernameInput = document.getElementById('reg-username');
+    const regFullnameInput = document.getElementById('reg-fullname');
+    const regPasswordInput = document.getElementById('reg-password');
+
+    // Attach live interactive validation
+    if (RAG.validator) {
+      if (loginUsernameInput) RAG.validator.attachLiveValidation(loginUsernameInput, RAG.validator.validateLoginIdentifier);
+      if (loginPasswordInput) RAG.validator.attachLiveValidation(loginPasswordInput, (val) => RAG.validator.validatePassword(val, 6));
+      if (regEmailInput) RAG.validator.attachLiveValidation(regEmailInput, RAG.validator.validateEmail);
+      if (regUsernameInput) RAG.validator.attachLiveValidation(regUsernameInput, RAG.validator.validateUsername);
+      if (regFullnameInput) RAG.validator.attachLiveValidation(regFullnameInput, RAG.validator.validateFullName);
+      if (regPasswordInput) RAG.validator.attachLiveValidation(regPasswordInput, (val) => RAG.validator.validatePassword(val, 6));
+    }
+
     loginForm?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const u = document.getElementById('login-username').value.trim();
-      const p = document.getElementById('login-password').value;
+      const u = loginUsernameInput?.value.trim() || '';
+      const p = loginPasswordInput?.value || '';
+
+      // JavaScript Input Validation
+      if (RAG.validator) {
+        const uErr = RAG.validator.validateLoginIdentifier(u);
+        if (uErr) {
+          RAG.validator.showError(loginUsernameInput, uErr);
+          loginUsernameInput?.focus();
+          return;
+        } else {
+          RAG.validator.clearError(loginUsernameInput);
+        }
+
+        const pErr = RAG.validator.validatePassword(p, 6);
+        if (pErr) {
+          RAG.validator.showError(loginPasswordInput, pErr);
+          loginPasswordInput?.focus();
+          return;
+        } else {
+          RAG.validator.clearError(loginPasswordInput);
+        }
+      }
+
       try {
         RAG.utils.showToast('Authenticating...', 'info');
         await API.login(u, p);
@@ -213,28 +285,77 @@
         if (RAG.memory?.loadMemoryDashboard) RAG.memory.loadMemoryDashboard();
         if (RAG.chat?.showWelcomeScreen) RAG.chat.showWelcomeScreen();
       } catch (err) {
+        if (loginPasswordInput && RAG.validator) {
+          RAG.validator.showError(loginPasswordInput, err.message);
+        }
         RAG.utils.showToast(err.message, 'error');
       }
     });
 
     registerForm?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const email = document.getElementById('reg-email').value.trim();
-      const u = document.getElementById('reg-username').value.trim();
-      const fn = document.getElementById('reg-fullname').value.trim();
-      const p = document.getElementById('reg-password').value;
+      const email = regEmailInput?.value.trim() || '';
+      const u = regUsernameInput?.value.trim() || '';
+      const fn = regFullnameInput?.value.trim() || '';
+      const p = regPasswordInput?.value || '';
+      const role = document.getElementById('reg-role')?.value || 'user';
+
+      // JavaScript Input Validation
+      if (RAG.validator) {
+        const emailErr = RAG.validator.validateEmail(email);
+        if (emailErr) {
+          RAG.validator.showError(regEmailInput, emailErr);
+          regEmailInput?.focus();
+          return;
+        } else {
+          RAG.validator.clearError(regEmailInput);
+        }
+
+        const uErr = RAG.validator.validateUsername(u);
+        if (uErr) {
+          RAG.validator.showError(regUsernameInput, uErr);
+          regUsernameInput?.focus();
+          return;
+        } else {
+          RAG.validator.clearError(regUsernameInput);
+        }
+
+        const fnErr = RAG.validator.validateFullName(fn);
+        if (fnErr) {
+          RAG.validator.showError(regFullnameInput, fnErr);
+          regFullnameInput?.focus();
+          return;
+        } else {
+          RAG.validator.clearError(regFullnameInput);
+        }
+
+        const pErr = RAG.validator.validatePassword(p, 6);
+        if (pErr) {
+          RAG.validator.showError(regPasswordInput, pErr);
+          regPasswordInput?.focus();
+          return;
+        } else {
+          RAG.validator.clearError(regPasswordInput);
+        }
+      }
+
       try {
         RAG.utils.showToast('Creating account...', 'info');
-        await API.register(email, u, p, fn);
-        RAG.utils.showToast('Account created and signed in!', 'success');
+        await API.register(email, u, p, fn, role);
+        const signedUser = API.getCurrentUser();
+        const isMemPrivileged = signedUser && (signedUser.role === 'admin' || signedUser.role === 'staff' || signedUser.role === 'staffs');
+        RAG.utils.showToast(`Account created as ${role}!`, 'success');
         authModal?.classList.remove('active');
         updateAuthUI();
         if (RAG.rooms?.loadRooms) RAG.rooms.loadRooms();
         if (RAG.documents?.loadDocuments) RAG.documents.loadDocuments();
         if (RAG.history?.loadConversations) RAG.history.loadConversations();
-        if (RAG.memory?.loadMemoryDashboard) RAG.memory.loadMemoryDashboard();
+        if (isMemPrivileged && RAG.memory?.loadMemoryDashboard) RAG.memory.loadMemoryDashboard();
         if (RAG.chat?.showWelcomeScreen) RAG.chat.showWelcomeScreen();
       } catch (err) {
+        if (regUsernameInput && RAG.validator) {
+          RAG.validator.showError(regUsernameInput, err.message);
+        }
         RAG.utils.showToast(err.message, 'error');
       }
     });
@@ -245,9 +366,29 @@
         try {
           await API.login('demo_user', 'demo123456');
         } catch {
-          await API.register('demo@ragagent.local', 'demo_user', 'demo123456', 'Demo User');
+          await API.register('demo@ragagent.local', 'demo_user', 'demo123456', 'Demo User', 'user');
         }
-        RAG.utils.showToast('Demo User authenticated!', 'success');
+        RAG.utils.showToast('Demo User authenticated (Standard access)!', 'success');
+        authModal?.classList.remove('active');
+        updateAuthUI();
+        if (RAG.rooms?.loadRooms) RAG.rooms.loadRooms();
+        if (RAG.documents?.loadDocuments) RAG.documents.loadDocuments();
+        if (RAG.history?.loadConversations) RAG.history.loadConversations();
+        if (RAG.chat?.showWelcomeScreen) RAG.chat.showWelcomeScreen();
+      } catch (err) {
+        RAG.utils.showToast(err.message, 'error');
+      }
+    });
+
+    demoStaffBtn?.addEventListener('click', async () => {
+      try {
+        RAG.utils.showToast('Logging in with Demo Staff Account...', 'info');
+        try {
+          await API.login('staff_demo', 'staff123456');
+        } catch {
+          await API.register('staff@ragagent.local', 'staff_demo', 'staff123456', 'Demo Staff', 'staff');
+        }
+        RAG.utils.showToast('Demo Staff authenticated (Memory access enabled)!', 'success');
         authModal?.classList.remove('active');
         updateAuthUI();
         if (RAG.rooms?.loadRooms) RAG.rooms.loadRooms();

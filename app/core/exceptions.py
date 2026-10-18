@@ -58,7 +58,41 @@ async def rag_exception_handler(request: Request, exc: RAGException) -> JSONResp
         content={
             "error": exc.__class__.__name__,
             "message": exc.message,
+            "detail": exc.message,
             "details": exc.details,
+        },
+    )
+
+
+async def validation_exception_handler(request: Request, exc: Any) -> JSONResponse:
+    """Error handler for FastAPI/Pydantic validation errors ensuring readable and JSON-safe messages."""
+    error_messages = []
+    sanitized_errors = []
+    errors = getattr(exc, "errors", lambda: [])()
+    for err in errors:
+        loc = [str(l) for l in err.get("loc", []) if l != "body"]
+        field = ".".join(loc)
+        msg = str(err.get("msg", "Invalid value"))
+        # Strip internal Pydantic prefix "Value error, " if present
+        if msg.startswith("Value error, "):
+            msg = msg[len("Value error, "):]
+        if field:
+            error_messages.append(f"{field}: {msg}")
+        else:
+            error_messages.append(msg)
+        sanitized_errors.append({
+            "loc": loc,
+            "msg": msg,
+            "type": str(err.get("type", "value_error")),
+        })
+    joined_msg = "; ".join(error_messages) or "Input validation failed."
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": "RequestValidationError",
+            "message": joined_msg,
+            "detail": joined_msg,
+            "details": sanitized_errors,
         },
     )
 
@@ -70,5 +104,6 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         content={
             "error": "InternalServerError",
             "message": "An unexpected error occurred while processing the request.",
+            "detail": "An unexpected error occurred while processing the request.",
         },
     )

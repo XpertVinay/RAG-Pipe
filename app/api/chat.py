@@ -4,7 +4,7 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.graph import rag_agent_app
@@ -16,7 +16,6 @@ from app.core.logging import logger
 from app.core.rate_limit import RateLimiter
 from app.database import get_db
 from app.models.conversation import Conversation, Message
-from app.models.room import Room, RoomDocument
 from app.models.user import User
 from app.schemas.chat import (
     ChatRequest,
@@ -25,69 +24,18 @@ from app.schemas.chat import (
     ConversationResponse,
     MessageResponse,
 )
+from app.services.conversation_service import (
+    check_conversation_access,
+    check_room_query_access,
+    classify_response_type,
+    get_recent_chat_history,
+    resolve_room_and_document_ids,
+)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 settings = get_settings()
 
 chat_rate_limiter = RateLimiter(max_requests=60, window_seconds=60)
-
-
-def check_conversation_access(conv: Conversation, user: Optional[User]) -> None:
-    """Enforce ownership access control for conversation threads."""
-    if conv.user_id is not None:
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required to access this conversation.",
-            )
-        if conv.user_id != user.id and getattr(user, "role", "user") != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: you do not have permission to view or modify this conversation.",
-            )
-
-
-async def check_room_query_access(room_id: Optional[str], user: Optional[User], db: AsyncSession) -> None:
-    """Ensure user is authorized to query within the given room workspace."""
-    if not room_id:
-        return
-    r_res = await db.execute(select(Room).where(Room.id == room_id))
-    room = r_res.scalar_one_or_none()
-    if room and room.user_id is not None:
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required to access this workspace.",
-            )
-        if room.user_id != user.id and getattr(user, "role", "user") != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to this workspace.",
-            )
-
-
-async def resolve_room_and_document_ids(
-    db: AsyncSession,
-    conversation_id: Optional[str],
-    room_id: Optional[str],
-    requested_doc_ids: Optional[List[str]],
-) -> tuple[Optional[str], Optional[List[str]]]:
-    """Resolve active room and auto-populate attached document IDs if not explicitly passed."""
-    effective_room_id = room_id
-    effective_docs = list(requested_doc_ids) if requested_doc_ids else []
-
-    if conversation_id and not effective_room_id:
-        c_res = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
-        c_obj = c_res.scalar_one_or_none()
-        if c_obj and c_obj.room_id:
-            effective_room_id = c_obj.room_id
-
-    # If scoped to a room and no explicit doc filter given, pull room documents
-    if effective_room_id and not effective_docs:
-        rd_res = await db.execute(select(RoomDocument.document_id).where(RoomDocument.room_id == effective_room_id))
-        effective_docs = [r[0] for r in rd_res.all()]
-
-    return effective_room_id, (effective_docs if effective_docs else None)
 
 
 @router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
@@ -187,7 +135,7 @@ async def ask_query(
     """Standard non-streaming question answering endpoint with room context resolution."""
     conv_id = request.conversation_id
     effective_room_id, doc_ids = await resolve_room_and_document_ids(
-        db, conv_id, request.room_id, request.document_ids
+        db, conv_id, request.room_id, request.document_ids, user=current_user
     )
 
     if effective_room_id:
@@ -218,15 +166,7 @@ async def ask_query(
     db.add(user_msg)
     await db.commit()
 
-    # Load recent conversation history
-    hist_res = await db.execute(
-        select(Message)
-        .where(Message.conversation_id == conv_id)
-        .order_by(Message.created_at.asc())
-        .limit(10)
-    )
-    messages = hist_res.scalars().all()
-    chat_history = [{"role": m.role, "content": m.content} for m in messages]
+    chat_history = await get_recent_chat_history(db, conv_id, limit=10)
 
     # Run LangGraph RAG Agent
     state: AgentState = {
@@ -268,14 +208,11 @@ async def ask_query(
     generation_grounded = final_state.get("generation_grounded", True)
     consulted_memories = final_state.get("consulted_memories", [])
 
-    if intent == "greeting":
-        response_type = "greeting"
-    elif not documents or not is_relevant:
-        response_type = "insufficient_info"
-    elif citations:
-        response_type = "grounded"
-    else:
-        response_type = "general"
+    response_type = classify_response_type(intent, documents, is_relevant, citations)
+
+    user_role = getattr(current_user, "role", "user") if current_user else "user"
+    is_admin_or_staff = user_role in ("admin", "staff", "staffs")
+    visible_consulted_memories = consulted_memories if is_admin_or_staff else []
 
     meta_payload = {
         "provider": request.provider,
@@ -285,11 +222,10 @@ async def ask_query(
         "retrieval_retry_count": retrieval_retry_count,
         "generation_grounded": generation_grounded,
         "citation_count": len(citations),
-        "consulted_memories_count": len(consulted_memories),
-        "consulted_memories": consulted_memories,
+        "consulted_memories_count": len(visible_consulted_memories),
+        "consulted_memories": visible_consulted_memories,
         "room_id": effective_room_id,
     }
-
 
     assistant_msg = Message(
         conversation_id=conv_id,
@@ -302,7 +238,6 @@ async def ask_query(
     await db.commit()
     await db.refresh(assistant_msg)
 
-    # Automatically distill and persist Short-Term and Long-Term memory for user's chat
     if current_user:
         try:
             from app.memory.manager import memory_manager
@@ -340,7 +275,7 @@ async def stream_query(
     """Server-Sent Events (SSE) streaming endpoint for real-time RAG responses."""
     conv_id = request.conversation_id
     effective_room_id, doc_ids = await resolve_room_and_document_ids(
-        db, conv_id, request.room_id, request.document_ids
+        db, conv_id, request.room_id, request.document_ids, user=current_user
     )
 
     if effective_room_id:
@@ -371,14 +306,7 @@ async def stream_query(
     db.add(user_msg)
     await db.commit()
 
-    # Load history
-    hist_res = await db.execute(
-        select(Message)
-        .where(Message.conversation_id == conv_id)
-        .order_by(Message.created_at.asc())
-        .limit(10)
-    )
-    history = [{"role": m.role, "content": m.content} for m in hist_res.scalars().all()]
+    history = await get_recent_chat_history(db, conv_id, limit=10)
 
     return StreamingResponse(
         stream_rag_agent(
@@ -392,9 +320,9 @@ async def stream_query(
             model=request.model,
             temperature=request.temperature or 0.2,
             top_k=request.top_k or 4,
+            user_role=getattr(current_user, "role", "user") if current_user else "user",
         ),
         media_type="text/event-stream",
-
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",

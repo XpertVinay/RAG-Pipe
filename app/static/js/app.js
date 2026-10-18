@@ -34,6 +34,11 @@ document.addEventListener('DOMContentLoaded', () => {
       panelDocs?.classList.add('active');
       if (RAG.documents?.loadDocuments) RAG.documents.loadDocuments();
     } else if (tabName === 'memory') {
+      const user = API.getCurrentUser();
+      const isAdminOrStaff = Boolean(user && API.getAccessToken() && (user.role === 'admin' || user.role === 'staff' || user.role === 'staffs'));
+      if (!isAdminOrStaff) {
+        return switchSidebarTab('rooms');
+      }
       tabBtnMemory?.classList.add('active');
       panelMemory?.classList.add('active');
       if (RAG.memory?.loadMemoryDashboard) RAG.memory.loadMemoryDashboard();
@@ -68,14 +73,23 @@ document.addEventListener('DOMContentLoaded', () => {
   allModals.forEach((modal) => {
     modal.addEventListener('click', (e) => {
       if (e.target === modal) {
-        modal.classList.remove('active');
-        modal.classList.remove('open');
+        if (modal.id === 'delete-confirm-modal' && RAG.utils?.closeConfirmModal) {
+          RAG.utils.closeConfirmModal();
+        } else {
+          modal.classList.remove('active');
+          modal.classList.remove('open');
+        }
       }
     });
   });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      const deleteModal = document.getElementById('delete-confirm-modal');
+      if (deleteModal && deleteModal.classList.contains('active')) {
+        if (RAG.utils?.closeConfirmModal) RAG.utils.closeConfirmModal();
+        return;
+      }
       allModals.forEach((modal) => {
         modal?.classList.remove('active');
         modal?.classList.remove('open');
@@ -86,6 +100,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function updateMemoryBadgeInitial() {
     try {
+      const user = API.getCurrentUser();
+      const isAdminOrStaff = Boolean(user && API.getAccessToken() && (user.role === 'admin' || user.role === 'staff' || user.role === 'staffs'));
+      if (!isAdminOrStaff) {
+        if (tabBtnMemory) tabBtnMemory.style.display = 'none';
+        if (tabMemoryBadge) tabMemoryBadge.textContent = '0';
+        return;
+      }
+      if (tabBtnMemory) tabBtnMemory.style.display = 'flex';
       const stats = await API.getMemoryStats();
       if (tabMemoryBadge) tabMemoryBadge.textContent = stats.active_memories || stats.total_memories || 0;
     } catch {
@@ -93,7 +115,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Initialize Submodules
+  // Initialize Submodules & Confirm Dialog
+  if (RAG.utils?.initConfirmModal) RAG.utils.initConfirmModal();
   if (RAG.auth?.init) RAG.auth.init();
   if (RAG.rooms?.init) RAG.rooms.init();
   if (RAG.documents?.init) RAG.documents.init();

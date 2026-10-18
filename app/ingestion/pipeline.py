@@ -59,7 +59,7 @@ class IngestionPipeline:
                     user_id=doc.user_id,
                     uploader_username=doc.uploader_username,
                     is_persistent=doc.is_persistent_vector if doc.is_persistent_vector is not None else True,
-                    is_shared=doc.is_shared if doc.is_shared is not None else True,
+                    is_shared=doc.is_shared if doc.is_shared is not None else False,
                 )
 
                 if not lc_chunks:

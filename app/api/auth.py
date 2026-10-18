@@ -62,13 +62,16 @@ async def register(request: UserRegisterRequest, db: AsyncSession = Depends(get_
                 detail="An account with this username already exists.",
             )
 
+    valid_roles = ("user", "staff", "staffs", "admin")
+    assigned_role = request.role.lower().strip() if request.role and request.role.lower().strip() in valid_roles else "user"
+
     new_user = User(
         id=str(uuid.uuid4()),
         email=request.email.lower().strip(),
         username=request.username.lower().strip(),
         full_name=request.full_name.strip() if request.full_name else None,
         hashed_password=hash_password(request.password),
-        role="user",
+        role=assigned_role,
         is_active=True,
     )
     db.add(new_user)

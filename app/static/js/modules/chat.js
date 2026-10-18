@@ -106,10 +106,29 @@
     const chatInput = document.getElementById('chat-input');
     const sendBtn = document.getElementById('send-btn');
     const messagesContainer = document.getElementById('messages-container');
+    const charCounter = document.getElementById('chat-char-counter');
 
     if (!chatInput) return;
-    const text = chatInput.value.trim();
-    if (!text) return;
+    const rawValue = chatInput.value;
+    const text = rawValue.trim();
+
+    // JavaScript Input Validation
+    if (RAG.validator) {
+      const err = RAG.validator.validateChatMessage(rawValue);
+      if (err) {
+        chatInput.classList.remove('input-shake');
+        void chatInput.offsetWidth;
+        chatInput.classList.add('is-invalid', 'input-shake');
+        setTimeout(() => chatInput.classList.remove('input-shake'), 400);
+        RAG.utils.showToast(err, 'warning');
+        chatInput.focus();
+        return;
+      } else {
+        chatInput.classList.remove('is-invalid');
+      }
+    } else if (!text) {
+      return;
+    }
 
     const currentUser = API.getCurrentUser();
     if (!currentUser) {
@@ -131,6 +150,8 @@
     appendMessage('user', text);
     chatInput.value = '';
     chatInput.style.height = 'auto';
+    chatInput.classList.remove('is-invalid');
+    if (charCounter) charCounter.style.display = 'none';
     if (sendBtn) sendBtn.disabled = true;
 
     const assistantRow = document.createElement('div');
@@ -326,6 +347,28 @@
     chatInput?.addEventListener('input', () => {
       chatInput.style.height = 'auto';
       chatInput.style.height = Math.min(chatInput.scrollHeight, 140) + 'px';
+
+      const charCounter = document.getElementById('chat-char-counter');
+      const sendBtn = document.getElementById('send-btn');
+      const len = chatInput.value.length;
+
+      if (charCounter) {
+        if (len > 2500) {
+          charCounter.style.display = 'inline-block';
+          charCounter.textContent = `${len.toLocaleString()} / 4,000`;
+          charCounter.className = 'chat-char-counter' + (len > 4000 ? ' danger' : len > 3500 ? ' warning' : '');
+        } else {
+          charCounter.style.display = 'none';
+        }
+      }
+
+      if (len > 4000) {
+        chatInput.classList.add('is-invalid');
+        if (sendBtn) sendBtn.disabled = true;
+      } else {
+        chatInput.classList.remove('is-invalid');
+        if (sendBtn) sendBtn.disabled = false;
+      }
     });
   }
 

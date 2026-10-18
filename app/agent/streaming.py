@@ -32,6 +32,7 @@ async def stream_rag_agent(
     model: Optional[str] = None,
     temperature: float = 0.2,
     top_k: int = 4,
+    user_role: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """Execute LangGraph RAG workflow and yield Server-Sent Events."""
     chat_history = chat_history or []
@@ -97,14 +98,16 @@ async def stream_rag_agent(
             response_type = "general"
 
         consulted_memories = final_state.get("consulted_memories", [])
+        is_admin_or_staff = user_role in ("admin", "staff", "staffs")
+        visible_consulted_memories = consulted_memories if is_admin_or_staff else []
 
         meta_payload = {
             "response_type": response_type,
             "intent": intent,
             "has_citations": len(citations_list) > 0,
             "citation_count": len(citations_list),
-            "consulted_memories_count": len(consulted_memories),
-            "consulted_memories": consulted_memories,
+            "consulted_memories_count": len(visible_consulted_memories),
+            "consulted_memories": visible_consulted_memories,
             "retrieval_retry_count": retrieval_retry_count,
             "generation_grounded": generation_grounded,
             "provider": provider,

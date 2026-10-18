@@ -1,7 +1,7 @@
 """API endpoints for managing LLM providers and runtime settings."""
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
 from app.config import get_settings
@@ -16,11 +16,53 @@ settings = get_settings()
 class UpdateRuntimeSettingsRequest(BaseModel):
     """Schema for updating active runtime preferences."""
     default_chat_provider: Optional[str] = None
-    default_chat_model: Optional[str] = None
+    default_chat_model: Optional[str] = Field(None, max_length=100)
     default_embedding_provider: Optional[str] = None
-    default_embedding_model: Optional[str] = None
+    default_embedding_model: Optional[str] = Field(None, max_length=100)
     retrieval_top_k: Optional[int] = Field(None, ge=1, le=20)
     similarity_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
+
+    @field_validator("default_chat_provider")
+    @classmethod
+    def validate_chat_provider(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = v.strip().lower()
+        valid = {"ollama", "gemini", "google", "openai", "anthropic", "openai-compatible"}
+        if cleaned not in valid:
+            raise ValueError(f"Invalid chat provider '{cleaned}'. Valid choices: {', '.join(sorted(valid))}")
+        return cleaned
+
+    @field_validator("default_chat_model")
+    @classmethod
+    def validate_chat_model(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = v.strip()
+        if len(cleaned) > 100:
+            raise ValueError("Chat model name cannot exceed 100 characters.")
+        return cleaned if cleaned else None
+
+    @field_validator("default_embedding_provider")
+    @classmethod
+    def validate_embedding_provider(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = v.strip().lower()
+        valid = {"ollama", "gemini", "google", "openai"}
+        if cleaned not in valid:
+            raise ValueError(f"Invalid embedding provider '{cleaned}'. Valid choices: {', '.join(sorted(valid))}")
+        return cleaned
+
+    @field_validator("default_embedding_model")
+    @classmethod
+    def validate_embedding_model(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = v.strip()
+        if len(cleaned) > 100:
+            raise ValueError("Embedding model name cannot exceed 100 characters.")
+        return cleaned if cleaned else None
 
 
 @router.get("", response_model=SettingsResponse)

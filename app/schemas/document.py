@@ -33,9 +33,14 @@ class DocumentResponse(BaseModel):
     client_ip: Optional[str] = None
     audit_metadata: Dict[str, Any] = Field(default_factory=dict)
     is_persistent_vector: bool = True
-    is_shared: bool = True
+    is_shared: bool = False
     created_at: datetime
     updated_at: datetime
+
+
+class DocumentShareRequest(BaseModel):
+    """Payload to toggle document public/shared visibility."""
+    is_shared: bool = Field(..., description="Whether this document is shared/public to other users")
 
 
 class DocumentDetailResponse(DocumentResponse):

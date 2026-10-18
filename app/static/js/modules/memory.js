@@ -8,6 +8,7 @@
   const RAG = global.RAG;
 
   let currentMemoryFilter = 'all';
+  let cachedMemoryItems = [];
 
   async function loadMemoryDashboard() {
     const memoryList = document.getElementById('memory-list');
@@ -16,8 +17,13 @@
     const memActiveTotal = document.getElementById('mem-active-total');
     const memHitRate = document.getElementById('mem-hit-rate');
     const currentUser = API.getCurrentUser();
+    const isAdminOrStaff = Boolean(
+      currentUser &&
+      API.getAccessToken() &&
+      (currentUser.role === 'admin' || currentUser.role === 'staff' || currentUser.role === 'staffs')
+    );
 
-    if (!currentUser) {
+    if (!isAdminOrStaff) {
       if (tabMemoryBadge) tabMemoryBadge.textContent = '0';
       if (memL1Bytes) memL1Bytes.textContent = '0 KB';
       if (memActiveTotal) memActiveTotal.textContent = '0 / 0';
@@ -25,7 +31,7 @@
       if (memoryList) {
         memoryList.innerHTML = `
           <div style="text-align: center; padding: 28px 10px; color: var(--text-muted); font-size: 0.8rem;">
-            <span>Sign in to view short-term and long-term agent memory.</span>
+            <span>Short-term and long-term memory inspection is restricted to admin and staff members.</span>
           </div>
         `;
       }
@@ -56,6 +62,7 @@
       if (currentMemoryFilter === 'long_term') params.memory_type = 'long_term';
 
       const items = await API.listMemories(params);
+      cachedMemoryItems = items || [];
 
       if (!memoryList) return;
 
@@ -109,7 +116,7 @@
                 <span>${expiryText}</span>
                 <div class="memory-card-actions">
                   <span title="Importance score">★ ${(m.importance || 0.5).toFixed(1)}</span>
-                  <button class="mem-btn-icon" onclick="window.deleteMemoryItem('${m.id}', event)" title="Delete fact">🗑️</button>
+                  <button class="mem-btn-icon" type="button" onclick="event.stopPropagation(); event.preventDefault(); window.deleteMemoryItem('${m.id}', event)" title="Delete fact">🗑️</button>
                 </div>
               </div>
             </div>
@@ -129,15 +136,36 @@
   }
 
   async function deleteMemoryItem(memoryId, ev) {
-    if (ev) ev.stopPropagation();
-    if (!confirm('Delete this memory item?')) return;
-    try {
-      await API.deleteMemory(memoryId);
-      RAG.utils.showToast('Memory item removed.', 'info');
-      await loadMemoryDashboard();
-    } catch (e) {
-      RAG.utils.showToast('Delete failed: ' + e.message, 'error');
+    if (ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
     }
+    const memItem = (cachedMemoryItems || []).find((x) => x.id === memoryId);
+    const key = memItem ? memItem.key : 'Memory Fact';
+    const content = memItem ? memItem.content : '';
+    const isGlobal = memItem?.scope === 'global';
+    const isStm = memItem?.memory_type === 'short_term';
+    const scopeTag = isGlobal ? 'Global' : 'User';
+    const typeTag = isStm ? 'STM' : 'LTM';
+
+    RAG.utils.showConfirmModal({
+      title: 'Delete Memory Fact',
+      headerIcon: '🗑️',
+      itemIcon: '🧠',
+      itemName: key,
+      itemMeta: `[${scopeTag}:${typeTag}] ${content ? content.slice(0, 100) : ''}`,
+      prompt: `Are you sure you want to delete "${key}"? This will invalidate L1 in-memory cache and remove the record permanently from the database.`,
+      confirmText: 'Delete Fact',
+      onConfirm: async () => {
+        try {
+          await API.deleteMemory(memoryId);
+          RAG.utils.showToast('Memory item removed.', 'info');
+          await loadMemoryDashboard();
+        } catch (e) {
+          RAG.utils.showToast('Delete failed: ' + e.message, 'error');
+        }
+      },
+    });
   }
 
   function initMemoryListeners() {
@@ -190,23 +218,66 @@
       if (memoryModal) memoryModal.classList.add('active');
     });
 
-    closeMemoryModalBtn?.addEventListener('click', () => {
-      if (memoryModal) memoryModal.classList.remove('active');
-    });
+    const memKeyInput = document.getElementById('mem-key-input');
+    const memContentInput = document.getElementById('mem-content-input');
+    const memImportanceInput = document.getElementById('mem-importance-input');
 
-    cancelMemoryBtn?.addEventListener('click', () => {
+    if (RAG.validator) {
+      if (memKeyInput) RAG.validator.attachLiveValidation(memKeyInput, RAG.validator.validateMemoryKey);
+      if (memContentInput) RAG.validator.attachLiveValidation(memContentInput, RAG.validator.validateMemoryContent);
+      if (memImportanceInput) RAG.validator.attachLiveValidation(memImportanceInput, RAG.validator.validateMemoryImportance);
+    }
+
+    const resetMemoryModal = () => {
+      if (RAG.validator) {
+        if (memKeyInput) RAG.validator.clearError(memKeyInput);
+        if (memContentInput) RAG.validator.clearError(memContentInput);
+        if (memImportanceInput) RAG.validator.clearError(memImportanceInput);
+      }
       if (memoryModal) memoryModal.classList.remove('active');
-    });
+    };
+
+    closeMemoryModalBtn?.addEventListener('click', resetMemoryModal);
+    cancelMemoryBtn?.addEventListener('click', resetMemoryModal);
 
     memoryForm?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const scope = document.getElementById('mem-scope-select')?.value || 'global';
       const memory_type = document.getElementById('mem-type-select')?.value || 'short_term';
-      const key = document.getElementById('mem-key-input')?.value.trim();
-      const content = document.getElementById('mem-content-input')?.value.trim();
-      const importance = parseFloat(document.getElementById('mem-importance-input')?.value || '0.7');
+      const key = memKeyInput?.value.trim() || '';
+      const content = memContentInput?.value.trim() || '';
+      const importanceVal = memImportanceInput?.value || '0.7';
+      const importance = parseFloat(importanceVal);
 
-      if (!key || !content) return;
+      // JavaScript Input Validation
+      if (RAG.validator) {
+        const keyErr = RAG.validator.validateMemoryKey(key);
+        if (keyErr) {
+          RAG.validator.showError(memKeyInput, keyErr);
+          memKeyInput?.focus();
+          return;
+        } else {
+          RAG.validator.clearError(memKeyInput);
+        }
+
+        const contentErr = RAG.validator.validateMemoryContent(content);
+        if (contentErr) {
+          RAG.validator.showError(memContentInput, contentErr);
+          memContentInput?.focus();
+          return;
+        } else {
+          RAG.validator.clearError(memContentInput);
+        }
+
+        const impErr = RAG.validator.validateMemoryImportance(importanceVal);
+        if (impErr) {
+          RAG.validator.showError(memImportanceInput, impErr);
+          memImportanceInput?.focus();
+          return;
+        } else {
+          RAG.validator.clearError(memImportanceInput);
+        }
+      }
 
       try {
         await API.createMemory({
@@ -217,10 +288,13 @@
           importance,
         });
         RAG.utils.showToast(`Fact '${key}' saved to ${scope} ${memory_type} memory.`, 'success');
-        if (memoryModal) memoryModal.classList.remove('active');
+        resetMemoryModal();
         memoryForm.reset();
         await loadMemoryDashboard();
       } catch (err) {
+        if (memKeyInput && RAG.validator) {
+          RAG.validator.showError(memKeyInput, err.message);
+        }
         RAG.utils.showToast('Failed to save memory: ' + err.message, 'error');
       }
     });

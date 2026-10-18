@@ -112,10 +112,19 @@ class Settings(BaseSettings):
         return self.MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
     def ensure_directories(self) -> None:
-        """Ensure all required local directories exist."""
-        self.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        self.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        self.CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+        """Ensure all required local directories exist and have write permissions."""
+        import os
+        import logging
+        log = logging.getLogger("rag_agent")
+        for d in (self.DATA_DIR, self.UPLOAD_DIR, self.CHROMA_PERSIST_DIR):
+            d.mkdir(parents=True, exist_ok=True)
+            if not os.access(d, os.W_OK):
+                uid = os.getuid() if hasattr(os, "getuid") else "N/A"
+                log.error(
+                    f"Directory '{d.resolve()}' is not writable by the current process (UID {uid}). "
+                    f"SQLite and document ingestion require write permissions. "
+                    f"Fix by running: chmod -R 777 {d.resolve()} or chown -R {uid} {d.resolve()}"
+                )
 
 
 @lru_cache()

@@ -71,84 +71,117 @@ async def init_db() -> None:
     """Initialize database tables, apply backward-compatible column migrations, and create high-speed indexes."""
     import app.models  # noqa: F401 - Register models with metadata
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    def migrate_and_index_tables(sync_conn):
+        cursor = sync_conn.connection.cursor()
+        try:
+            # Migrate conversations table
+            cursor.execute("PRAGMA table_info(conversations)")
+            conv_cols = [row[1] for row in cursor.fetchall()]
+            if conv_cols:
+                if "room_id" not in conv_cols:
+                    cursor.execute("ALTER TABLE conversations ADD COLUMN room_id VARCHAR(36)")
+                if "user_id" not in conv_cols:
+                    cursor.execute("ALTER TABLE conversations ADD COLUMN user_id VARCHAR(36)")
 
-        def migrate_and_index_tables(sync_conn):
-            cursor = sync_conn.connection.cursor()
-            try:
-                # Migrate conversations table
-                cursor.execute("PRAGMA table_info(conversations)")
-                conv_cols = [row[1] for row in cursor.fetchall()]
-                if conv_cols:
-                    if "room_id" not in conv_cols:
-                        cursor.execute("ALTER TABLE conversations ADD COLUMN room_id VARCHAR(36)")
-                    if "user_id" not in conv_cols:
-                        cursor.execute("ALTER TABLE conversations ADD COLUMN user_id VARCHAR(36)")
+            # Migrate documents table
+            cursor.execute("PRAGMA table_info(documents)")
+            doc_cols = [row[1] for row in cursor.fetchall()]
+            if doc_cols:
+                if "user_id" not in doc_cols:
+                    cursor.execute("ALTER TABLE documents ADD COLUMN user_id VARCHAR(36)")
+                if "uploader_username" not in doc_cols:
+                    cursor.execute("ALTER TABLE documents ADD COLUMN uploader_username VARCHAR(100)")
+                if "uploader_email" not in doc_cols:
+                    cursor.execute("ALTER TABLE documents ADD COLUMN uploader_email VARCHAR(255)")
+                if "client_ip" not in doc_cols:
+                    cursor.execute("ALTER TABLE documents ADD COLUMN client_ip VARCHAR(45)")
+                if "user_agent" not in doc_cols:
+                    cursor.execute("ALTER TABLE documents ADD COLUMN user_agent VARCHAR(512)")
+                if "audit_metadata" not in doc_cols:
+                    cursor.execute("ALTER TABLE documents ADD COLUMN audit_metadata JSON DEFAULT '{}'")
+                if "is_persistent_vector" not in doc_cols:
+                    cursor.execute("ALTER TABLE documents ADD COLUMN is_persistent_vector BOOLEAN DEFAULT 1")
+                if "is_shared" not in doc_cols:
+                    cursor.execute("ALTER TABLE documents ADD COLUMN is_shared BOOLEAN DEFAULT 0")
 
-                # Migrate documents table
-                cursor.execute("PRAGMA table_info(documents)")
-                doc_cols = [row[1] for row in cursor.fetchall()]
-                if doc_cols:
-                    if "user_id" not in doc_cols:
-                        cursor.execute("ALTER TABLE documents ADD COLUMN user_id VARCHAR(36)")
-                    if "uploader_username" not in doc_cols:
-                        cursor.execute("ALTER TABLE documents ADD COLUMN uploader_username VARCHAR(100)")
-                    if "uploader_email" not in doc_cols:
-                        cursor.execute("ALTER TABLE documents ADD COLUMN uploader_email VARCHAR(255)")
-                    if "client_ip" not in doc_cols:
-                        cursor.execute("ALTER TABLE documents ADD COLUMN client_ip VARCHAR(45)")
-                    if "user_agent" not in doc_cols:
-                        cursor.execute("ALTER TABLE documents ADD COLUMN user_agent VARCHAR(512)")
-                    if "audit_metadata" not in doc_cols:
-                        cursor.execute("ALTER TABLE documents ADD COLUMN audit_metadata JSON DEFAULT '{}'")
-                    if "is_persistent_vector" not in doc_cols:
-                        cursor.execute("ALTER TABLE documents ADD COLUMN is_persistent_vector BOOLEAN DEFAULT 1")
-                    if "is_shared" not in doc_cols:
-                        cursor.execute("ALTER TABLE documents ADD COLUMN is_shared BOOLEAN DEFAULT 1")
+            # Migrate rooms table
+            cursor.execute("PRAGMA table_info(rooms)")
+            room_cols = [row[1] for row in cursor.fetchall()]
+            if room_cols:
+                if "is_public" not in room_cols:
+                    cursor.execute("ALTER TABLE rooms ADD COLUMN is_public BOOLEAN DEFAULT 0")
 
-                # Create audit_logs table if not exists
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS audit_logs (
-                        id VARCHAR(36) PRIMARY KEY,
-                        user_id VARCHAR(36),
-                        username VARCHAR(100),
-                        user_email VARCHAR(255),
-                        action VARCHAR(50) NOT NULL,
-                        entity_type VARCHAR(50) NOT NULL,
-                        entity_id VARCHAR(36) NOT NULL,
-                        client_ip VARCHAR(45),
-                        user_agent VARCHAR(512),
-                        details JSON DEFAULT '{}',
-                        created_at DATETIME NOT NULL
-                    )
-                """)
+            # Create room_members table if not exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS room_members (
+                    id VARCHAR(36) PRIMARY KEY,
+                    room_id VARCHAR(36) NOT NULL,
+                    user_id VARCHAR(36) NOT NULL,
+                    role VARCHAR(30) DEFAULT 'viewer',
+                    created_at DATETIME NOT NULL
+                )
+            """)
 
-                # Create performance indexes for joins and rapid lookups
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_uploader_email ON documents(uploader_email);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_is_shared ON documents(is_shared);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_room_documents_room_id ON room_documents(room_id);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_room_documents_doc_id ON room_documents(document_id);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_room_id ON conversations(room_id);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON messages(conversation_id, created_at);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_chunks_doc_idx ON document_chunks(document_id, chunk_index);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_scope_type ON memories(scope, memory_type);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_user_id ON memories(user_id);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_doc_id ON memories(document_id);")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_expires_at ON memories(expires_at);")
-            except Exception as e:
-                import logging
-                logging.getLogger("rag_agent").warning(f"Schema migration/indexing note: {e}")
-            finally:
-                cursor.close()
+            # Create audit_logs table if not exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36),
+                    username VARCHAR(100),
+                    user_email VARCHAR(255),
+                    action VARCHAR(50) NOT NULL,
+                    entity_type VARCHAR(50) NOT NULL,
+                    entity_id VARCHAR(36) NOT NULL,
+                    client_ip VARCHAR(45),
+                    user_agent VARCHAR(512),
+                    details JSON DEFAULT '{}',
+                    created_at DATETIME NOT NULL
+                )
+            """)
 
-        if "sqlite" in settings.DATABASE_URL:
-            await conn.run_sync(migrate_and_index_tables)
+            # Create performance indexes for joins and rapid lookups
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_uploader_email ON documents(uploader_email);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_is_shared ON documents(is_shared);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_rooms_is_public ON rooms(is_public);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_room_members_room_id ON room_members(room_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_room_members_user_id ON room_members(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_room_documents_room_id ON room_documents(room_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_room_documents_doc_id ON room_documents(document_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_room_id ON conversations(room_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON messages(conversation_id, created_at);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_chunks_doc_idx ON document_chunks(document_id, chunk_index);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_scope_type ON memories(scope, memory_type);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_user_id ON memories(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_doc_id ON memories(document_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_expires_at ON memories(expires_at);")
+        except Exception as e:
+            import logging
+            logging.getLogger("rag_agent").warning(f"Schema migration/indexing note: {e}")
+        finally:
+            cursor.close()
+
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            if "sqlite" in settings.DATABASE_URL:
+                await conn.run_sync(migrate_and_index_tables)
+    except Exception as e:
+        if "readonly database" in str(e).lower():
+            import logging
+            import os
+            uid = os.getuid() if hasattr(os, "getuid") else "N/A"
+            logging.getLogger("rag_agent").critical(
+                f"DATABASE PERMISSION ERROR: SQLite database file or directory is not writable by current process (UID {uid}).\n"
+                f"Resolved database URL: {settings.DATABASE_URL}\n"
+                f"To fix in Docker: run 'docker compose exec -u root <container_name> chown -R appuser:appgroup /app/data'\n"
+                f"To fix on Host: run 'chmod -R 777 ./data' or 'sudo chown -R $USER ./data'"
+            )
+        raise

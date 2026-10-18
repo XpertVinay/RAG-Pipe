@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Citation(BaseModel):
@@ -22,9 +22,27 @@ class ChatRequest(BaseModel):
     room_id: Optional[str] = Field(None, description="Optional room workspace UUID to scope documents and context")
     document_ids: Optional[List[str]] = Field(None, description="Optional filter to only query specific documents")
     provider: Optional[Literal["ollama", "openai", "anthropic", "openai-compatible", "gemini", "google"]] = None
-    model: Optional[str] = None
+    model: Optional[str] = Field(None, max_length=100)
     temperature: Optional[float] = Field(0.2, ge=0.0, le=2.0)
     top_k: Optional[int] = Field(4, ge=1, le=20)
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Message cannot be empty or purely whitespace.")
+        if len(cleaned) > 4000:
+            raise ValueError("Message cannot exceed 4000 characters.")
+        return cleaned
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = v.strip()
+        return cleaned if cleaned else None
 
 
 class MessageResponse(BaseModel):

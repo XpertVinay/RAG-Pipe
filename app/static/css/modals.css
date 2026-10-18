@@ -18,6 +18,10 @@
   pointer-events: auto;
 }
 
+#delete-confirm-modal {
+  z-index: 1000 !important;
+}
+
 .modal-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -542,3 +546,74 @@
 }
 
 /* ==========================================================================
+   Form Validation States, Field Feedback & Micro-Animations
+   ========================================================================== */
+
+.form-control.is-invalid,
+.chat-textarea.is-invalid {
+  border-color: #ef4444 !important;
+  background-color: rgba(239, 68, 68, 0.06) !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25) !important;
+}
+
+.form-control.is-valid {
+  border-color: rgba(16, 185, 129, 0.6) !important;
+}
+
+.field-error-msg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  color: #f87171;
+  margin-top: 5px;
+  line-height: 1.35;
+  animation: fieldErrorSlideIn 180ms ease-out forwards;
+}
+
+.field-error-msg span:first-child {
+  flex-shrink: 0;
+}
+
+.chat-char-counter {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+}
+
+.chat-char-counter.warning {
+  color: #f59e0b;
+  font-weight: 500;
+}
+
+.chat-char-counter.danger {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+@keyframes fieldErrorSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes inputShake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  20%, 60% {
+    transform: translateX(-6px);
+  }
+  40%, 80% {
+    transform: translateX(6px);
+  }
+}
+
+.input-shake {
+  animation: inputShake 350ms ease-in-out !important;
+}

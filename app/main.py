@@ -9,9 +9,16 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from fastapi.exceptions import RequestValidationError
+
 from app.api import api_router
 from app.config import get_settings
-from app.core.exceptions import RAGException, global_exception_handler, rag_exception_handler
+from app.core.exceptions import (
+    RAGException,
+    global_exception_handler,
+    rag_exception_handler,
+    validation_exception_handler,
+)
 from app.core.logging import logger
 from app.core.tracing import configure_langsmith_tracing
 from app.database import init_db
@@ -79,6 +86,7 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 # Exception handlers
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(RAGException, rag_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 

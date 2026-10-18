@@ -106,7 +106,15 @@ const API = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(err.detail || err.message || 'API request failed');
+      let detailMsg = err.detail || err.message;
+      if (Array.isArray(detailMsg)) {
+        detailMsg = detailMsg
+          .map((d) => (d.loc ? `${d.loc.filter((x) => x !== 'body').join('.')}: ${d.msg}` : d.msg || JSON.stringify(d)))
+          .join('; ');
+      } else if (typeof detailMsg === 'object' && detailMsg !== null) {
+        detailMsg = detailMsg.msg || detailMsg.message || JSON.stringify(detailMsg);
+      }
+      throw new Error(detailMsg || 'API request failed');
     }
 
     return res.json();
@@ -132,6 +140,14 @@ const API = {
     });
   },
 
+  async patch(url, data) {
+    return this.request(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  },
+
   async delete(url) {
     return this.request(url, { method: 'DELETE' });
   },
@@ -139,12 +155,13 @@ const API = {
   // --------------------------------------------------------------------------
   // Authentication & Authorization Endpoints
   // --------------------------------------------------------------------------
-  async register(email, username, password, fullName = '') {
+  async register(email, username, password, fullName = '', role = 'user') {
     const data = await this.post('/api/auth/register', {
       email,
       username,
       password,
       full_name: fullName || null,
+      role: role || 'user',
     });
     this.setAuthSession(data);
     return data;
@@ -210,8 +227,8 @@ const API = {
     return this.get('/api/rooms');
   },
 
-  async createRoom(name, description = '') {
-    return this.post('/api/rooms', { name, description });
+  async createRoom(name, description = '', isPublic = false) {
+    return this.post('/api/rooms', { name, description, is_public: isPublic });
   },
 
   async getRoom(roomId) {
@@ -259,6 +276,25 @@ const API = {
     return this.get(`/api/rooms/${roomId}/references`);
   },
 
+  async shareRoom(roomId, isPublic) {
+    return this.patch(`/api/rooms/${roomId}/share`, { is_public: isPublic });
+  },
+
+  async getRoomMembers(roomId) {
+    return this.get(`/api/rooms/${roomId}/members`);
+  },
+
+  async addRoomMember(roomId, usernameOrEmail, role = 'viewer') {
+    return this.post(`/api/rooms/${roomId}/members`, {
+      username_or_email: usernameOrEmail,
+      role: role,
+    });
+  },
+
+  async removeRoomMember(roomId, userId) {
+    return this.delete(`/api/rooms/${roomId}/members/${userId}`);
+  },
+
   // --------------------------------------------------------------------------
   // Document Endpoints
   // --------------------------------------------------------------------------
@@ -293,6 +329,10 @@ const API = {
 
   async deleteDocument(docId) {
     return this.delete(`/api/documents/${docId}`);
+  },
+
+  async shareDocument(docId, isShared) {
+    return this.patch(`/api/documents/${docId}/share`, { is_shared: isShared });
   },
 
   async reprocessDocument(docId) {

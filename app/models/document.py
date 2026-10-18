@@ -27,7 +27,7 @@ class Document(Base):
     user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     audit_metadata: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     is_persistent_vector: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    is_shared: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_type: Mapped[str] = mapped_column(String(50), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)

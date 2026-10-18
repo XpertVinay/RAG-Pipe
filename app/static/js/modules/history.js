@@ -7,6 +7,8 @@
   global.RAG = global.RAG || {};
   const RAG = global.RAG;
 
+  let cachedConversations = [];
+
   async function loadConversations() {
     const tabHistoryBadge = document.getElementById('tab-history-badge');
     const historyCount = document.getElementById('history-count');
@@ -23,11 +25,13 @@
           </div>
         `;
       }
+      cachedConversations = [];
       return;
     }
 
     try {
       const convs = await API.getConversations(RAG.state.currentRoomId);
+      cachedConversations = convs || [];
       if (tabHistoryBadge) tabHistoryBadge.textContent = convs ? convs.length : 0;
       if (historyCount) historyCount.textContent = `${convs ? convs.length : 0} sessions`;
 
@@ -56,7 +60,7 @@
             <div class="history-card ${isActive ? 'active' : ''}" onclick="window.selectConversation('${c.id}')">
               <div class="history-card-header">
                 <span class="history-title" title="${RAG.utils.escapeHtml(c.title)}">${RAG.utils.escapeHtml(c.title)}</span>
-                <button class="history-del-btn" onclick="window.deleteConversation('${c.id}', event)" title="Delete session">🗑️</button>
+                <button class="history-del-btn" type="button" onclick="event.stopPropagation(); event.preventDefault(); window.deleteConversation('${c.id}', event)" title="Delete session">🗑️</button>
               </div>
               <div class="history-meta">
                 <span>${time}</span>
@@ -111,19 +115,36 @@
   }
 
   async function deleteConversation(convId, ev) {
-    if (ev) ev.stopPropagation();
-    if (!confirm('Are you sure you want to delete this chat session?')) return;
-    try {
-      await API.deleteConversation(convId);
-      RAG.utils.showToast('Conversation deleted', 'info');
-      if (RAG.state.currentConversationId === convId) {
-        if (RAG.chat?.startNewChat) RAG.chat.startNewChat();
-      } else {
-        loadConversations();
-      }
-    } catch (e) {
-      RAG.utils.showToast(e.message, 'error');
+    if (ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
     }
+    const c = (cachedConversations || []).find((x) => x.id === convId);
+    const title = c ? c.title : 'Chat Session';
+    const msgCount = c?.message_count ? `${c.message_count} messages` : 'Conversation Session';
+
+    RAG.utils.showConfirmModal({
+      title: 'Delete Chat Session',
+      headerIcon: '🗑️',
+      itemIcon: '💬',
+      itemName: title,
+      itemMeta: msgCount,
+      prompt: 'Are you sure you want to delete this chat session? All queries, generated answers, citations, and conversation messages will be permanently deleted.',
+      confirmText: 'Delete Session',
+      onConfirm: async () => {
+        try {
+          await API.deleteConversation(convId);
+          RAG.utils.showToast('Conversation deleted successfully', 'info');
+          if (RAG.state.currentConversationId === convId) {
+            if (RAG.chat?.startNewChat) RAG.chat.startNewChat();
+          } else {
+            await loadConversations();
+          }
+        } catch (e) {
+          RAG.utils.showToast(e.message, 'error');
+        }
+      },
+    });
   }
 
   RAG.history = {

@@ -14,20 +14,23 @@
 
     <!-- Sign In Tab Form -->
     <div id="auth-panel-signin">
-      <form id="login-form">
+      <form id="login-form" novalidate>
         <div class="form-group">
           <label for="login-username">Username or Email</label>
-          <input type="text" id="login-username" class="form-control" placeholder="admin or you@example.com" required>
+          <input type="text" id="login-username" class="form-control" placeholder="admin or you@example.com" autocomplete="username">
         </div>
         <div class="form-group">
           <label for="login-password">Password</label>
-          <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
+          <input type="password" id="login-password" class="form-control" placeholder="••••••••" autocomplete="current-password">
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
-          <button type="button" class="btn btn-outline" id="demo-login-btn" title="Sign in with instant demo user">
-            ⚡ Quick Demo Login
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 20px;">
+          <button type="button" class="btn btn-outline" id="demo-login-btn" title="Sign in with instant common demo user (No memory access)">
+            ⚡ Demo User
           </button>
-          <button type="submit" class="btn btn-primary" id="login-submit-btn">
+          <button type="button" class="btn btn-outline" id="demo-staff-btn" style="border-color: rgba(99, 102, 241, 0.5); color: #818cf8;" title="Sign in with instant staff demo user (Memory access enabled)">
+            🛡️ Demo Staff
+          </button>
+          <button type="submit" formnovalidate class="btn btn-primary" id="login-submit-btn" style="margin-left: auto;">
             Sign In
           </button>
         </div>
@@ -36,25 +39,33 @@
 
     <!-- Register Tab Form -->
     <div id="auth-panel-register" style="display: none;">
-      <form id="register-form">
+      <form id="register-form" novalidate>
         <div class="form-group">
           <label for="reg-email">Email Address</label>
-          <input type="email" id="reg-email" class="form-control" placeholder="you@company.com" required>
+          <input type="text" inputmode="email" autocomplete="email" id="reg-email" class="form-control" placeholder="you@company.com">
         </div>
         <div class="form-group">
           <label for="reg-username">Username</label>
-          <input type="text" id="reg-username" class="form-control" placeholder="johndoe" required>
+          <input type="text" id="reg-username" class="form-control" placeholder="johndoe" autocomplete="username">
         </div>
         <div class="form-group">
           <label for="reg-fullname">Full Name (Optional)</label>
-          <input type="text" id="reg-fullname" class="form-control" placeholder="John Doe">
+          <input type="text" id="reg-fullname" class="form-control" placeholder="John Doe" autocomplete="name">
         </div>
         <div class="form-group">
           <label for="reg-password">Password</label>
-          <input type="password" id="reg-password" class="form-control" placeholder="Minimum 6 characters" minlength="6" required>
+          <input type="password" id="reg-password" class="form-control" placeholder="Minimum 6 characters" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label for="reg-role">Role / Privilege Level</label>
+          <select id="reg-role" class="form-control">
+            <option value="user" selected>Common User (Standard Q&amp;A)</option>
+            <option value="staff">Staff Member (Memory &amp; Context Access)</option>
+            <option value="admin">Administrator (Full Access)</option>
+          </select>
         </div>
         <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
-          <button type="submit" class="btn btn-primary">
+          <button type="submit" formnovalidate class="btn btn-primary">
             Create Account
           </button>
         </div>

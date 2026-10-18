@@ -217,11 +217,12 @@ async def test_per_user_document_upload_and_persistent_embeddings_sharing(client
     token_a = res_a.json()["access_token"]
     user_a_id = res_a.json()["user"]["id"]
 
-    # 2. Register User B (Bob)
+    # 2. Register User B (Bob) as staff member
     res_b = await client.post("/api/auth/register", json={
         "email": "bob_shared@test.local",
         "username": "bob_shared",
         "password": "Password123!",
+        "role": "staff",
     })
     assert res_b.status_code == 201
     token_b = res_b.json()["access_token"]
@@ -241,20 +242,33 @@ async def test_per_user_document_upload_and_persistent_embeddings_sharing(client
     assert doc_data["user_id"] == user_a_id
     assert doc_data["uploader_username"] == "alice_shared"
     assert doc_data["is_persistent_vector"] is True
-    assert doc_data["is_shared"] is True
+    # Private by default for strict session isolation
+    assert doc_data["is_shared"] is False
 
-    # 4. Listing with scope=mine:
-    # User A sees it
+    # 4. Strict isolation: User A sees it under scope=mine and scope=all
     res_a_docs = await client.get("/api/documents?scope=mine", headers={"Authorization": f"Bearer {token_a}"})
     assert res_a_docs.status_code == 200
     assert any(d["id"] == doc_id for d in res_a_docs.json()["items"])
 
-    # User B does NOT see it under scope=mine
+    # User B does NOT see it under scope=mine, scope=shared, or scope=all while private
     res_b_docs = await client.get("/api/documents?scope=mine", headers={"Authorization": f"Bearer {token_b}"})
     assert res_b_docs.status_code == 200
     assert not any(d["id"] == doc_id for d in res_b_docs.json()["items"])
 
-    # User B DOES see it under scope=shared and scope=all
+    res_b_private = await client.get("/api/documents?scope=all", headers={"Authorization": f"Bearer {token_b}"})
+    assert res_b_private.status_code == 200
+    assert not any(d["id"] == doc_id for d in res_b_private.json()["items"])
+
+    # 5. User A explicitly shares the document publicly with RBAC toggle
+    share_res = await client.patch(
+        f"/api/documents/{doc_id}/share",
+        json={"is_shared": True},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert share_res.status_code == 200
+    assert share_res.json()["is_shared"] is True
+
+    # User B now sees it under scope=shared and scope=all
     res_b_all = await client.get("/api/documents?scope=shared", headers={"Authorization": f"Bearer {token_b}"})
     assert res_b_all.status_code == 200
     assert any(d["id"] == doc_id for d in res_b_all.json()["items"])
@@ -285,17 +299,15 @@ async def test_per_user_document_upload_and_persistent_embeddings_sharing(client
     )
     assert pref_res.status_code == 200
 
-    # Verify User B's memory holds their own user-specific STM and LTM
+    # Verify User B (staff) can inspect their user-specific STM and LTM
     mem_b_res = await client.get("/api/memory?scope=user_specific", headers={"Authorization": f"Bearer {token_b}"})
     assert mem_b_res.status_code == 200
     mem_items_b = mem_b_res.json()
     assert any(m["user_id"] == user_b_id for m in mem_items_b)
 
-    # Verify User A cannot see User B's user-specific memory
+    # Verify User A (common user) cannot view STM/LTM memory (403 Forbidden)
     mem_a_res = await client.get("/api/memory?scope=user_specific", headers={"Authorization": f"Bearer {token_a}"})
-    assert mem_a_res.status_code == 200
-    mem_items_a = mem_a_res.json()
-    assert not any(m["user_id"] == user_b_id for m in mem_items_a)
+    assert mem_a_res.status_code == 403
 
     # 7. User A deletes their personal document record:
     # Persistent vector embeddings remain available for other users

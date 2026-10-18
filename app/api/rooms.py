@@ -1,120 +1,42 @@
 """Room Workspace API endpoints for multi-file grouping and database references."""
 
-import hashlib
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
-from app.core.auth import get_current_user, get_optional_user, utc_now
-from app.core.exceptions import EntityNotFoundError, FileValidationError
+from app.core.auth import get_current_user, get_optional_user
 from app.core.logging import logger
 from app.core.rate_limit import RateLimiter
-from app.core.security import validate_file_upload, verify_safe_path
 from app.database import get_db
 from app.ingestion.pipeline import ingestion_pipeline
-from app.models.conversation import Conversation, Message
-from app.models.document import AuditLog, Document, DocumentChunk
-from app.models.room import Room, RoomDocument
+from app.models.conversation import Message
+from app.models.document import Document
+from app.models.room import Room, RoomDocument, RoomMember
 from app.models.user import User
 from app.schemas.document import DocumentResponse
 from app.schemas.room import (
     RoomCreateRequest,
     RoomDetailResponse,
+    RoomMemberAddRequest,
+    RoomMemberResponse,
     RoomReferenceItem,
+    RoomShareRequest,
     RoomSummaryResponse,
     RoomUpdateRequest,
 )
+from app.services.document_service import verify_document_access
+from app.services.room_service import (
+    check_room_access,
+    extract_room_references,
+    fetch_room_summary_counts,
+    get_or_create_room_conversation,
+    process_room_file_upload,
+)
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
-settings = get_settings()
-
 room_upload_rate_limiter = RateLimiter(max_requests=15, window_seconds=60)
-
-
-def check_room_access(room: Room, user: Optional[User]) -> None:
-    """Enforce ownership access control for room workspaces (prevent IDOR)."""
-    if room.user_id is not None:
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required to access this workspace.",
-            )
-        if room.user_id != user.id and getattr(user, "role", "user") != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: you do not have permission to access or modify this workspace.",
-            )
-
-
-async def get_or_create_room_conversation(db: AsyncSession, room: Room) -> Conversation:
-    """Find the primary active conversation thread for a room or create one."""
-    res = await db.execute(
-        select(Conversation)
-        .where(Conversation.room_id == room.id)
-        .order_by(Conversation.updated_at.desc())
-        .limit(1)
-    )
-    conv = res.scalar_one_or_none()
-    if not conv:
-        conv = Conversation(
-            id=str(uuid.uuid4()),
-            room_id=room.id,
-            user_id=room.user_id,
-            title=f"{room.name} Discussion",
-        )
-        db.add(conv)
-        await db.commit()
-        await db.refresh(conv)
-    return conv
-
-
-async def extract_room_references(db: AsyncSession, document_ids: List[str]) -> List[RoomReferenceItem]:
-    """Extract key document excerpts and metadata from database in a single batched query."""
-    if not document_ids:
-        return []
-
-    # 1. Fetch all documents in one batched query
-    doc_res = await db.execute(select(Document).where(Document.id.in_(document_ids)))
-    docs_by_id = {d.id: d for d in doc_res.scalars().all()}
-    if not docs_by_id:
-        return []
-
-    # 2. Fetch top representative chunks (chunk_index < 3) in one batched query
-    chunk_res = await db.execute(
-        select(DocumentChunk)
-        .where(
-            DocumentChunk.document_id.in_(document_ids),
-            DocumentChunk.chunk_index < 3,
-        )
-        .order_by(DocumentChunk.document_id, DocumentChunk.chunk_index.asc())
-    )
-    chunks = chunk_res.scalars().all()
-
-    references: List[RoomReferenceItem] = []
-    for chunk in chunks:
-        doc = docs_by_id.get(chunk.document_id)
-        if not doc:
-            continue
-        meta = chunk.chunk_metadata or {}
-        page = meta.get("page", 1)
-        raw_excerpt = chunk.content.strip().replace("\n", " ")
-        excerpt = (raw_excerpt[:240] + "...") if len(raw_excerpt) > 240 else raw_excerpt
-
-        references.append(
-            RoomReferenceItem(
-                document_id=doc.id,
-                filename=doc.filename,
-                chunk_index=chunk.chunk_index,
-                page=page,
-                excerpt=excerpt,
-                summary_hint=f"Section {chunk.chunk_index + 1} from {doc.filename}",
-            )
-        )
-
-    return references
 
 
 @router.post("", response_model=RoomDetailResponse, status_code=status.HTTP_201_CREATED)
@@ -129,22 +51,25 @@ async def create_room(
         user_id=current_user.id if current_user else None,
         name=request.name.strip(),
         description=request.description.strip() if request.description else None,
+        is_public=request.is_public,
     )
     db.add(room)
     await db.commit()
     await db.refresh(room)
 
-    # Initialize a conversation thread for this room
     conv = await get_or_create_room_conversation(db, room)
 
     return RoomDetailResponse(
         id=room.id,
         name=room.name,
         description=room.description,
+        is_public=room.is_public,
+        user_role="owner" if current_user else "viewer",
         created_at=room.created_at,
         updated_at=room.updated_at,
         documents=[],
         references=[],
+        members=[],
         active_conversation_id=conv.id,
         message_count=0,
     )
@@ -155,57 +80,72 @@ async def list_rooms(
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all workspace rooms (filtered by user if authenticated)."""
-    query = select(Room)
+    """List all workspace rooms accessible to the user (owned, member, or public)."""
     if current_user:
         if getattr(current_user, "role", "user") == "admin":
-            pass
+            query = select(Room)
         else:
-            query = query.where(
-                or_(Room.user_id == current_user.id, Room.user_id.is_(None))
+            member_room_subquery = select(RoomMember.room_id).where(RoomMember.user_id == current_user.id)
+            query = select(Room).where(
+                or_(
+                    Room.user_id == current_user.id,
+                    Room.id.in_(member_room_subquery),
+                    Room.is_public.is_(True),
+                    Room.user_id.is_(None),
+                )
             )
     else:
-        query = query.where(Room.user_id.is_(None))
-    query = query.order_by(Room.updated_at.desc())
+        query = select(Room).where(or_(Room.is_public.is_(True), Room.user_id.is_(None)))
 
+    query = query.order_by(Room.updated_at.desc())
     res = await db.execute(query)
     rooms = res.scalars().all()
     if not rooms:
         return []
 
     room_ids = [r.id for r in rooms]
+    doc_counts, msg_counts = await fetch_room_summary_counts(db, room_ids)
 
-    # Batch count documents per room (1 query for all rooms)
-    doc_counts_res = await db.execute(
-        select(RoomDocument.room_id, func.count(RoomDocument.id))
-        .where(RoomDocument.room_id.in_(room_ids))
-        .group_by(RoomDocument.room_id)
-    )
-    doc_counts = dict(doc_counts_res.all())
+    # Determine user role per room for summary response
+    member_map = {}
+    if current_user:
+        mem_res = await db.execute(
+            select(RoomMember.room_id, RoomMember.role).where(
+                RoomMember.user_id == current_user.id,
+                RoomMember.room_id.in_(room_ids),
+            )
+        )
+        member_map = dict(mem_res.all())
 
-    # Batch count messages across all room conversations (1 query for all rooms)
-    msg_counts_res = await db.execute(
-        select(Conversation.room_id, func.count(Message.id))
-        .join(Message, Message.conversation_id == Conversation.id)
-        .where(Conversation.room_id.in_(room_ids))
-        .group_by(Conversation.room_id)
-    )
-    msg_counts = dict(msg_counts_res.all())
-
-    summaries: List[RoomSummaryResponse] = []
+    summaries = []
     for r in rooms:
+        if current_user:
+            if getattr(current_user, "role", "user") == "admin":
+                role = "admin"
+            elif r.user_id == current_user.id:
+                role = "owner"
+            elif r.id in member_map:
+                role = member_map[r.id]
+            elif r.is_public:
+                role = "viewer"
+            else:
+                role = "viewer"
+        else:
+            role = "viewer"
+
         summaries.append(
             RoomSummaryResponse(
                 id=r.id,
                 name=r.name,
                 description=r.description,
+                is_public=getattr(r, "is_public", False),
+                user_role=role,
                 created_at=r.created_at,
                 updated_at=r.updated_at,
                 document_count=doc_counts.get(r.id, 0),
                 message_count=msg_counts.get(r.id, 0),
             )
         )
-
     return summaries
 
 
@@ -215,15 +155,14 @@ async def get_room_details(
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get full room details with attached documents, key references, and active conversation ID."""
+    """Get full room details with attached documents, key references, member list, and active conversation ID."""
     res = await db.execute(select(Room).where(Room.id == room_id))
     room = res.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found.")
 
-    check_room_access(room, current_user)
+    user_role = await check_room_access(room, current_user, db, required_role="viewer")
 
-    # Get attached documents
     rd_res = await db.execute(select(RoomDocument).where(RoomDocument.room_id == room_id))
     room_docs = rd_res.scalars().all()
     doc_ids = [rd.document_id for rd in room_docs]
@@ -233,26 +172,47 @@ async def get_room_details(
         docs_res = await db.execute(select(Document).where(Document.id.in_(doc_ids)))
         docs = docs_res.scalars().all()
 
-    # Get or create active conversation
     conv = await get_or_create_room_conversation(db, room)
 
-    # Count messages
     msg_count_res = await db.execute(
         select(func.count(Message.id)).where(Message.conversation_id == conv.id)
     )
     message_count = msg_count_res.scalar_one()
-
-    # Extract important document references from database
     references = await extract_room_references(db, doc_ids)
+
+    # Fetch room members
+    mem_res = await db.execute(
+        select(RoomMember, User)
+        .join(User, RoomMember.user_id == User.id)
+        .where(RoomMember.room_id == room_id)
+        .order_by(RoomMember.created_at.asc())
+    )
+    member_rows = mem_res.all()
+    members_resp = [
+        RoomMemberResponse(
+            id=m.id,
+            room_id=m.room_id,
+            user_id=u.id,
+            username=u.username,
+            email=u.email,
+            full_name=u.full_name,
+            role=m.role,
+            created_at=m.created_at,
+        )
+        for m, u in member_rows
+    ]
 
     return RoomDetailResponse(
         id=room.id,
         name=room.name,
         description=room.description,
+        is_public=getattr(room, "is_public", False),
+        user_role=user_role,
         created_at=room.created_at,
         updated_at=room.updated_at,
         documents=[DocumentResponse.model_validate(d) for d in docs],
         references=references,
+        members=members_resp,
         active_conversation_id=conv.id,
         message_count=message_count,
     )
@@ -265,18 +225,21 @@ async def update_room(
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update room name or description."""
+    """Update room name, description, or public visibility."""
     res = await db.execute(select(Room).where(Room.id == room_id))
     room = res.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found.")
 
-    check_room_access(room, current_user)
+    await check_room_access(room, current_user, db, required_role="editor")
 
     if request.name is not None:
         room.name = request.name.strip()
     if request.description is not None:
         room.description = request.description.strip()
+    if request.is_public is not None:
+        await check_room_access(room, current_user, db, required_role="owner")
+        room.is_public = request.is_public
 
     await db.commit()
     await db.refresh(room)
@@ -289,13 +252,13 @@ async def delete_room(
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a room and its room-document mappings."""
+    """Delete a room and its room-document mappings (owner or admin only)."""
     res = await db.execute(select(Room).where(Room.id == room_id))
     room = res.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found.")
 
-    check_room_access(room, current_user)
+    await check_room_access(room, current_user, db, required_role="owner")
 
     await db.delete(room)
     await db.commit()
@@ -321,7 +284,7 @@ async def upload_files_to_room(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found.")
 
-    check_room_access(room, current_user)
+    await check_room_access(room, current_user, db, required_role="editor")
 
     client_ip = (
         request.headers.get("x-forwarded-for", "").split(",")[0].strip()
@@ -334,92 +297,16 @@ async def upload_files_to_room(
 
     for file in files:
         try:
-            content = await file.read()
-            content_length = len(content)
-            sanitized_name, extension = validate_file_upload(file, content_length, content_bytes=content)
-
-            if content_length == 0:
-                raise FileValidationError(f"File '{file.filename}' is empty.")
-
-            file_hash = hashlib.sha256(content).hexdigest()
-            doc_id = str(uuid.uuid4())
-            target_filename = f"{doc_id}_{sanitized_name}"
-            target_path = settings.UPLOAD_DIR / target_filename
-            safe_path = verify_safe_path(target_path, settings.UPLOAD_DIR)
-
-            with open(safe_path, "wb") as f:
-                f.write(content)
-
-            audit_meta = {
-                "uploader": {
-                    "id": current_user.id,
-                    "username": current_user.username,
-                    "email": current_user.email,
-                    "full_name": current_user.full_name,
-                    "role": current_user.role,
-                },
-                "room": {
-                    "id": room.id,
-                    "name": room.name,
-                },
-                "client_ip": client_ip,
-                "user_agent": user_agent,
-                "uploaded_at": utc_now().isoformat(),
-            }
-
-            doc = Document(
-                id=doc_id,
-                user_id=current_user.id,
-                uploader_username=current_user.username,
-                uploader_email=current_user.email,
+            doc = await process_room_file_upload(
+                file=file,
+                room=room,
+                current_user=current_user,
                 client_ip=client_ip,
                 user_agent=user_agent,
-                audit_metadata=audit_meta,
-                is_persistent_vector=True,
-                is_shared=True,
-                filename=sanitized_name,
-                file_type=extension,
-                file_size=content_length,
-                storage_path=str(safe_path),
-                file_hash=file_hash,
-                status="queued",
+                db=db,
             )
-            db.add(doc)
-            await db.flush()
-
-            # Attach to Room
-            room_doc = RoomDocument(
-                id=str(uuid.uuid4()),
-                room_id=room_id,
-                document_id=doc_id,
-            )
-            db.add(room_doc)
-            await db.flush()
-
-            # Create immutable audit log record
-            audit_entry = AuditLog(
-                id=str(uuid.uuid4()),
-                user_id=current_user.id,
-                username=current_user.username,
-                user_email=current_user.email,
-                action="document_upload_room",
-                entity_type="document",
-                entity_id=doc_id,
-                client_ip=client_ip,
-                user_agent=user_agent,
-                details={
-                    "filename": sanitized_name,
-                    "file_size": content_length,
-                    "file_type": extension,
-                    "room_id": room_id,
-                    "room_name": room.name,
-                },
-            )
-            db.add(audit_entry)
-
-            background_tasks.add_task(ingestion_pipeline.process_document, doc_id)
+            background_tasks.add_task(ingestion_pipeline.process_document, doc.id)
             uploaded_docs.append(DocumentResponse.model_validate(doc))
-
         except Exception as e:
             logger.warning(f"Upload to room {room_id} failed for file '{file.filename}': {e}")
             failed_files.append({"filename": file.filename or "unknown", "error": str(e)})
@@ -441,29 +328,22 @@ async def attach_document_to_room(
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Link an existing document into a room."""
-    # Check room exists and caller has access
+    """Link an existing document into a room (editor or owner)."""
     r_res = await db.execute(select(Room).where(Room.id == room_id))
     room = r_res.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found.")
 
-    check_room_access(room, current_user)
+    await check_room_access(room, current_user, db, required_role="editor")
 
-    # Check document exists
     d_res = await db.execute(select(Document).where(Document.id == document_id))
     doc = d_res.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
 
-    # Prevent attaching another user's private document
-    if doc.user_id is not None:
-        if not current_user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
-        if doc.user_id != current_user.id and getattr(current_user, "role", "user") != "admin":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied to access this document.")
+    # Verify user has access to this document before attaching
+    await verify_document_access(doc, current_user, db, "attach this document")
 
-    # Check if already linked
     link_res = await db.execute(
         select(RoomDocument).where(
             RoomDocument.room_id == room_id, RoomDocument.document_id == document_id
@@ -488,13 +368,13 @@ async def detach_document_from_room(
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Detach a document from a room."""
+    """Detach a document from a room (editor or owner)."""
     r_res = await db.execute(select(Room).where(Room.id == room_id))
     room = r_res.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found.")
 
-    check_room_access(room, current_user)
+    await check_room_access(room, current_user, db, required_role="editor")
 
     link_res = await db.execute(
         select(RoomDocument).where(
@@ -510,6 +390,171 @@ async def detach_document_from_room(
     return {"message": "Document detached from room.", "room_id": room_id, "document_id": document_id}
 
 
+@router.patch("/{room_id}/share", response_model=RoomDetailResponse)
+async def share_room(
+    room_id: str,
+    share_req: RoomShareRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle room public visibility (owner or admin only)."""
+    res = await db.execute(select(Room).where(Room.id == room_id))
+    room = res.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+
+    await check_room_access(room, current_user, db, required_role="owner")
+    room.is_public = share_req.is_public
+    await db.commit()
+    await db.refresh(room)
+    return await get_room_details(room_id, current_user=current_user, db=db)
+
+
+@router.post("/{room_id}/members", response_model=RoomMemberResponse, status_code=status.HTTP_201_CREATED)
+async def add_room_member(
+    room_id: str,
+    req: RoomMemberAddRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Invite or add a user to a room workspace with a specific role (owner or admin only)."""
+    res = await db.execute(select(Room).where(Room.id == room_id))
+    room = res.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+
+    await check_room_access(room, current_user, db, required_role="owner")
+
+    target_identifier = req.username_or_email.strip()
+    u_res = await db.execute(
+        select(User).where(
+            or_(
+                User.username == target_identifier,
+                User.email == target_identifier,
+            )
+        )
+    )
+    target_user = u_res.scalar_one_or_none()
+    if not target_user:
+        raise HTTPException(status_code=404, detail=f"User '{target_identifier}' not found.")
+
+    if target_user.id == room.user_id:
+        raise HTTPException(status_code=400, detail="User is already the owner of this workspace.")
+
+    m_res = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.user_id == target_user.id,
+        )
+    )
+    existing_member = m_res.scalar_one_or_none()
+    role = req.role if req.role in ("viewer", "editor", "owner") else "viewer"
+
+    if existing_member:
+        existing_member.role = role
+        await db.commit()
+        await db.refresh(existing_member)
+        return RoomMemberResponse(
+            id=existing_member.id,
+            room_id=existing_member.room_id,
+            user_id=target_user.id,
+            username=target_user.username,
+            email=target_user.email,
+            full_name=target_user.full_name,
+            role=existing_member.role,
+            created_at=existing_member.created_at,
+        )
+
+    new_member = RoomMember(
+        id=str(uuid.uuid4()),
+        room_id=room_id,
+        user_id=target_user.id,
+        role=role,
+    )
+    db.add(new_member)
+    await db.commit()
+    await db.refresh(new_member)
+
+    return RoomMemberResponse(
+        id=new_member.id,
+        room_id=new_member.room_id,
+        user_id=target_user.id,
+        username=target_user.username,
+        email=target_user.email,
+        full_name=target_user.full_name,
+        role=new_member.role,
+        created_at=new_member.created_at,
+    )
+
+
+@router.get("/{room_id}/members", response_model=List[RoomMemberResponse])
+async def list_room_members(
+    room_id: str,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all members of a room workspace."""
+    res = await db.execute(select(Room).where(Room.id == room_id))
+    room = res.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+
+    await check_room_access(room, current_user, db, required_role="viewer")
+
+    mem_res = await db.execute(
+        select(RoomMember, User)
+        .join(User, RoomMember.user_id == User.id)
+        .where(RoomMember.room_id == room_id)
+        .order_by(RoomMember.created_at.asc())
+    )
+    rows = mem_res.all()
+    return [
+        RoomMemberResponse(
+            id=m.id,
+            room_id=m.room_id,
+            user_id=u.id,
+            username=u.username,
+            email=u.email,
+            full_name=u.full_name,
+            role=m.role,
+            created_at=m.created_at,
+        )
+        for m, u in rows
+    ]
+
+
+@router.delete("/{room_id}/members/{user_id}", status_code=status.HTTP_200_OK)
+async def remove_room_member(
+    room_id: str,
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a member from a room (owner, admin, or member self-removal)."""
+    res = await db.execute(select(Room).where(Room.id == room_id))
+    room = res.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+
+    is_self = current_user.id == user_id
+    if not is_self:
+        await check_room_access(room, current_user, db, required_role="owner")
+
+    m_res = await db.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == room_id,
+            RoomMember.user_id == user_id,
+        )
+    )
+    member = m_res.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found in this room.")
+
+    await db.delete(member)
+    await db.commit()
+    return {"message": "Member removed from room.", "room_id": room_id, "user_id": user_id}
+
+
 @router.get("/{room_id}/references", response_model=List[RoomReferenceItem])
 async def get_room_references(
     room_id: str,
@@ -522,8 +567,9 @@ async def get_room_references(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found.")
 
-    check_room_access(room, current_user)
+    await check_room_access(room, current_user, db, required_role="viewer")
 
     rd_res = await db.execute(select(RoomDocument.document_id).where(RoomDocument.room_id == room_id))
     doc_ids = [r[0] for r in rd_res.all()]
     return await extract_room_references(db, doc_ids)
+

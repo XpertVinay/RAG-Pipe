@@ -7,7 +7,6 @@
   global.RAG = global.RAG || {};
   const RAG = global.RAG;
 
-  let pendingDeleteDocId = null;
 
   function showLibraryLoader() {
     const docsCount = document.getElementById('docs-count');
@@ -145,15 +144,6 @@
       if (docsCount) docsCount.textContent = `${RAG.state.activeDocuments.length} files`;
       if (tabDocsBadge) tabDocsBadge.textContent = RAG.state.activeDocuments.length;
 
-      // Auto-attach unattached documents to default room concurrently if room has no documents
-      if (RAG.state.currentRoom && (!RAG.state.currentRoom.documents || RAG.state.currentRoom.documents.length === 0) && RAG.state.activeDocuments.length > 0 && !global._hasAutoAttached) {
-        global._hasAutoAttached = true;
-        await Promise.all(RAG.state.activeDocuments.map((d) => API.attachDocumentToRoom(RAG.state.currentRoom.id, d.id).catch(() => {})));
-        const updatedRoom = await API.getRoom(RAG.state.currentRoom.id);
-        RAG.state.currentRoom = updatedRoom;
-        if (RAG.rooms?.selectRoom) RAG.rooms.selectRoom(RAG.state.currentRoom.id, false);
-      }
-
       if (RAG.state.activeDocuments.length === 0) {
         if (docsList) {
           docsList.innerHTML = `
@@ -178,6 +168,15 @@
               ? `Uploaded by ${RAG.utils.escapeHtml(doc.uploader_username || 'User')} (${RAG.utils.escapeHtml(doc.uploader_email)})`
               : (doc.uploader_username ? `Uploaded by @${RAG.utils.escapeHtml(doc.uploader_username)}` : 'Shared document');
             const persistentBadge = doc.is_persistent_vector ? `<span class="badge-pill" style="font-size: 0.65rem; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">⚡ Persistent Vector</span>` : '';
+            const privacyBadge = doc.is_shared 
+              ? `<span class="badge-pill" style="font-size: 0.65rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);" title="Public: Visible to all authorized users">🌐 Public</span>`
+              : `<span class="badge-pill" style="font-size: 0.65rem; background: rgba(107, 114, 128, 0.15); color: #9ca3af; border: 1px solid rgba(107, 114, 128, 0.3);" title="Private: Visible only to you or invited room members">🔒 Private</span>`;
+
+            const shareBtn = isMine ? `
+              <button class="doc-btn" type="button" onclick="event.stopPropagation(); event.preventDefault(); window.toggleDocShare('${doc.id}', ${!doc.is_shared})" title="${doc.is_shared ? 'Make Private' : 'Make Public'}">
+                ${doc.is_shared ? '🔒' : '🌐'}
+              </button>
+            ` : '';
 
             return `
               <div class="doc-card" id="doc-${doc.id}">
@@ -187,6 +186,7 @@
                     <span class="doc-name">${RAG.utils.escapeHtml(doc.filename)}</span>
                   </div>
                   <div class="doc-actions">
+                    ${shareBtn}
                     <button class="doc-btn" type="button" onclick="event.stopPropagation(); event.preventDefault(); window.showDocAudit('${doc.id}')" title="Audit Trail & Uploader Details">📜</button>
                     <button class="doc-btn" type="button" onclick="event.stopPropagation(); event.preventDefault(); window.reprocessDoc('${doc.id}')" title="Reprocess Document">🔄</button>
                     <button class="doc-btn delete" type="button" onclick="event.stopPropagation(); event.preventDefault(); window.deleteDoc('${doc.id}', event)" title="Delete or Remove Document">🗑️</button>
@@ -198,6 +198,7 @@
                     ${isProcessing ? '<span class="status-pulse"></span>' : ''}
                     ${doc.status}
                   </span>
+                  ${privacyBadge}
                   ${persistentBadge}
                 </div>
                 ${doc.error_message ? `<div style="margin-top: 6px; font-size: 0.7rem; color: var(--status-failed); line-height: 1.3;">${RAG.utils.escapeHtml(doc.error_message)}</div>` : ''}
@@ -237,17 +238,46 @@
       return;
     }
 
-    const fileNames = Array.from(files).map((f) => f.name).join(', ');
-    setDropzoneUploading(true, files.length, fileNames);
-    showUploadLoaderInList(files);
-    RAG.utils.showToast(`Uploading ${files.length} file(s)...`, 'info');
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('file-input');
+
+    // Client-side JavaScript file validation
+    let filesToUpload = files;
+    if (RAG.validator) {
+      const validationResult = RAG.validator.validateFiles(files);
+      if (!validationResult.valid) {
+        if (validationResult.rejectedFiles.length === files.length) {
+          // All files rejected
+          if (dropzone) {
+            dropzone.classList.remove('input-shake');
+            void dropzone.offsetWidth;
+            dropzone.classList.add('input-shake');
+            setTimeout(() => dropzone.classList.remove('input-shake'), 400);
+          }
+          const reasons = validationResult.rejectedFiles.map((r) => `${r.file.name}: ${r.reason}`).join(' | ');
+          RAG.utils.showToast(validationResult.message || `File validation failed: ${reasons}`, 'error');
+          if (fileInput) fileInput.value = '';
+          return;
+        } else {
+          // Partial rejection: notify and upload valid files only
+          const rejectedSummary = validationResult.rejectedFiles.map((r) => `${r.file.name} (${r.reason})`).join('; ');
+          RAG.utils.showToast(`Skipping invalid files: ${rejectedSummary}`, 'warning');
+          filesToUpload = validationResult.validFiles;
+        }
+      }
+    }
+
+    const fileNames = Array.from(filesToUpload).map((f) => f.name).join(', ');
+    setDropzoneUploading(true, filesToUpload.length, fileNames);
+    showUploadLoaderInList(filesToUpload);
+    RAG.utils.showToast(`Uploading ${filesToUpload.length} file(s)...`, 'info');
 
     try {
       if (RAG.state.currentRoomId) {
-        const res = await API.uploadFilesToRoom(RAG.state.currentRoomId, files);
+        const res = await API.uploadFilesToRoom(RAG.state.currentRoomId, filesToUpload);
         RAG.utils.showToast(res.message, 'success');
       } else {
-        const res = await API.uploadFiles(files);
+        const res = await API.uploadFiles(filesToUpload);
         RAG.utils.showToast(res.message, 'success');
       }
       await loadDocuments();
@@ -257,7 +287,6 @@
     } finally {
       setDropzoneUploading(false);
       removeUploadLoaderFromList();
-      const fileInput = document.getElementById('file-input');
       if (fileInput) fileInput.value = '';
     }
   }
@@ -267,51 +296,59 @@
       event.stopPropagation();
       event.preventDefault();
     }
-    pendingDeleteDocId = docId;
     const doc = RAG.state.activeDocuments.find((d) => d.id === docId);
     const fname = doc ? doc.filename : 'Document';
     const ftype = doc ? doc.file_type : 'file';
     const sizeKb = doc ? Math.round(doc.file_size / 1024) : 0;
     const chunks = doc ? doc.chunk_count : 0;
+    const inRoom = Boolean(RAG.state.currentRoomId);
 
-    const deleteModalFilename = document.getElementById('delete-modal-filename');
-    const deleteModalFileIcon = document.getElementById('delete-modal-file-icon');
-    const deleteModalFilemeta = document.getElementById('delete-modal-filemeta');
-    const deleteModalTitle = document.getElementById('delete-modal-title');
-    const deleteModalPromptText = document.getElementById('delete-modal-prompt-text');
-    const deleteModalDetachBtn = document.getElementById('delete-modal-detach-btn');
-    const deleteModalConfirmBtn = document.getElementById('delete-modal-confirm-btn');
-    const deleteConfirmModal = document.getElementById('delete-confirm-modal');
-
-    if (deleteModalFilename) deleteModalFilename.textContent = fname;
-    if (deleteModalFileIcon) deleteModalFileIcon.textContent = RAG.utils.iconMap[ftype] || '📄';
-    if (deleteModalFilemeta) deleteModalFilemeta.textContent = `${sizeKb} KB • ${chunks} chunks`;
-
-    if (RAG.state.currentRoomId) {
-      if (deleteModalTitle) deleteModalTitle.textContent = 'Remove or Delete Document';
-      if (deleteModalPromptText) {
-        deleteModalPromptText.textContent =
-          'This document is linked to the active workspace room. You can remove it from this room only, or permanently delete the document record.';
-      }
-      if (deleteModalDetachBtn) deleteModalDetachBtn.style.display = 'inline-flex';
-      if (deleteModalConfirmBtn) deleteModalConfirmBtn.textContent = 'Permanently Delete';
-    } else {
-      if (deleteModalTitle) deleteModalTitle.textContent = 'Delete Document';
-      if (deleteModalPromptText) {
-        deleteModalPromptText.textContent =
-          'Are you sure you want to delete this document record? Its persistent vector embeddings will remain available for shared platform RAG.';
-      }
-      if (deleteModalDetachBtn) deleteModalDetachBtn.style.display = 'none';
-      if (deleteModalConfirmBtn) deleteModalConfirmBtn.textContent = 'Delete Document';
-    }
-
-    deleteConfirmModal?.classList.add('active');
+    RAG.utils.showConfirmModal({
+      title: inRoom ? 'Remove or Delete Document' : 'Delete Document',
+      headerIcon: '🗑️',
+      itemIcon: RAG.utils.iconMap[ftype] || '📄',
+      itemName: fname,
+      itemMeta: `${sizeKb} KB • ${chunks} chunks`,
+      prompt: inRoom
+        ? 'This document is linked to the active workspace room. You can remove it from this room only, or permanently delete the document record.'
+        : 'Are you sure you want to delete this document record? Its persistent vector embeddings will remain available for shared platform RAG.',
+      confirmText: inRoom ? 'Permanently Delete' : 'Delete Document',
+      showDetach: inRoom,
+      detachText: 'Remove from Room',
+      onDetach: async () => {
+        try {
+          await API.detachDocumentFromRoom(RAG.state.currentRoomId, docId);
+          RAG.utils.showToast('Document removed from room workspace', 'success');
+          loadDocuments();
+          if (RAG.rooms?.selectRoom) RAG.rooms.selectRoom(RAG.state.currentRoomId, false);
+        } catch (e) {
+          RAG.utils.showToast(e.message, 'error');
+        }
+      },
+      onConfirm: async () => {
+        try {
+          await API.deleteDocument(docId);
+          RAG.utils.showToast('Document deleted successfully', 'success');
+          loadDocuments();
+          if (RAG.state.currentRoomId && RAG.rooms?.selectRoom) RAG.rooms.selectRoom(RAG.state.currentRoomId, false);
+        } catch (e) {
+          if (RAG.state.currentRoomId) {
+            try {
+              await API.detachDocumentFromRoom(RAG.state.currentRoomId, docId);
+              RAG.utils.showToast('Document removed from room workspace (not platform owner)', 'info');
+              loadDocuments();
+              if (RAG.rooms?.selectRoom) RAG.rooms.selectRoom(RAG.state.currentRoomId, false);
+              return;
+            } catch {}
+          }
+          RAG.utils.showToast(e.message, 'error');
+        }
+      },
+    });
   }
 
   function closeDeleteModal() {
-    const deleteConfirmModal = document.getElementById('delete-confirm-modal');
-    deleteConfirmModal?.classList.remove('active');
-    pendingDeleteDocId = null;
+    RAG.utils?.closeConfirmModal();
   }
 
   async function reprocessDoc(docId) {
@@ -418,10 +455,6 @@
   function initDocumentListeners() {
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('file-input');
-    const closeDeleteModalBtn = document.getElementById('close-delete-modal-btn');
-    const deleteModalCancelBtn = document.getElementById('delete-modal-cancel-btn');
-    const deleteModalDetachBtn = document.getElementById('delete-modal-detach-btn');
-    const deleteModalConfirmBtn = document.getElementById('delete-modal-confirm-btn');
     const closeAuditModalBtn = document.getElementById('close-audit-modal-btn');
     const closeAuditBtn = document.getElementById('close-audit-btn');
     const auditModal = document.getElementById('audit-modal');
@@ -465,49 +498,19 @@
       }
     });
 
-    closeDeleteModalBtn?.addEventListener('click', closeDeleteModal);
-    deleteModalCancelBtn?.addEventListener('click', closeDeleteModal);
-
-    deleteModalDetachBtn?.addEventListener('click', async () => {
-      if (!pendingDeleteDocId || !RAG.state.currentRoomId) return;
-      const docId = pendingDeleteDocId;
-      closeDeleteModal();
-      try {
-        await API.detachDocumentFromRoom(RAG.state.currentRoomId, docId);
-        RAG.utils.showToast('Document removed from room workspace', 'success');
-        loadDocuments();
-        if (RAG.rooms?.selectRoom) RAG.rooms.selectRoom(RAG.state.currentRoomId, false);
-      } catch (e) {
-        RAG.utils.showToast(e.message, 'error');
-      }
-    });
-
-    deleteModalConfirmBtn?.addEventListener('click', async () => {
-      if (!pendingDeleteDocId) return;
-      const docId = pendingDeleteDocId;
-      closeDeleteModal();
-      try {
-        await API.deleteDocument(docId);
-        RAG.utils.showToast('Document deleted successfully', 'success');
-        loadDocuments();
-        if (RAG.state.currentRoomId && RAG.rooms?.selectRoom) RAG.rooms.selectRoom(RAG.state.currentRoomId, false);
-      } catch (e) {
-        if (RAG.state.currentRoomId) {
-          try {
-            await API.detachDocumentFromRoom(RAG.state.currentRoomId, docId);
-            RAG.utils.showToast('Document removed from room workspace (not platform owner)', 'info');
-            loadDocuments();
-            if (RAG.rooms?.selectRoom) RAG.rooms.selectRoom(RAG.state.currentRoomId, false);
-            return;
-          } catch {}
-        }
-        RAG.utils.showToast(e.message, 'error');
-      }
-    });
-
     const closeAuditModal = () => auditModal?.classList.remove('active');
     closeAuditModalBtn?.addEventListener('click', closeAuditModal);
     closeAuditBtn?.addEventListener('click', closeAuditModal);
+  }
+
+  async function toggleDocShare(docId, makeShared) {
+    try {
+      await API.shareDocument(docId, makeShared);
+      RAG.utils.showToast(makeShared ? 'Document made Public (accessible to all).' : 'Document made Private.', 'success');
+      await loadDocuments(true);
+    } catch (err) {
+      RAG.utils.showToast(err.message || 'Failed to update document sharing.', 'error');
+    }
   }
 
   RAG.documents = {
@@ -516,6 +519,7 @@
     deleteDoc,
     reprocessDoc,
     showDocAudit,
+    toggleDocShare,
     setDropzoneUploading,
     showUploadLoaderInList,
     removeUploadLoaderFromList,
@@ -526,5 +530,6 @@
   global.deleteDoc = deleteDoc;
   global.reprocessDoc = reprocessDoc;
   global.showDocAudit = showDocAudit;
+  global.toggleDocShare = toggleDocShare;
   global.retryLoadDocs = () => loadDocuments(true);
 })(window);

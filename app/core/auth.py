@@ -188,3 +188,22 @@ async def get_optional_user(
         return user if user and user.is_active else None
     except Exception:
         return None
+
+
+def is_admin_or_staff(user: Optional[User]) -> bool:
+    """Return True if user has administrator or staff privileges."""
+    if not user:
+        return False
+    return getattr(user, "role", "user") in ("admin", "staff", "staffs")
+
+
+async def require_admin_or_staff(
+    user: User = Depends(get_current_user),
+) -> User:
+    """FastAPI dependency requiring authenticated user to have admin or staff role."""
+    if not is_admin_or_staff(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted. Short-term and long-term memory inspection requires admin or staff privileges.",
+        )
+    return user

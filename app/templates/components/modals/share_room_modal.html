@@ -1,0 +1,53 @@
+<!-- Workspace Sharing and RBAC Members Modal -->
+<div id="share-room-modal" class="modal-overlay">
+  <div class="modal-card" style="max-width: 520px;">
+    <div class="modal-header">
+      <h3 style="display: flex; align-items: center; gap: 8px;">
+        <span>👥</span>
+        <span id="share-room-title">Workspace Sharing & Access</span>
+      </h3>
+      <button id="close-share-room-btn" class="modal-close">&times;</button>
+    </div>
+
+    <div style="padding: 16px 0;">
+      <!-- Public vs Private toggle -->
+      <div style="background: var(--bg-tertiary); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-weight: 600; font-size: 0.88rem; color: var(--text-primary); margin-bottom: 4px;">Public Workspace</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">Allow all authenticated users to view this workspace and its documents.</div>
+          </div>
+          <label style="position: relative; display: inline-block; width: 44px; height: 24px; margin: 0; cursor: pointer;">
+            <input type="checkbox" id="room-is-public-checkbox" style="opacity: 0; width: 0; height: 0;">
+            <span style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #374151; transition: .3s; border-radius: 24px;" id="room-public-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Add Member Section -->
+      <div style="margin-bottom: 18px;">
+        <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Invite Team Member</label>
+        <form id="add-room-member-form" novalidate style="display: flex; gap: 8px;">
+          <input type="text" id="member-identifier-input" class="form-control" placeholder="Enter username or email..." style="flex: 1; font-size: 0.82rem;">
+          <select id="member-role-select" class="form-control" style="width: 105px; font-size: 0.82rem;">
+            <option value="viewer">Viewer</option>
+            <option value="editor">Editor</option>
+          </select>
+          <button type="submit" formnovalidate class="btn btn-primary" style="font-size: 0.8rem; padding: 6px 14px; white-space: nowrap;">Invite</button>
+        </form>
+      </div>
+
+      <!-- Members List -->
+      <div>
+        <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Members with Access</label>
+        <div id="room-members-list" style="max-height: 200px; overflow-y: auto; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 6px;">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+      <button type="button" class="btn btn-outline" id="done-share-room-btn">Done</button>
+    </div>
+  </div>
+</div>
