@@ -1,0 +1,44 @@
+<!-- Realtime Proof Evidence Lookup Modal Dialog -->
+<div id="citation-modal" class="modal-overlay">
+  <div class="modal-card evidence-modal-card">
+    <div class="evidence-modal-header">
+      <div class="evidence-modal-title-group">
+        <span class="evidence-modal-icon">🔎</span>
+        <div>
+          <div class="evidence-modal-title">
+            <span id="evidence-filename">Source Evidence Inspector</span>
+            <span id="evidence-score-badge" class="evidence-score-pill">0% Match</span>
+          </div>
+          <div class="evidence-modal-meta" id="evidence-meta-text">Realtime document validation &amp; line attribution</div>
+        </div>
+      </div>
+
+      <!-- Center: View Mode Switcher -->
+      <div class="evidence-view-tabs">
+        <button id="evidence-tab-split" class="evidence-tab-btn active" title="Split view: Highlighted lines + Live document">⚡ Split View</button>
+        <button id="evidence-tab-highlights" class="evidence-tab-btn" title="View highlighted document text with line numbers">🎯 Highlighted Lines</button>
+        <button id="evidence-tab-document" class="evidence-tab-btn" title="View original document/PDF">📄 Live Document</button>
+      </div>
+
+      <!-- Right: Page Controls & Actions -->
+      <div class="evidence-modal-actions">
+        <div class="evidence-page-nav">
+          <button id="evidence-prev-page-btn" class="page-nav-btn" title="Previous page">◀</button>
+          <span id="evidence-page-display" class="page-nav-display">Page 1 / 1</span>
+          <button id="evidence-next-page-btn" class="page-nav-btn" title="Next page">▶</button>
+        </div>
+        <a id="evidence-open-file-btn" href="#" target="_blank" rel="noopener noreferrer" class="evidence-action-link" title="Open full file in new tab">↗ Open File</a>
+        <button id="close-citation-btn" class="modal-close" title="Close inspector">&times;</button>
+      </div>
+    </div>
+
+    <!-- Multi-Citation Quick Switcher Bar -->
+    <div id="evidence-citations-bar" class="evidence-citations-bar" style="display: none;">
+      <span class="evidence-bar-label">QUERY CITATIONS:</span>
+      <div id="evidence-citations-list" class="evidence-citations-pills"></div>
+    </div>
+
+    <!-- Modal Body with Split / Highlights / Document Panes -->
+    <div id="citation-modal-body" class="evidence-modal-body view-split"></div>
+  </div>
+</div>

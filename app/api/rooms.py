@@ -3,12 +3,12 @@
 import hashlib
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.core.auth import get_optional_user
+from app.core.auth import get_current_user, get_optional_user, utc_now
 from app.core.exceptions import EntityNotFoundError, FileValidationError
 from app.core.logging import logger
 from app.core.rate_limit import RateLimiter
@@ -16,7 +16,7 @@ from app.core.security import validate_file_upload, verify_safe_path
 from app.database import get_db
 from app.ingestion.pipeline import ingestion_pipeline
 from app.models.conversation import Conversation, Message
-from app.models.document import Document, DocumentChunk
+from app.models.document import AuditLog, Document, DocumentChunk
 from app.models.room import Room, RoomDocument
 from app.models.user import User
 from app.schemas.document import DocumentResponse
@@ -158,7 +158,14 @@ async def list_rooms(
     """List all workspace rooms (filtered by user if authenticated)."""
     query = select(Room)
     if current_user:
-        query = query.where(Room.user_id == current_user.id)
+        if getattr(current_user, "role", "user") == "admin":
+            pass
+        else:
+            query = query.where(
+                or_(Room.user_id == current_user.id, Room.user_id.is_(None))
+            )
+    else:
+        query = query.where(Room.user_id.is_(None))
     query = query.order_by(Room.updated_at.desc())
 
     res = await db.execute(query)
@@ -303,17 +310,24 @@ async def delete_room(
 async def upload_files_to_room(
     room_id: str,
     background_tasks: BackgroundTasks,
+    request: Request,
     files: List[UploadFile] = File(...),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upload multiple files directly into a designated Room workspace."""
+    """Upload multiple files directly into a designated Room workspace with verified user audit trail."""
     res = await db.execute(select(Room).where(Room.id == room_id))
     room = res.scalar_one_or_none()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found.")
 
     check_room_access(room, current_user)
+
+    client_ip = (
+        request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or (request.client.host if request.client else "127.0.0.1")
+    )
+    user_agent = request.headers.get("user-agent", "")[:500]
 
     uploaded_docs: List[DocumentResponse] = []
     failed_files: List[dict] = []
@@ -336,9 +350,33 @@ async def upload_files_to_room(
             with open(safe_path, "wb") as f:
                 f.write(content)
 
+            audit_meta = {
+                "uploader": {
+                    "id": current_user.id,
+                    "username": current_user.username,
+                    "email": current_user.email,
+                    "full_name": current_user.full_name,
+                    "role": current_user.role,
+                },
+                "room": {
+                    "id": room.id,
+                    "name": room.name,
+                },
+                "client_ip": client_ip,
+                "user_agent": user_agent,
+                "uploaded_at": utc_now().isoformat(),
+            }
+
             doc = Document(
                 id=doc_id,
-                user_id=current_user.id if current_user else None,
+                user_id=current_user.id,
+                uploader_username=current_user.username,
+                uploader_email=current_user.email,
+                client_ip=client_ip,
+                user_agent=user_agent,
+                audit_metadata=audit_meta,
+                is_persistent_vector=True,
+                is_shared=True,
                 filename=sanitized_name,
                 file_type=extension,
                 file_size=content_length,
@@ -357,6 +395,27 @@ async def upload_files_to_room(
             )
             db.add(room_doc)
             await db.flush()
+
+            # Create immutable audit log record
+            audit_entry = AuditLog(
+                id=str(uuid.uuid4()),
+                user_id=current_user.id,
+                username=current_user.username,
+                user_email=current_user.email,
+                action="document_upload_room",
+                entity_type="document",
+                entity_id=doc_id,
+                client_ip=client_ip,
+                user_agent=user_agent,
+                details={
+                    "filename": sanitized_name,
+                    "file_size": content_length,
+                    "file_type": extension,
+                    "room_id": room_id,
+                    "room_name": room.name,
+                },
+            )
+            db.add(audit_entry)
 
             background_tasks.add_task(ingestion_pipeline.process_document, doc_id)
             uploaded_docs.append(DocumentResponse.model_validate(doc))

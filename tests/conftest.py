@@ -98,7 +98,7 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
         f"sqlite+aiosqlite:///{temp_db_path}",
         echo=False,
         future=True,
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 30},
     )
 
     async with test_engine.begin() as conn:

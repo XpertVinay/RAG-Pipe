@@ -1,0 +1,33 @@
+<!-- Create / Manage Room Modal Dialog -->
+<div id="room-modal" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="room-modal-title">Create Workspace Room</h3>
+      <button id="close-room-btn" class="modal-close">&times;</button>
+    </div>
+
+    <form id="create-room-form">
+      <div class="form-group">
+        <label for="room-name-input">Room Name</label>
+        <input type="text" id="room-name-input" class="form-control" placeholder="e.g. JavaScript Frameworks Deep Dive" required>
+      </div>
+
+      <div class="form-group">
+        <label for="room-desc-input">Topic Description (Optional)</label>
+        <textarea id="room-desc-input" class="form-control" rows="2" placeholder="Brief notes or focus of this document workspace..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Attach Existing Documents</label>
+        <div id="room-doc-checkboxes" style="max-height: 140px; overflow-y: auto; background: var(--bg-tertiary); padding: 8px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+        <button type="button" class="btn btn-outline" id="cancel-room-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="save-room-btn">Create Room</button>
+      </div>
+    </form>
+  </div>
+</div>

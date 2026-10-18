@@ -1,0 +1,18 @@
+<!-- Document Audit Trail Inspector Modal -->
+<div id="audit-modal" class="modal-overlay">
+  <div class="modal-card" style="max-width: 680px; max-height: 85vh; display: flex; flex-direction: column;">
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.25rem;">📜</span>
+        <h3 id="audit-modal-title" style="margin: 0; font-size: 1.05rem; font-weight: 600;">Document Audit Trail</h3>
+      </div>
+      <button id="close-audit-modal-btn" class="modal-close" type="button">&times;</button>
+    </div>
+    <div id="audit-modal-body" style="overflow-y: auto; padding: 16px 0; max-height: calc(85vh - 120px);">
+      <!-- Rendered dynamically via JS -->
+    </div>
+    <div style="display: flex; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--border-color);">
+      <button type="button" id="close-audit-btn" class="btn btn-outline">Close</button>
+    </div>
+  </div>
+</div>

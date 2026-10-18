@@ -45,9 +45,17 @@ const API = {
     }
   },
 
+  syncCookieToken() {
+    const token = this.getAccessToken();
+    if (token) {
+      document.cookie = `access_token=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax`;
+    }
+  },
+
   setAuthSession(tokenData) {
     if (tokenData.access_token) {
       localStorage.setItem(this.TOKEN_KEY, tokenData.access_token);
+      document.cookie = `access_token=${encodeURIComponent(tokenData.access_token)}; path=/; max-age=604800; SameSite=Lax`;
     }
     if (tokenData.id_token) {
       localStorage.setItem(this.ID_TOKEN_KEY, tokenData.id_token);
@@ -65,6 +73,10 @@ const API = {
     localStorage.removeItem(this.ID_TOKEN_KEY);
     localStorage.removeItem(this.REFRESH_TOKEN_KEY);
     localStorage.removeItem(this.USER_KEY);
+    localStorage.removeItem(this.ACTIVE_ROOM_KEY);
+    localStorage.removeItem('rag_active_conv_id');
+    document.cookie = 'access_token=; path=/; max-age=0; SameSite=Lax';
+    document.cookie = 'token=; path=/; max-age=0; SameSite=Lax';
   },
 
   // --------------------------------------------------------------------------
@@ -85,6 +97,10 @@ const API = {
       const refreshed = await this.refreshAuth();
       if (refreshed) {
         return this.request(url, options, true);
+      }
+      this.clearAuthSession();
+      if (window.showAuthModal) {
+        window.showAuthModal('signin', 'Authentication required. Please sign in or register.');
       }
     }
 
@@ -246,9 +262,12 @@ const API = {
   // --------------------------------------------------------------------------
   // Document Endpoints
   // --------------------------------------------------------------------------
-  async getDocuments(status = null) {
-    const q = status ? `?status=${encodeURIComponent(status)}` : '';
-    return this.get(`/api/documents${q}`);
+  async getDocuments(status = null, scope = 'all') {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (scope) params.set('scope', scope);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return this.get(`/api/documents${qs}`);
   },
 
   async uploadFiles(fileList) {
@@ -278,6 +297,24 @@ const API = {
 
   async reprocessDocument(docId) {
     return this.post(`/api/documents/${docId}/reprocess`, {});
+  },
+
+  async getDocumentEvidence(docId, page = 1, chunkId = null, query = '') {
+    const params = new URLSearchParams();
+    if (page) params.set('page', page);
+    if (chunkId) params.set('chunk_id', chunkId);
+    if (query) params.set('query', query);
+    return this.get(`/api/documents/${docId}/evidence?${params.toString()}`);
+  },
+
+  async getDocumentAudit(docId) {
+    return this.get(`/api/documents/${docId}/audit`);
+  },
+
+  getDocumentFileUrl(docId, page = 1) {
+    const token = this.getAccessToken();
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+    return `/api/documents/${docId}/file${tokenParam}#page=${page}&view=FitH`;
   },
 
   // --------------------------------------------------------------------------
@@ -316,6 +353,40 @@ const API = {
   async getHealth() {
     return this.get('/api/health');
   },
+
+  // --------------------------------------------------------------------------
+  // Two-Tier Memory System (Global & User, Short-Term & Long-Term)
+  // --------------------------------------------------------------------------
+  async listMemories(params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return this.get(`/api/memory${q ? '?' + q : ''}`);
+  },
+
+  async createMemory(payload) {
+    return this.post('/api/memory', payload);
+  },
+
+  async getMemoryStats() {
+    return this.get('/api/memory/stats');
+  },
+
+  async revaluateMemories(payload = {}) {
+    return this.post('/api/memory/revaluate', payload);
+  },
+
+  async deleteMemory(memoryId) {
+    return this.delete(`/api/memory/${memoryId}`);
+  },
+
+  async pruneExpiredMemories() {
+    return this.delete('/api/memory/prune');
+  },
 };
 
 window.API = API;
+try {
+  API.syncCookieToken();
+} catch (e) {
+  console.warn('Could not sync cookie token:', e);
+}
+

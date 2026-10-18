@@ -1,0 +1,51 @@
+<!-- Settings Modal Dialog -->
+<div id="settings-modal" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>Model &amp; Retrieval Settings</h3>
+      <button id="close-settings-btn" class="modal-close">&times;</button>
+    </div>
+
+    <div class="form-group">
+      <label for="provider-select">Chat Provider</label>
+      <select id="provider-select" class="form-control">
+        <option value="ollama">OLLAMA (Local)</option>
+        <option value="gemini">Google Gemini</option>
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic Claude</option>
+        <option value="openai-compatible">OpenAI-Compatible</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="model-input">Chat Model Name</label>
+      <input type="text" id="model-input" class="form-control" placeholder="e.g. qwen2.5:3b, gemini-2.5-flash">
+    </div>
+
+    <div class="form-group">
+      <label for="embedding-provider-select">Embedding Provider</label>
+      <select id="embedding-provider-select" class="form-control">
+        <option value="ollama">OLLAMA (Local)</option>
+        <option value="gemini">Google Gemini</option>
+        <option value="openai">OpenAI</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="embedding-model-input">Embedding Model Name</label>
+      <input type="text" id="embedding-model-input" class="form-control" placeholder="e.g. nomic-embed-text, models/gemini-embedding-001">
+    </div>
+
+    <div class="form-group">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+        <label for="topk-slider" style="margin-bottom: 0;">Top-K Retrieval Chunks</label>
+        <span id="topk-val" style="font-weight: 600; color: var(--accent-primary);">4</span>
+      </div>
+      <input type="range" id="topk-slider" min="1" max="12" value="4" class="form-control" style="padding: 0;">
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+      <button type="button" class="btn btn-primary" id="save-settings-btn">Save Preferences</button>
+    </div>
+  </div>
+</div>

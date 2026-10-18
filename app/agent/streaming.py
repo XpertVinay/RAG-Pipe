@@ -9,7 +9,7 @@ from app.agent.prompts import GROUNDED_RAG_SYSTEM_PROMPT, GROUNDED_RAG_USER_PROM
 from app.agent.state import AgentState
 from app.core.logging import logger
 from app.core.security import sanitize_retrieved_text
-from app import database
+from app.memory.manager import memory_manager
 from app.models.conversation import Message
 from app.providers.factory import ModelFactory
 from app.schemas.chat import Citation
@@ -26,6 +26,8 @@ async def stream_rag_agent(
     conversation_id: str,
     chat_history: Optional[List[Dict[str, str]]] = None,
     document_ids: Optional[List[str]] = None,
+    user_id: Optional[str] = None,
+    room_id: Optional[str] = None,
     provider: Optional[str] = None,
     model: Optional[str] = None,
     temperature: float = 0.2,
@@ -40,6 +42,10 @@ async def stream_rag_agent(
         "original_query": query,
         "chat_history": chat_history,
         "document_ids": document_ids,
+        "user_id": user_id,
+        "room_id": room_id,
+        "memory_context": None,
+        "consulted_memories": [],
         "provider": provider,
         "model": model,
         "temperature": temperature,
@@ -55,6 +61,7 @@ async def stream_rag_agent(
         "error": None,
         "status_update": "Starting workflow",
     }
+
 
     citations_list: List[Dict[str, Any]] = []
     accumulated_answer: str = ""
@@ -89,11 +96,15 @@ async def stream_rag_agent(
         else:
             response_type = "general"
 
+        consulted_memories = final_state.get("consulted_memories", [])
+
         meta_payload = {
             "response_type": response_type,
             "intent": intent,
             "has_citations": len(citations_list) > 0,
             "citation_count": len(citations_list),
+            "consulted_memories_count": len(consulted_memories),
+            "consulted_memories": consulted_memories,
             "retrieval_retry_count": retrieval_retry_count,
             "generation_grounded": generation_grounded,
             "provider": provider,
@@ -110,11 +121,15 @@ async def stream_rag_agent(
             streaming=True,
         )
 
+        memory_context = final_state.get("memory_context")
+
         if intent == "greeting":
-            async for chunk in chat_model.astream([
-                SystemMessage(content=GROUNDED_RAG_SYSTEM_PROMPT),
-                HumanMessage(content=query),
-            ]):
+            greeting_messages = [SystemMessage(content=GROUNDED_RAG_SYSTEM_PROMPT)]
+            if memory_context:
+                greeting_messages.append(SystemMessage(content=memory_context))
+            greeting_messages.append(HumanMessage(content=query))
+
+            async for chunk in chat_model.astream(greeting_messages):
                 token = chunk.content if hasattr(chunk, "content") else str(chunk)
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
@@ -138,6 +153,9 @@ async def stream_rag_agent(
             context_str = "\n\n".join(formatted_contexts)
 
             messages = [SystemMessage(content=GROUNDED_RAG_SYSTEM_PROMPT)]
+            if memory_context:
+                messages.append(SystemMessage(content=memory_context))
+
             for hist in chat_history[-4:]:
                 if hist.get("role") == "user":
                     messages.append(HumanMessage(content=hist.get("content", "")))
@@ -152,9 +170,22 @@ async def stream_rag_agent(
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
 
+        # Consolidate interaction into short-term / long-term memory
+        try:
+            await memory_manager.consolidate_interaction(
+                query=query,
+                answer=accumulated_answer,
+                user_id=user_id,
+                room_id=room_id,
+                document_ids=document_ids,
+            )
+        except Exception as mem_err:
+            logger.warning(f"Streaming memory consolidation skipped: {mem_err}")
+
         # Save assistant message with citations and rich differentiator metadata to database
         if conversation_id and accumulated_answer:
             try:
+                from app import database
                 async with database.AsyncSessionLocal() as db:
                     assistant_msg = Message(
                         conversation_id=conversation_id,
@@ -165,12 +196,26 @@ async def stream_rag_agent(
                     )
                     db.add(assistant_msg)
                     await db.commit()
+
+                    if user_id:
+                        try:
+                            await memory_manager.record_chat_turn_memory(
+                                user_id=user_id,
+                                room_id=room_id,
+                                conversation_id=conversation_id,
+                                query=query,
+                                answer=accumulated_answer,
+                                db=db,
+                            )
+                        except Exception as mem_err:
+                            logger.warning(f"Note during streaming chat STM/LTM persistence: {mem_err}")
             except Exception as e:
                 logger.error(f"Failed to persist assistant message to database: {e}")
 
         yield format_sse("done", {
             "answer": accumulated_answer,
             "citations": citations_list,
+
             "conversation_id": conversation_id,
             "response_type": response_type,
             "intent": intent,

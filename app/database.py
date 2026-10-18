@@ -92,8 +92,46 @@ async def init_db() -> None:
                 if doc_cols:
                     if "user_id" not in doc_cols:
                         cursor.execute("ALTER TABLE documents ADD COLUMN user_id VARCHAR(36)")
+                    if "uploader_username" not in doc_cols:
+                        cursor.execute("ALTER TABLE documents ADD COLUMN uploader_username VARCHAR(100)")
+                    if "uploader_email" not in doc_cols:
+                        cursor.execute("ALTER TABLE documents ADD COLUMN uploader_email VARCHAR(255)")
+                    if "client_ip" not in doc_cols:
+                        cursor.execute("ALTER TABLE documents ADD COLUMN client_ip VARCHAR(45)")
+                    if "user_agent" not in doc_cols:
+                        cursor.execute("ALTER TABLE documents ADD COLUMN user_agent VARCHAR(512)")
+                    if "audit_metadata" not in doc_cols:
+                        cursor.execute("ALTER TABLE documents ADD COLUMN audit_metadata JSON DEFAULT '{}'")
+                    if "is_persistent_vector" not in doc_cols:
+                        cursor.execute("ALTER TABLE documents ADD COLUMN is_persistent_vector BOOLEAN DEFAULT 1")
+                    if "is_shared" not in doc_cols:
+                        cursor.execute("ALTER TABLE documents ADD COLUMN is_shared BOOLEAN DEFAULT 1")
+
+                # Create audit_logs table if not exists
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS audit_logs (
+                        id VARCHAR(36) PRIMARY KEY,
+                        user_id VARCHAR(36),
+                        username VARCHAR(100),
+                        user_email VARCHAR(255),
+                        action VARCHAR(50) NOT NULL,
+                        entity_type VARCHAR(50) NOT NULL,
+                        entity_id VARCHAR(36) NOT NULL,
+                        client_ip VARCHAR(45),
+                        user_agent VARCHAR(512),
+                        details JSON DEFAULT '{}',
+                        created_at DATETIME NOT NULL
+                    )
+                """)
 
                 # Create performance indexes for joins and rapid lookups
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_uploader_email ON documents(uploader_email);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_is_shared ON documents(is_shared);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_room_documents_room_id ON room_documents(room_id);")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_room_documents_doc_id ON room_documents(document_id);")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_room_id ON conversations(room_id);")
@@ -102,6 +140,10 @@ async def init_db() -> None:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_chunks_doc_idx ON document_chunks(document_id, chunk_index);")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_scope_type ON memories(scope, memory_type);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_user_id ON memories(user_id);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_doc_id ON memories(document_id);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_expires_at ON memories(expires_at);")
             except Exception as e:
                 import logging
                 logging.getLogger("rag_agent").warning(f"Schema migration/indexing note: {e}")

@@ -1,0 +1,50 @@
+<!-- Add Memory Fact Modal -->
+<div id="memory-modal" class="modal-overlay">
+  <div class="modal-card" style="max-width: 480px;">
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.2rem;">🧠</span>
+        <h3 class="modal-title">Add Context Memory Fact</h3>
+      </div>
+      <button id="close-memory-modal-btn" class="modal-close">&times;</button>
+    </div>
+
+    <form id="memory-form" style="display: flex; flex-direction: column; gap: 14px;">
+      <div class="form-group">
+        <label for="mem-scope-select">Scope Distribution</label>
+        <select id="mem-scope-select" class="form-control">
+          <option value="global">Global (System-wide knowledge)</option>
+          <option value="user_specific">User Specific (Personalized context)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="mem-type-select">Memory Horizon</label>
+        <select id="mem-type-select" class="form-control">
+          <option value="short_term">Short-Term Memory (STM - 2h Expiry)</option>
+          <option value="long_term">Long-Term Memory (LTM - Durable with Revaluation)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="mem-key-input">Semantic Key / Topic</label>
+        <input type="text" id="mem-key-input" class="form-control" placeholder="e.g., pref:language, doc_summary:q3" required>
+      </div>
+
+      <div class="form-group">
+        <label for="mem-content-input">Distilled Fact Context (Low Token / High Density)</label>
+        <textarea id="mem-content-input" class="form-control" rows="3" placeholder="Concise factual statement..." required></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="mem-importance-input">Importance (0.1 to 1.0)</label>
+        <input type="number" id="mem-importance-input" class="form-control" min="0.1" max="1.0" step="0.1" value="0.7">
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+        <button type="button" id="cancel-memory-btn" class="btn btn-outline">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save to Memory</button>
+      </div>
+    </form>
+  </div>
+</div>

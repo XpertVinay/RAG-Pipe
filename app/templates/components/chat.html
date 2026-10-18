@@ -1,0 +1,97 @@
+<!-- Right Area: Interactive RAG Chat -->
+<main class="main-chat">
+  <header class="chat-navbar">
+    <div class="chat-nav-left">
+      <button id="mobile-sidebar-toggle" class="mobile-sidebar-toggle" title="Toggle navigation menu" aria-label="Toggle navigation menu">
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+      </button>
+      <div class="chat-title-group">
+        <h2 id="conv-title">Document Q&amp;A Session</h2>
+        <p id="conv-subtitle">Strictly grounded answers with verifiable source attribution</p>
+      </div>
+    </div>
+
+    <div class="chat-nav-right">
+      <!-- Auth User Status Pill -->
+      <button id="auth-user-btn" class="auth-user-pill" title="User Account & JWT Tokens">
+        <span class="auth-avatar" id="auth-avatar-letter">👤</span>
+        <span id="auth-username-label">Sign In</span>
+      </button>
+
+      <div class="badge-pill">
+        <span class="status-pulse" style="color: var(--status-completed);"></span>
+        <span id="provider-badge">OLLAMA / QWEN2.5:3B</span>
+      </div>
+
+      <button id="open-settings-btn" class="btn btn-outline" title="Model & Retrieval Configuration">
+        <span class="settings-btn-icon">⚙️</span>
+        <span class="settings-btn-text">Settings</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Room Context & Database References Banner (Restores state after refresh) -->
+  <div id="room-context-banner" class="room-context-banner">
+    <div class="room-banner-top">
+      <div class="room-banner-left">
+        <span class="room-banner-name">
+          <span>🏠</span>
+          <span id="banner-room-name">General Workspace</span>
+        </span>
+        <div id="banner-room-files" class="room-files-pills">
+          <!-- Attached document pills injected via JavaScript -->
+        </div>
+      </div>
+      <div class="room-banner-right">
+        <button id="toggle-references-btn" class="ref-toggle-btn" title="View key references loaded from database">
+          <span>📚</span>
+          <span>Database References</span>
+          <span id="ref-count-badge" style="background: rgba(255,255,255,0.15); padding: 1px 5px; border-radius: 4px; font-size: 0.68rem;">0</span>
+        </button>
+        <button id="attach-file-room-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 8px;" title="Upload or link files to this room">
+          + Add Files
+        </button>
+      </div>
+    </div>
+
+    <!-- Expandable Important References Drawer -->
+    <div id="room-references-drawer" class="room-references-drawer" style="display: none;">
+      <div class="ref-drawer-header">
+        <span>KEY DATABASE REFERENCES &amp; CHUNKS (Persistent Context)</span>
+        <span style="font-weight: normal; font-size: 0.7rem; color: var(--text-muted);">Quickly resume chatting about these topics</span>
+      </div>
+      <div id="ref-cards-grid" class="ref-cards-grid">
+        <!-- Reference cards injected here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Messages Stream Container -->
+  <div id="messages-container" class="messages-container">
+    <!-- Injected via JavaScript -->
+  </div>
+
+  <!-- Bottom Chat Input Bar -->
+  <footer class="chat-input-area">
+    <form id="chat-form">
+      <div class="input-box-container">
+        <textarea
+          id="chat-input"
+          class="chat-textarea"
+          placeholder="Ask a question about the active workspace documents..."
+          rows="1"
+          required
+        ></textarea>
+        <button id="send-btn" type="submit" class="send-btn" title="Send Question (Enter)">
+          ➤
+        </button>
+      </div>
+      <div class="input-hint">
+        <span>Press <strong>Enter</strong> to send, <strong>Shift + Enter</strong> for a new line</span>
+        <span>Context persistent across page refresh • Verified citations</span>
+      </div>
+    </form>
+  </footer>
+</main>

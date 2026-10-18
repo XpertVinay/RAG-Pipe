@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0f19">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="description" content="Production-ready AI-powered document ingestion and real-time RAG Agent system.">
   <title>{% block title %}Production RAG Agent{% endblock %}</title>
 
@@ -11,7 +14,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/variables.css?v=v2">
+  <link rel="stylesheet" href="/static/css/sidebar.css?v=v2">
+  <link rel="stylesheet" href="/static/css/chat.css?v=v2">
+  <link rel="stylesheet" href="/static/css/modals.css?v=v2">
+  <link rel="stylesheet" href="/static/css/responsive.css?v=v2">
+  <link rel="stylesheet" href="/static/css/app.css?v=v2">
   {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -21,9 +29,19 @@
   <div id="toast-container" class="toast-container"></div>
 
   <!-- JavaScript Modules -->
-  <script src="/static/js/api.js"></script>
-  <script src="/static/js/sse.js"></script>
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/api.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/sse.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/modules/utils.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/modules/markdown.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/modules/auth.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/modules/rooms.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/modules/documents.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/modules/memory.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/modules/history.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/modules/evidence.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/modules/settings.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/modules/chat.js?v=v4_auth_fixes"></script>
+  <script src="/static/js/app.js?v=v4_auth_fixes"></script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -130,6 +130,8 @@ async def list_conversations(
         query = query.where(Conversation.room_id == room_id)
     elif current_user:
         query = query.where(or_(Conversation.user_id == current_user.id, Conversation.user_id == None))
+    else:
+        query = query.where(Conversation.user_id == None)
 
     query = query.order_by(Conversation.updated_at.desc()).limit(limit)
     res = await db.execute(query)
@@ -214,7 +216,7 @@ async def ask_query(
         content=request.message,
     )
     db.add(user_msg)
-    await db.flush()
+    await db.commit()
 
     # Load recent conversation history
     hist_res = await db.execute(
@@ -232,6 +234,10 @@ async def ask_query(
         "original_query": request.message,
         "chat_history": chat_history,
         "document_ids": doc_ids,
+        "user_id": current_user.id if current_user else None,
+        "room_id": effective_room_id,
+        "memory_context": None,
+        "consulted_memories": [],
         "provider": request.provider,
         "model": request.model,
         "temperature": request.temperature or 0.2,
@@ -260,6 +266,7 @@ async def ask_query(
     is_relevant = final_state.get("is_relevant", False)
     retrieval_retry_count = final_state.get("retrieval_retry_count", 0)
     generation_grounded = final_state.get("generation_grounded", True)
+    consulted_memories = final_state.get("consulted_memories", [])
 
     if intent == "greeting":
         response_type = "greeting"
@@ -278,8 +285,11 @@ async def ask_query(
         "retrieval_retry_count": retrieval_retry_count,
         "generation_grounded": generation_grounded,
         "citation_count": len(citations),
+        "consulted_memories_count": len(consulted_memories),
+        "consulted_memories": consulted_memories,
         "room_id": effective_room_id,
     }
+
 
     assistant_msg = Message(
         conversation_id=conv_id,
@@ -291,6 +301,21 @@ async def ask_query(
     db.add(assistant_msg)
     await db.commit()
     await db.refresh(assistant_msg)
+
+    # Automatically distill and persist Short-Term and Long-Term memory for user's chat
+    if current_user:
+        try:
+            from app.memory.manager import memory_manager
+            await memory_manager.record_chat_turn_memory(
+                user_id=current_user.id,
+                room_id=effective_room_id,
+                conversation_id=conv_id,
+                query=request.message,
+                answer=answer,
+                db=db,
+            )
+        except Exception as mem_err:
+            logger.warning(f"Note during chat STM/LTM memory persistence: {mem_err}")
 
     return MessageResponse(
         id=assistant_msg.id,
@@ -361,12 +386,15 @@ async def stream_query(
             conversation_id=conv_id,
             chat_history=history,
             document_ids=doc_ids,
+            user_id=current_user.id if current_user else None,
+            room_id=effective_room_id,
             provider=request.provider,
             model=request.model,
             temperature=request.temperature or 0.2,
             top_k=request.top_k or 4,
         ),
         media_type="text/event-stream",
+
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",

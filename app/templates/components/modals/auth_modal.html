@@ -1,0 +1,103 @@
+<!-- Authentication & JWT Token Inspector Modal -->
+<div id="auth-modal" class="modal-overlay">
+  <div class="modal-card" style="max-width: 560px;">
+    <div class="modal-header">
+      <h3 id="auth-modal-title">Authentication &amp; JWT Tokens</h3>
+      <button id="close-auth-btn" class="modal-close">&times;</button>
+    </div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="auth-tab-signin" data-tab="signin">Sign In</button>
+      <button class="auth-tab" id="auth-tab-register" data-tab="register">Register</button>
+      <button class="auth-tab" id="auth-tab-tokens" data-tab="tokens">JWT Inspector</button>
+    </div>
+
+    <!-- Sign In Tab Form -->
+    <div id="auth-panel-signin">
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-username">Username or Email</label>
+          <input type="text" id="login-username" class="form-control" placeholder="admin or you@example.com" required>
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+          <button type="button" class="btn btn-outline" id="demo-login-btn" title="Sign in with instant demo user">
+            ⚡ Quick Demo Login
+          </button>
+          <button type="submit" class="btn btn-primary" id="login-submit-btn">
+            Sign In
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Register Tab Form -->
+    <div id="auth-panel-register" style="display: none;">
+      <form id="register-form">
+        <div class="form-group">
+          <label for="reg-email">Email Address</label>
+          <input type="email" id="reg-email" class="form-control" placeholder="you@company.com" required>
+        </div>
+        <div class="form-group">
+          <label for="reg-username">Username</label>
+          <input type="text" id="reg-username" class="form-control" placeholder="johndoe" required>
+        </div>
+        <div class="form-group">
+          <label for="reg-fullname">Full Name (Optional)</label>
+          <input type="text" id="reg-fullname" class="form-control" placeholder="John Doe">
+        </div>
+        <div class="form-group">
+          <label for="reg-password">Password</label>
+          <input type="password" id="reg-password" class="form-control" placeholder="Minimum 6 characters" minlength="6" required>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+          <button type="submit" class="btn btn-primary">
+            Create Account
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- JWT Token Inspector Tab -->
+    <div id="auth-panel-tokens" style="display: none;">
+      <div id="token-inspector-content">
+        <div class="token-inspector-block">
+          <h4>
+            <span>Access Token (JWT Bearer)</span>
+            <button class="btn btn-outline" style="font-size:0.68rem; padding: 2px 6px;" onclick="window.copyToken('access')">📋 Copy</button>
+          </h4>
+          <div class="token-raw-box" id="raw-access-token">Not signed in</div>
+        </div>
+
+        <div class="token-inspector-block">
+          <h4>
+            <span>ID Token (OIDC Claims)</span>
+            <button class="btn btn-outline" style="font-size:0.68rem; padding: 2px 6px;" onclick="window.copyToken('id')">📋 Copy</button>
+          </h4>
+          <div class="token-raw-box" id="raw-id-token">Not signed in</div>
+          <div id="id-token-claims" style="margin-top: 8px;"></div>
+        </div>
+
+        <div class="token-inspector-block">
+          <h4>
+            <span>Refresh Token (7 Days Persistent)</span>
+            <button class="btn btn-outline" style="font-size:0.68rem; padding: 2px 6px;" onclick="window.copyToken('refresh')">📋 Copy</button>
+          </h4>
+          <div class="token-raw-box" id="raw-refresh-token">Not signed in</div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px;">
+          <button type="button" class="btn btn-outline" id="refresh-now-btn" title="Test token rotation">
+            🔄 Refresh Tokens Now
+          </button>
+          <button type="button" class="btn btn-outline" id="logout-btn" style="color: var(--status-failed);">
+            Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

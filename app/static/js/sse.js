@@ -54,6 +54,15 @@ class SSEClient {
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          const authError = new Error('Authentication required to access this conversation.');
+          authError.status = 401;
+          authError.isAuthRequired = true;
+          if (window.showAuthModal) {
+            window.showAuthModal('signin', 'Authentication required to access this conversation. Please sign in or register.');
+          }
+          throw authError;
+        }
         const errorText = await response.text();
         throw new Error(`Server returned HTTP ${response.status}: ${errorText}`);
       }

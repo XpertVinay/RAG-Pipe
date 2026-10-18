@@ -1,0 +1,780 @@
+   Mobile & Responsive Architecture (Tablets, Phones & Small Screens)
+   Grounded UI/UX Context Preserved with Native App Smoothness
+   ========================================================================== */
+
+/* Touch & Viewport Base Fixes */
+html,
+body {
+  overflow-x: hidden;
+  width: 100%;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* --------------------------------------------------------------------------
+   Breakpoint 1: Tablets & Smaller Desktop (< 992px)
+   Off-Canvas Sidebar Drawer & Toggle Button
+   -------------------------------------------------------------------------- */
+@media screen and (max-width: 992px) {
+  .app-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  /* Transform Sidebar into an Off-Canvas Slide-Over Drawer */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(340px, 86vw);
+    max-width: 360px;
+    height: 100%;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease;
+    box-shadow: none;
+    border-right: 1px solid var(--border-color);
+    background-color: var(--bg-secondary);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 12px 0 36px rgba(0, 0, 0, 0.75), 0 0 24px rgba(99, 102, 241, 0.2);
+  }
+
+  /* Backdrop Overlay behind the Drawer */
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 8, 16, 0.72);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+
+  .sidebar-backdrop.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Mobile Controls */
+  .mobile-sidebar-toggle {
+    display: inline-flex;
+  }
+
+  .sidebar-close-btn {
+    display: inline-flex;
+  }
+
+  /* Main Chat Occupies Full Width */
+  .main-chat {
+    width: 100%;
+    height: 100%;
+    flex: 1;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Breakpoint 2: Standard Mobile Devices (< 768px)
+   Full UI/UX Refinement for Chat, Banner, Modals & Inputs
+   -------------------------------------------------------------------------- */
+@media screen and (max-width: 768px) {
+
+  /* Navbar Adjustments */
+  .chat-navbar {
+    padding: 10px 14px;
+    gap: 8px;
+    background: rgba(11, 15, 25, 0.95);
+  }
+
+  .chat-nav-left {
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .chat-title-group {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  #conv-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.25;
+  }
+
+  #conv-subtitle {
+    display: none;
+    /* Hide subtitle to give room for title and action controls */
+  }
+
+  .chat-nav-right {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  #open-settings-btn {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+  }
+
+  #open-settings-btn .settings-btn-text {
+    display: none;
+    /* Keep icon only on mobile for compact navbar */
+  }
+
+  .badge-pill {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    max-width: 140px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  #auth-user-btn {
+    padding: 4px 8px;
+    font-size: 0.74rem;
+  }
+
+  /* Room Context & Documents Banner */
+  .room-context-banner {
+    padding: 8px 12px !important;
+  }
+
+  .room-banner-top {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .room-banner-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .room-banner-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .room-files-pills {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex: 1;
+    min-width: 0;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .room-files-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .room-banner-right {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+  }
+
+  #toggle-references-btn,
+  #attach-file-room-btn {
+    flex: 1;
+    justify-content: center;
+    font-size: 0.72rem;
+    padding: 6px 8px;
+  }
+
+  #room-references-drawer {
+    padding: 10px 12px;
+    max-height: 250px;
+    overflow-y: auto;
+  }
+
+  .ref-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  /* Chat Messages & Stream */
+  .messages-container {
+    padding: 14px 12px;
+    gap: 14px;
+  }
+
+  .welcome-screen {
+    padding: 20px 8px;
+    max-width: 100%;
+  }
+
+  .welcome-screen h3 {
+    font-size: 1.25rem;
+    line-height: 1.35;
+    margin-bottom: 8px;
+  }
+
+  .welcome-screen p {
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+
+  .quick-prompts {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .quick-prompt-btn {
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .message-row {
+    max-width: 100%;
+    gap: 8px;
+  }
+
+  .message-row.user {
+    max-width: 92%;
+    align-self: flex-end;
+  }
+
+  .message-row.assistant {
+    width: 100%;
+    max-width: 100%;
+    align-self: flex-start;
+  }
+
+  .message-avatar {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    font-size: 0.8rem;
+  }
+
+  .message-bubble {
+    padding: 12px 14px;
+    font-size: 0.86rem;
+    border-radius: var(--radius-md);
+  }
+
+  /* Thought Process Accordion */
+  .thought-process-container,
+  .reasoning-chain,
+  .thought-box {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+
+  .thought-header {
+    padding: 8px 10px;
+    font-size: 0.74rem;
+  }
+
+  .thought-content {
+    padding: 8px 10px;
+    font-size: 0.76rem;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  /* Citations Pills */
+  .citation-pills-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .citation-pill {
+    padding: 7px 10px;
+    width: 100%;
+  }
+
+  .citation-pill-name {
+    max-width: calc(100vw - 190px);
+    font-size: 0.74rem;
+  }
+
+  /* Action Buttons below messages */
+  .message-actions-bar {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 2px;
+  }
+
+  .msg-action-btn {
+    min-height: 32px;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
+
+  /* Markdown Code & Tables */
+  pre {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 0.74rem;
+    margin: 8px 0;
+    border-radius: 8px;
+  }
+
+  pre code {
+    font-size: 0.74rem;
+    line-height: 1.5;
+    white-space: pre;
+  }
+
+  table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 0.75rem;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    padding: 6px 8px;
+    white-space: nowrap;
+  }
+
+  /* Bottom Chat Input Bar */
+  .chat-input-area {
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+  }
+
+  .input-box-container {
+    padding: 4px 6px 4px 10px;
+    border-radius: 20px;
+    min-height: 44px;
+    background: var(--bg-tertiary);
+  }
+
+  /* Crucial iOS/Android zoom prevention: 16px minimum font size */
+  #chat-input {
+    font-size: 16px !important;
+    min-height: 24px;
+    padding: 6px 4px;
+    line-height: 1.35;
+  }
+
+  #send-btn {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    border-radius: 50%;
+    font-size: 0.95rem;
+  }
+
+  .input-hint {
+    font-size: 0.65rem;
+    margin-top: 4px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  /* Modals Layout & Touch Responsiveness */
+  .modal-overlay {
+    padding: 10px;
+    align-items: center;
+  }
+
+  .modal-card {
+    width: min(520px, calc(100vw - 20px)) !important;
+    max-height: calc(100dvh - 24px);
+    padding: 18px 14px;
+    border-radius: 14px;
+    overflow-y: auto;
+  }
+
+  /* Prevent zoom on form inputs */
+  .form-control {
+    font-size: 16px !important;
+    padding: 9px 12px;
+  }
+
+  .auth-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 14px;
+  }
+
+  .auth-tab {
+    flex: 1;
+    padding: 8px 6px;
+    font-size: 0.76rem;
+    text-align: center;
+  }
+
+  .token-raw-box {
+    word-break: break-all;
+    max-height: 100px;
+    font-size: 0.68rem;
+    padding: 8px;
+  }
+
+  /* Realtime Proof Evidence Inspector Modal on Mobile */
+  .evidence-modal-card {
+    width: calc(100vw - 12px) !important;
+    height: calc(100dvh - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    margin: 8px auto !important;
+    border-radius: 12px !important;
+  }
+
+  .evidence-modal-header {
+    padding: 10px 12px;
+    gap: 8px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .evidence-modal-title-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .evidence-modal-title {
+    font-size: 0.9rem;
+    flex: 1;
+    min-width: 0;
+  }
+
+  #evidence-filename {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 170px;
+    display: inline-block;
+  }
+
+  .evidence-modal-meta {
+    font-size: 0.68rem;
+  }
+
+  /* Hide Split View on Mobile as dual-pane is too cramped */
+  #evidence-tab-split {
+    display: none !important;
+  }
+
+  .evidence-view-tabs {
+    width: 100%;
+    display: flex;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 3px;
+  }
+
+  .evidence-tab-btn {
+    flex: 1;
+    text-align: center;
+    padding: 6px 4px;
+    font-size: 0.72rem;
+  }
+
+  .evidence-modal-actions {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .evidence-page-nav {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .evidence-citations-bar {
+    padding: 6px 10px;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .evidence-modal-body.view-split {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .doc-line-row {
+    padding: 2px 8px;
+  }
+
+  .doc-line-num {
+    width: 30px;
+    margin-right: 8px;
+    font-size: 0.68rem;
+  }
+
+  .doc-line-text {
+    font-size: 0.72rem;
+    word-break: break-word;
+  }
+
+  /* Toasts */
+  .toast-container {
+    left: 12px;
+    right: 12px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    align-items: center;
+    pointer-events: none;
+  }
+
+  .toast {
+    pointer-events: auto;
+    width: 100%;
+    max-width: 360px;
+    font-size: 0.8rem;
+    padding: 10px 14px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Breakpoint 3: Compact Mobile Screens (< 480px)
+   -------------------------------------------------------------------------- */
+@media screen and (max-width: 480px) {
+  #conv-title {
+    max-width: 130px;
+    font-size: 0.86rem;
+  }
+
+  /* Hide model badge on ultra-compact phones to prioritize settings and auth buttons */
+  .badge-pill {
+    display: none;
+  }
+
+  #auth-username-label {
+    display: none;
+    /* Icon-only avatar to maintain spacious header */
+  }
+
+  .input-hint span:last-child {
+    display: none;
+    /* Hide secondary hint text */
+  }
+
+  .citation-pill-name {
+    max-width: calc(100vw - 160px);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Two-Tier Memory System (Global & User, Short-Term & Long-Term)
+   -------------------------------------------------------------------------- */
+.memory-metrics-card {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.memory-metric-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.memory-metric-stat .metric-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+
+.memory-metric-stat .metric-val {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent-primary, #6366f1);
+  font-family: var(--font-mono, monospace);
+}
+
+.memory-quadrant-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.mem-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  padding: 3px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mem-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+}
+
+.mem-chip.active {
+  background: var(--accent-primary, #6366f1);
+  color: #fff;
+  border-color: var(--accent-primary, #6366f1);
+  font-weight: 600;
+}
+
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.memory-card {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 9px 11px;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.memory-card:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+  background: rgba(30, 41, 59, 0.75);
+}
+
+.memory-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.memory-card-key {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-main);
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+}
+
+.memory-badges {
+  display: flex;
+  gap: 4px;
+}
+
+.mem-badge {
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.mem-badge-global {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.mem-badge-user {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.mem-badge-stm {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.mem-badge-ltm {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.mem-badge-reval {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.memory-card-content {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.memory-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.65rem;
+  color: var(--text-dim, #64748b);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  padding-top: 4px;
+}
+
+.memory-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.mem-btn-icon {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  padding: 1px 4px;
+  border-radius: 4px;
+  transition: all 0.1s ease;
+}
+
+.mem-btn-icon:hover {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.15);
+}

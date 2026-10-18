@@ -16,6 +16,7 @@ from app.agent.state import AgentState
 from app.core.logging import logger
 from app.core.security import sanitize_retrieved_text
 from app.ingestion.vector_store import vector_store
+from app.memory.manager import memory_manager
 from app.providers.factory import ModelFactory
 from app.schemas.chat import Citation
 
@@ -47,6 +48,35 @@ async def validate_and_classify_query(state: AgentState) -> Dict[str, Any]:
         "intent": intent,
         "status_update": "Question validated." if intent == "qa" else "Processing greeting...",
     }
+
+
+async def load_memory_context(state: AgentState) -> Dict[str, Any]:
+    """Retrieve relevant short-term and long-term memory context (Global and User-Specific)."""
+    query = state.get("query", "")
+    user_id = state.get("user_id")
+    room_id = state.get("room_id")
+    document_ids = state.get("document_ids")
+
+    try:
+        mem_context, consulted = await memory_manager.retrieve_context(
+            query=query,
+            user_id=user_id,
+            room_id=room_id,
+            document_ids=document_ids,
+            top_k=4,
+            max_tokens_budget=250,
+        )
+        return {
+            "memory_context": mem_context,
+            "consulted_memories": consulted,
+            "status_update": f"Loaded {len(consulted)} active memories." if consulted else "Memory consulted.",
+        }
+    except Exception as e:
+        logger.warning(f"Error loading memory context: {e}")
+        return {
+            "memory_context": "",
+            "consulted_memories": [],
+        }
 
 
 async def retrieve_documents(state: AgentState) -> Dict[str, Any]:
@@ -226,6 +256,10 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
         SystemMessage(content=GROUNDED_RAG_SYSTEM_PROMPT),
     ]
 
+    # Incorporate retrieved low-memory context (Global & User-Specific, STM & LTM)
+    if state.get("memory_context"):
+        messages.append(SystemMessage(content=state["memory_context"]))
+
     # Incorporate recent chat history if available
     for hist in state.get("chat_history", [])[-4:]:
         role = hist.get("role")
@@ -241,6 +275,19 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
     try:
         response = await model.ainvoke(messages)
         answer = response.content if hasattr(response, "content") else str(response)
+
+        # Consolidate interaction into short-term / long-term memory
+        try:
+            await memory_manager.consolidate_interaction(
+                query=query,
+                answer=answer,
+                user_id=state.get("user_id"),
+                room_id=state.get("room_id"),
+                document_ids=state.get("document_ids"),
+            )
+        except Exception as mem_err:
+            logger.warning(f"Memory consolidation skipped: {mem_err}")
+
         return {
             "answer": answer,
             "status_update": "Answer generated from verified context.",
@@ -252,6 +299,7 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
             "error": str(e),
             "status_update": "Failed to generate answer.",
         }
+
 
 
 async def check_grounding(state: AgentState) -> Dict[str, Any]:

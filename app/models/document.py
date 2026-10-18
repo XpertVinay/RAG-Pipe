@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,12 +15,19 @@ def utc_now() -> datetime:
 
 
 class Document(Base):
-    """Document metadata model."""
+    """Document metadata model supporting per-user ownership and persistent shared vector embeddings."""
 
     __tablename__ = "documents"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    uploader_username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    uploader_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    client_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    audit_metadata: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    is_persistent_vector: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_type: Mapped[str] = mapped_column(String(50), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -38,6 +45,24 @@ class Document(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+
+
+class AuditLog(Base):
+    """Audit trail model recording document lifecycle and user interactions."""
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    user_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # document_upload, document_delete, document_reprocess
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # document
+    entity_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)  # document_id
+    client_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    details: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
 
 
 class DocumentChunk(Base):

@@ -80,6 +80,19 @@ class Settings(BaseSettings):
             return v.strip().lower()
         return v
 
+    @field_validator("DATABASE_URL", mode="after")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        """Resolve relative SQLite paths to absolute paths relative to BASE_DIR."""
+        if "sqlite" in v:
+            prefix, sep, path_str = v.partition(":///")
+            if sep and not path_str.startswith("/"):
+                base_dir = Path(__file__).resolve().parent.parent
+                abs_path = (base_dir / path_str).resolve()
+                abs_path.parent.mkdir(parents=True, exist_ok=True)
+                return f"{prefix}:///{abs_path}"
+        return v
+
     @property
     def allowed_origins_list(self) -> List[str]:
         """Return allowed CORS origins as a list."""

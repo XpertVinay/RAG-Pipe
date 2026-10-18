@@ -32,9 +32,9 @@ from app.schemas.auth import (
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # Rate limiters for authentication endpoints to prevent brute-force attacks and abuse
-login_rate_limiter = RateLimiter(max_requests=10, window_seconds=60)
-register_rate_limiter = RateLimiter(max_requests=5, window_seconds=60)
-refresh_rate_limiter = RateLimiter(max_requests=30, window_seconds=60)
+login_rate_limiter = RateLimiter(max_requests=30, window_seconds=60)
+register_rate_limiter = RateLimiter(max_requests=30, window_seconds=60)
+refresh_rate_limiter = RateLimiter(max_requests=60, window_seconds=60)
 
 
 @router.post(

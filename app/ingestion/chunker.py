@@ -1,7 +1,7 @@
 """Document chunking with recursive text splitting and metadata enrichment."""
 
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document as LCDocument
 
@@ -31,6 +31,10 @@ class DocumentChunker:
         filename: str,
         file_type: str,
         pages: List[ParsedPage],
+        user_id: Optional[str] = None,
+        uploader_username: Optional[str] = None,
+        is_persistent: bool = True,
+        is_shared: bool = True,
     ) -> List[LCDocument]:
         """Split parsed pages into LangChain Document chunks with complete provenance metadata."""
         chunks: List[LCDocument] = []
@@ -58,6 +62,10 @@ class DocumentChunker:
                     "page": page.page_number,
                     "chunk_index": global_index,
                     "source": filename,
+                    "user_id": user_id or "anonymous",
+                    "uploader_username": uploader_username or "anonymous",
+                    "is_persistent": is_persistent,
+                    "is_shared": is_shared,
                 }
                 # Include any custom page metadata
                 if page.metadata:

@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 from typing import Optional
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DocumentParsingError, VectorStoreError
@@ -13,6 +13,8 @@ from app.ingestion.chunker import DocumentChunker
 from app.ingestion.parsers import DocumentParser
 from app.ingestion.vector_store import vector_store
 from app.models.document import Document, DocumentChunk
+from app.models.room import RoomDocument
+from app.models.memory import MemoryItem
 
 
 class IngestionPipeline:
@@ -54,6 +56,10 @@ class IngestionPipeline:
                     filename=doc.filename,
                     file_type=doc.file_type,
                     pages=pages,
+                    user_id=doc.user_id,
+                    uploader_username=doc.uploader_username,
+                    is_persistent=doc.is_persistent_vector if doc.is_persistent_vector is not None else True,
+                    is_shared=doc.is_shared if doc.is_shared is not None else True,
                 )
 
                 if not lc_chunks:
@@ -88,6 +94,13 @@ class IngestionPipeline:
                 await db.commit()
                 logger.info(f"Successfully completed ingestion for {doc.filename} ({len(lc_chunks)} chunks)")
 
+                # 7. Revaluate any existing memories linked to this document
+                try:
+                    from app.memory.revaluation import revaluation_engine
+                    await revaluation_engine.revaluate_for_document(doc.id, db)
+                except Exception as reval_err:
+                    logger.warning(f"Post-ingestion memory revaluation note: {reval_err}")
+
             except Exception as e:
                 logger.error(f"Ingestion failed for {doc.filename}: {e}", exc_info=True)
                 await db.rollback()
@@ -108,18 +121,34 @@ class IngestionPipeline:
                         await err_db.commit()
 
     @staticmethod
-    async def delete_document(db: AsyncSession, document_id: str) -> bool:
-        """Completely remove a document, its local file, DB chunks, and vector store embeddings."""
+    async def delete_document(db: AsyncSession, document_id: str, purge_vectors: bool = False) -> bool:
+        """Remove a document record from DB and local storage.
+        
+        If purge_vectors is False and the document's vector embeddings are marked persistent,
+        the embeddings in Chroma remain persistent so other users continue to benefit from them.
+        """
         result = await db.execute(select(Document).where(Document.id == document_id))
         doc = result.scalar_one_or_none()
         if not doc:
             return False
 
-        # 1. Remove vector embeddings
+        # Invalidate in-memory L1 cache for this document
         try:
-            vector_store.delete_document(document_id=document_id)
-        except Exception as e:
-            logger.warning(f"Error removing vectors for {document_id}: {e}")
+            from app.memory.manager import memory_manager
+            memory_manager.l1_cache.invalidate_document(document_id)
+        except Exception:
+            pass
+
+        # 1. Remove vector embeddings ONLY if purge_vectors is requested OR doc is not persistent
+        if purge_vectors or not getattr(doc, "is_persistent_vector", True):
+            try:
+                vector_store.delete_document(document_id=document_id)
+            except Exception as e:
+                logger.warning(f"Error removing vectors for {document_id}: {e}")
+        else:
+            logger.info(
+                f"Document {document_id} deleted by user, but vector embeddings remain persistent for shared platform RAG."
+            )
 
         # 2. Remove physical file from disk
         if doc.storage_path and os.path.exists(doc.storage_path):
@@ -128,10 +157,20 @@ class IngestionPipeline:
             except OSError as e:
                 logger.warning(f"Error removing file {doc.storage_path}: {e}")
 
-        # 3. Delete document row from DB (chunks cascade deleted)
+        # 3. Clean up room associations and memories referencing this document
+        try:
+            await db.execute(delete(RoomDocument).where(RoomDocument.document_id == document_id))
+            await db.execute(
+                update(MemoryItem).where(MemoryItem.document_id == document_id).values(document_id=None)
+            )
+        except Exception as e:
+            logger.warning(f"Error unlinking room/memory references for {document_id}: {e}")
+
+        # 4. Delete document row from DB (chunks cascade deleted)
         await db.delete(doc)
         await db.commit()
         return True
+
 
 
 ingestion_pipeline = IngestionPipeline()

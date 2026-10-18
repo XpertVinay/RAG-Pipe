@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -120,19 +120,41 @@ def decode_token(token: str, expected_type: Optional[str] = "access") -> Dict[st
         )
 
 
+def extract_token_from_request(
+    request: Optional[Request] = None,
+    auth: Optional[HTTPAuthorizationCredentials] = None,
+) -> Optional[str]:
+    """Extract JWT token from Bearer header, URL query parameter, or browser cookies."""
+    if auth and auth.credentials:
+        return auth.credentials
+    if request:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            return auth_header[7:].strip()
+        query_token = request.query_params.get("token")
+        if query_token:
+            return query_token.strip()
+        cookie_token = request.cookies.get("access_token") or request.cookies.get("token")
+        if cookie_token:
+            return cookie_token.strip()
+    return None
+
+
 async def get_current_user(
+    request: Request,
     auth: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """FastAPI dependency to enforce Bearer token authentication and retrieve active user."""
-    if not auth or not auth.credentials:
+    """FastAPI dependency to enforce authentication (Bearer, query parameter, or cookie) and retrieve active user."""
+    token = extract_token_from_request(request, auth)
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required. Missing Bearer access token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    payload = decode_token(auth.credentials, expected_type="access")
+    payload = decode_token(token, expected_type="access")
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject.")
@@ -148,14 +170,16 @@ async def get_current_user(
 
 
 async def get_optional_user(
+    request: Request,
     auth: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> Optional[User]:
-    """FastAPI dependency to optionally authenticate user if token is provided."""
-    if not auth or not auth.credentials:
+    """FastAPI dependency to optionally authenticate user if token is provided via Bearer, query, or cookie."""
+    token = extract_token_from_request(request, auth)
+    if not token:
         return None
     try:
-        payload = decode_token(auth.credentials, expected_type="access")
+        payload = decode_token(token, expected_type="access")
         user_id = payload.get("sub")
         if not user_id:
             return None

@@ -25,6 +25,10 @@ class AgentState(TypedDict):
     max_retries: int
     is_relevant: bool
     generation_grounded: bool
+    user_id: Optional[str]
+    room_id: Optional[str]
+    memory_context: Optional[str]
+    consulted_memories: Optional[List[Dict[str, Any]]]
     answer: str
     error: Optional[str]
     status_update: Optional[str]
