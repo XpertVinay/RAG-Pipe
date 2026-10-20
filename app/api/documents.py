@@ -40,6 +40,8 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 document_upload_rate_limiter = RateLimiter(max_requests=getattr(settings, "RATE_LIMIT_UPLOAD_MAX", 15), window_seconds=60)
 
 
+from app.services.queue_service import queue_service
+
 @router.post(
     "/upload",
     response_model=DocumentUploadResult,
@@ -74,7 +76,7 @@ async def upload_documents(
                 db=db,
                 is_shared=is_shared,
             )
-            background_tasks.add_task(ingestion_pipeline.process_document, doc.id)
+            await queue_service.enqueue_document_job(doc.id, background_tasks=background_tasks)
             uploaded_docs.append(DocumentResponse.model_validate(doc))
         except Exception as e:
             logger.warning(f"Upload failed for file '{file.filename}': {e}")
@@ -307,8 +309,86 @@ async def reprocess_document(
         pass
 
     await db.commit()
-    background_tasks.add_task(ingestion_pipeline.process_document, document_id)
-    return {"message": "Document re-ingestion queued.", "document_id": document_id}
+    queue_res = await queue_service.enqueue_document_job(document_id, background_tasks=background_tasks)
+    return {
+        "message": f"Document re-ingestion queued via {queue_res.get('mechanism', 'queue')}.",
+        "document_id": document_id,
+        "queue_details": queue_res,
+    }
+
+
+@router.get("/queue/status")
+async def get_queue_status():
+    """Retrieve RabbitMQ queue health, broker connectivity, and workload statistics."""
+    return await queue_service.check_health()
+
+
+@router.get("/readiness/check")
+async def check_documents_readiness(
+    room_id: Optional[str] = Query(None),
+    document_ids: Optional[str] = Query(None, description="Comma-separated list of document IDs"),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check readiness status of documents for LLM prompts (queued/processing vs completed)."""
+    from app.services.conversation_service import resolve_room_and_document_ids
+
+    doc_id_list = [d.strip() for d in document_ids.split(",") if d.strip()] if document_ids else None
+    _, resolved_doc_ids = await resolve_room_and_document_ids(
+        db, None, room_id, doc_id_list, user=current_user
+    )
+
+    if not resolved_doc_ids or resolved_doc_ids == ["__none__"]:
+        return {
+            "all_ready": True,
+            "total": 0,
+            "ready_count": 0,
+            "pending_count": 0,
+            "failed_count": 0,
+            "can_prompt": True,
+            "documents": [],
+            "message": "No documents attached to current scope. General LLM prompts ready.",
+        }
+
+    stmt = select(Document).where(Document.id.in_(resolved_doc_ids))
+    results = await db.execute(stmt)
+    docs = results.scalars().all()
+
+    total = len(docs)
+    ready = [d for d in docs if d.status == "completed"]
+    pending = [d for d in docs if d.status in ("queued", "processing")]
+    failed = [d for d in docs if d.status == "failed"]
+
+    all_ready = len(ready) == total and total > 0
+    can_prompt = len(ready) > 0 or total == 0
+
+    return {
+        "all_ready": all_ready,
+        "total": total,
+        "ready_count": len(ready),
+        "pending_count": len(pending),
+        "failed_count": len(failed),
+        "can_prompt": can_prompt,
+        "documents": [
+            {
+                "id": d.id,
+                "filename": d.filename,
+                "status": d.status,
+                "is_ready": d.status == "completed",
+                "chunk_count": d.chunk_count,
+            }
+            for d in docs
+        ],
+        "message": (
+            "All documents ready for LLM prompts."
+            if all_ready
+            else (
+                f"{len(pending)} document(s) currently being processed in RabbitMQ queue. LLM ready when completed."
+                if pending
+                else "Some documents encountered indexing errors."
+            )
+        ),
+    }
 
 
 @router.get("/{document_id}/audit", response_model=DocumentAuditTrailResponse)

@@ -72,9 +72,10 @@ class MemoryDistiller:
         conversation_id: str,
         query: str,
         answer: str,
+        project_id: Optional[str] = None,
         db: Optional[AsyncSession] = None,
     ) -> None:
-        """Automatically distill and persist Short-Term and Long-Term memory for the chat."""
+        """Automatically distill and persist Short-Term and Long-Term memory with compact semantic meaning."""
         if not conversation_id and not room_id and not user_id:
             return
 
@@ -96,9 +97,15 @@ class MemoryDistiller:
                 content=stm_content,
                 user_id=user_id,
                 room_id=room_id,
+                project_id=project_id,
                 ttl_seconds=7200,  # 2 hours
                 importance=0.65,
-                metadata_payload={"conversation_id": conversation_id, "recorded_at": now.isoformat()},
+                metadata_payload={
+                    "conversation_id": conversation_id,
+                    "project_id": project_id,
+                    "recorded_at": now.isoformat(),
+                    "meaning_intent": f"Recent Q&A: {clean_query[:50]}",
+                },
                 db=db,
             )
             # Also update rolling conversation active summary
@@ -110,9 +117,15 @@ class MemoryDistiller:
                 content=f"Active discussion topic: {clean_query}",
                 user_id=user_id,
                 room_id=room_id,
+                project_id=project_id,
                 ttl_seconds=7200,
                 importance=0.7,
-                metadata_payload={"conversation_id": conversation_id, "updated_at": now.isoformat()},
+                metadata_payload={
+                    "conversation_id": conversation_id,
+                    "project_id": project_id,
+                    "updated_at": now.isoformat(),
+                    "meaning_intent": "Active Topic Focus",
+                },
                 db=db,
             )
         except Exception as stm_err:
@@ -138,9 +151,15 @@ class MemoryDistiller:
                     content=pref_content,
                     user_id=user_id,
                     room_id=room_id,
+                    project_id=project_id,
                     ttl_seconds=90 * 86400,  # 90 days
                     importance=0.85,
-                    metadata_payload={"trigger": matched_trigger, "conversation_id": conversation_id},
+                    metadata_payload={
+                        "trigger": matched_trigger,
+                        "conversation_id": conversation_id,
+                        "project_id": project_id,
+                        "meaning_intent": f"User Preference: {matched_trigger}",
+                    },
                     db=db,
                 )
             except Exception as ltm_err:

@@ -47,3 +47,6 @@ class GeneratedSubTask(BaseModel):
     dependencies: List[int] = Field(default_factory=list)
     acceptance_criteria: List[str] = Field(default_factory=list)
     input_data: Dict[str, Any] = Field(default_factory=dict)
+    can_run_parallel: bool = Field(True, description="Whether this task can run in parallel in isolation")
+    orchestrator_prompt: Optional[str] = Field(None, description="Direct orchestrator prompt/directive from Decision Maker")
+

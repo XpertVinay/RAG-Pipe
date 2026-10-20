@@ -59,6 +59,7 @@ JS_SOURCES = [
     "js/modules/settings.js",
     "js/modules/organizations.js",
     "js/modules/chat.js",
+    "js/modules/agents.js",
     "js/app.js",
 ]
 

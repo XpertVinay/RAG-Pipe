@@ -188,7 +188,11 @@ async def test_document_live_file_authentication_and_query_token(client: AsyncCl
     assert f"?token={token}#page=1" in ev_data["file_url"]
 
     # 7. Document attached to a public room should be accessible without auth
-    room_res = await client.post("/api/rooms", json={"name": "Public Showcase Room"})
+    room_res = await client.post(
+        "/api/rooms",
+        json={"name": "Public Showcase Room", "is_public": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert room_res.status_code == 201
     room_id = room_res.json()["id"]
 

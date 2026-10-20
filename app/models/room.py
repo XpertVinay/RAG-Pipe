@@ -24,11 +24,21 @@ class Room(Base):
     name: Mapped[str] = mapped_column(String(255), default="Document Workspace")
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    share_token: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    share_revoked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    pii_consent_status: Mapped[str] = mapped_column(String(30), default="clean", index=True)  # clean, breach_detected, consent_masked, consent_unmasked
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     room_documents: Mapped[List["RoomDocument"]] = relationship(
         "RoomDocument",
+        back_populates="room",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    projects: Mapped[List["Project"]] = relationship(
+        "Project",
         back_populates="room",
         cascade="all, delete-orphan",
         lazy="selectin",

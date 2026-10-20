@@ -35,6 +35,21 @@ from app.models.multi_agent import (
 from app.services.domain_knowledge_service import domain_knowledge_service
 
 
+def _safe_str(val: Any, default: str = "") -> str:
+    """Ensure value is safely converted to a string before slicing or formatting."""
+    if val is None:
+        return default
+    if isinstance(val, str):
+        return val
+    if isinstance(val, (dict, list)):
+        import json
+        try:
+            return json.dumps(val)
+        except Exception:
+            return str(val)
+    return str(val)
+
+
 class MultiAgentOrchestrator:
     """Coordinates collaborative execution across the 6 specialized agents centered on Decision Maker."""
 
@@ -149,7 +164,20 @@ class MultiAgentOrchestrator:
             user_provided_docs=bool(request.document_ids),
         )
 
-        customer_advice = strategy.get("customer_advice", "")
+        feasibility = strategy.get("feasibility", {})
+        if feasibility:
+            yield AgentEvent(
+                event_type="request_feasibility_evaluated",
+                phase="0. Decision Maker",
+                agent_role=AgentRole.DECISION_MAKER.value,
+                message=(
+                    f"Decision Maker Analysis: {'Document upload requested' if feasibility.get('requires_documentation') else 'Producing valid sensible output recursively'} - {feasibility.get('reason', '')}"
+                ),
+                progress=18,
+                data=feasibility,
+            ).to_sse()
+
+        customer_advice = _safe_str(strategy.get("customer_advice"), "")
         yield AgentEvent(
             event_type="user_advisory",
             phase="0. Decision Maker",
@@ -160,14 +188,16 @@ class MultiAgentOrchestrator:
                 "customer_advice": customer_advice,
                 "strategy": strategy.get("strategy"),
                 "domain_directives": strategy.get("domain_directives"),
+                "feasibility": feasibility,
             },
         ).to_sse()
 
+        strategy_str = _safe_str(strategy.get("strategy"), "Execution plan prepared.")
         yield AgentEvent(
             event_type="agent_thought",
             phase="0. Decision Maker",
             agent_role=AgentRole.DECISION_MAKER.value,
-            message=f"Strategy defined: {strategy.get('strategy', 'Execution plan prepared.')[:160]}...",
+            message=f"Strategy defined: {strategy_str[:160]}...",
             progress=25,
             data={"strategy": strategy, "consulted_memories_count": len(consulted_mems)},
         ).to_sse()
@@ -225,11 +255,19 @@ class MultiAgentOrchestrator:
             max_subtasks=request.max_subtasks,
         )
 
+        # Decision Maker formulates explicit orchestrator prompts defining isolation boundaries & collaboration mandates
+        subtasks = self.decision_maker.formulate_orchestrator_prompts(
+            goal=request.goal,
+            strategy=strategy,
+            subtasks=subtasks,
+            consolidated_ctx=consolidated_ctx,
+        )
+
         yield AgentEvent(
             event_type="tasks_generated",
             phase="2. Task Generator",
             agent_role=AgentRole.TASK_GENERATOR.value,
-            message=f"Generated {len(subtasks)} discrete atomic micro-tasks.",
+            message=f"Generated {len(subtasks)} discrete atomic micro-tasks with Decision Maker orchestrator directives.",
             progress=50,
             data={"tasks": [t.model_dump() for t in subtasks]},
         ).to_sse()
@@ -253,66 +291,123 @@ class MultiAgentOrchestrator:
             await session.commit()
 
         # Phase 3 & 4: Task Execution & Validation Loop orchestrated by Decision Maker
+        # Partition tasks for parallel execution when agents can execute in isolation with each other
+        parallel_batches = self.decision_maker.partition_tasks_for_parallel_execution(subtasks)
         executed_tasks: List[Dict[str, Any]] = []
         total_subtasks = len(subtasks)
+        completed_count = 0
 
-        for idx, subtask in enumerate(subtasks, start=1):
-            sub_progress = 50 + int((idx / (total_subtasks + 1)) * 30)
+        for wave_idx, batch in enumerate(parallel_batches, start=1):
+            is_parallel = len(batch) > 1
+            batch_titles = ", ".join(f"#{t.task_number} '{t.title}'" for t in batch)
 
-            yield AgentEvent(
-                event_type="agent_phase",
-                phase=f"3. Task Executor (Subtask {subtask.task_number}/{total_subtasks})",
-                agent_role=AgentRole.TASK_EXECUTOR.value,
-                message=f"Agent 3: Decision Maker delegated Subtask {subtask.task_number}: '{subtask.title}'...",
-                progress=sub_progress,
-                data={"task_number": subtask.task_number, "title": subtask.title},
-            ).to_sse()
+            if is_parallel:
+                yield AgentEvent(
+                    event_type="parallel_delegation_batch_started",
+                    phase=f"3. Parallel Task Delegation (Wave {wave_idx})",
+                    agent_role=AgentRole.DECISION_MAKER.value,
+                    message=f"Decision Maker delegating {len(batch)} tasks in PARALLEL to agents executing in isolation: {batch_titles}",
+                    progress=50 + int((completed_count / (total_subtasks + 1)) * 30),
+                    data={
+                        "wave": wave_idx,
+                        "parallel_tasks_count": len(batch),
+                        "tasks": [t.model_dump() for t in batch],
+                    },
+                ).to_sse()
 
-            # Execute & Validate via Decision Maker
-            exec_res, val_res = await self.decision_maker.delegate_to_task_performer_and_validator(
-                task_executor=self.task_executor,
-                validator=self.validator,
-                subtask=subtask,
-                consolidated_ctx=consolidated_ctx,
-                anonymous=request.anonymous,
+            # Emit start events for each task in this wave
+            for st in batch:
+                st_progress = 50 + int((completed_count / (total_subtasks + 1)) * 30)
+                yield AgentEvent(
+                    event_type="agent_phase",
+                    phase=f"3. Task Executor (Subtask {st.task_number}/{total_subtasks})",
+                    agent_role=AgentRole.TASK_EXECUTOR.value,
+                    message=f"Agent 3: Decision Maker delegated Subtask {st.task_number}: '{st.title}'...",
+                    progress=st_progress,
+                    data={"task_number": st.task_number, "title": st.title, "orchestrator_prompt": st.orchestrator_prompt},
+                ).to_sse()
+
+            # Concurrently execute tasks that can perform in isolation with each other
+            async def _run_subtask(subtask_item: GeneratedSubTask):
+                return await self.decision_maker.delegate_to_task_performer_and_validator(
+                    task_executor=self.task_executor,
+                    validator=self.validator,
+                    subtask=subtask_item,
+                    consolidated_ctx=consolidated_ctx,
+                    anonymous=request.anonymous,
+                )
+
+            batch_results = await asyncio.gather(*[_run_subtask(t) for t in batch])
+
+            # Process validated results and update collaborative context
+            for subtask, (exec_res, val_res) in zip(batch, batch_results):
+                completed_count += 1
+                sub_progress = 50 + int((completed_count / (total_subtasks + 1)) * 30)
+                executed_tasks.append(exec_res)
+
+                # Persist executed subtask state, output, and validation to the database
+                async with database.AsyncSessionLocal() as session:
+                    from sqlalchemy import select
+                    q_st = await session.execute(
+                        select(AgentSubTask).where(
+                            AgentSubTask.workflow_id == wf_id,
+                            AgentSubTask.task_number == subtask.task_number,
+                        )
+                    )
+                    sub_rec_db = q_st.scalar_one_or_none()
+                    if sub_rec_db:
+                        sub_rec_db.status = (
+                            SubTaskStatus.COMPLETED.value
+                            if val_res.get("passed", True)
+                            else SubTaskStatus.FAILED.value
+                        )
+                        sub_rec_db.output_data = exec_res.get("output_data", {})
+                        sub_rec_db.validation_result = val_res
+                        sub_rec_db.validation_score = float(val_res.get("score", 1.0))
+                        sub_rec_db.execution_logs = exec_res.get("logs", [])
+                        await session.commit()
+
+                # Save intermediate task to Short-Term Memory (STM)
+                await MultiAgentMemoryBridge.save_subtask_stm(
+                    workflow_id=wf_id,
+                    task_number=subtask.task_number,
+                    title=subtask.title,
+                    output_summary=exec_res.get("output_data", {}).get("summary", ""),
+                    user_id=user_id,
+                    room_id=request.room_id,
+                )
+
+                # Context compaction of completed subtask
+                compacted_item = context_mgr.compact_subtask(
+                    task_id=f"task_{subtask.task_number}",
+                    task_number=subtask.task_number,
+                    title=subtask.title,
+                    agent_role="task_executor",
+                    status="validated" if val_res.get("passed") else "needs_review",
+                    input_data=subtask.input_data,
+                    output_data=exec_res.get("output_data", {}),
+                    artifacts=exec_res.get("artifacts", []),
+                    validation_result=val_res,
+                )
+
+                yield AgentEvent(
+                    event_type="task_validated",
+                    phase="4. Tasks Validator",
+                    agent_role=AgentRole.VALIDATOR.value,
+                    message=f"Subtask {subtask.task_number} Validation: {'PASSED' if val_res.get('passed') else 'FLAGGED'} (Score: {val_res.get('score')})",
+                    progress=min(sub_progress + 4, 84),
+                    data={
+                        "task_number": subtask.task_number,
+                        "validation": val_res,
+                        "compacted_summary": compacted_item.key_findings,
+                    },
+                ).to_sse()
+
+            # Rebuild consolidated context after wave completion so peer agents collaborate with completed findings
+            consolidated_ctx, _ = context_mgr.build_consolidated_context(
+                goal=request.goal,
+                requirements=req_spec,
             )
-            executed_tasks.append(exec_res)
-
-            # Save intermediate task to Short-Term Memory (STM)
-            await MultiAgentMemoryBridge.save_subtask_stm(
-                workflow_id=wf_id,
-                task_number=subtask.task_number,
-                title=subtask.title,
-                output_summary=exec_res.get("output_data", {}).get("summary", ""),
-                user_id=user_id,
-                room_id=request.room_id,
-            )
-
-            # Context compaction of completed subtask
-            compacted_item = context_mgr.compact_subtask(
-                task_id=f"task_{subtask.task_number}",
-                task_number=subtask.task_number,
-                title=subtask.title,
-                agent_role="task_executor",
-                status="validated" if val_res.get("passed") else "needs_review",
-                input_data=subtask.input_data,
-                output_data=exec_res.get("output_data", {}),
-                artifacts=exec_res.get("artifacts", []),
-                validation_result=val_res,
-            )
-
-            yield AgentEvent(
-                event_type="task_validated",
-                phase="4. Tasks Validator",
-                agent_role=AgentRole.VALIDATOR.value,
-                message=f"Subtask {subtask.task_number} Validation: {'PASSED' if val_res.get('passed') else 'FLAGGED'} (Score: {val_res.get('score')})",
-                progress=sub_progress + 4,
-                data={
-                    "task_number": subtask.task_number,
-                    "validation": val_res,
-                    "compacted_summary": compacted_item.key_findings,
-                },
-            ).to_sse()
 
         # Phase 5: Deployer (Deploy, Monitor, and Alert for Syntaxual & Logical Errors)
         yield AgentEvent(
@@ -358,9 +453,10 @@ class MultiAgentOrchestrator:
         )
 
         # Persist strategic knowledge into Long-Term Memory (LTM)
+        strat_summary = _safe_str(strategy.get("strategy"), "Standard execution")
         await MultiAgentMemoryBridge.save_decision_or_spec_ltm(
             title=f"Workflow_{wf_id[:8]}_{request.goal[:30]}",
-            content=f"Goal: {request.goal}. Strategy: {strategy.get('strategy')[:300]}. Deployment: {deploy_info.get('status')}.",
+            content=f"Goal: {request.goal}. Strategy: {strat_summary[:300]}. Deployment: {deploy_info.get('status')}.",
             category="workflow_deliverable",
             user_id=user_id,
             room_id=request.room_id,

@@ -144,6 +144,65 @@
     return API.delete(`/api/rooms/${roomId}/members/${userId}`);
   };
 
+  // Room Items & Projects Endpoints
+  API.getRoomItems = async function (roomId, filterType = 'all') {
+    return API.get(`/api/rooms/${roomId}/items?filter_type=${encodeURIComponent(filterType)}`);
+  };
+
+  API.getProjects = async function (roomId, status = null) {
+    const q = status ? `?status=${encodeURIComponent(status)}` : '';
+    return API.get(`/api/rooms/${roomId}/projects${q}`);
+  };
+
+  API.createProject = async function (roomId, name, description = '', status = 'active', tags = [], extra = {}) {
+    return API.post(`/api/rooms/${roomId}/projects`, { name, description, status, tags, ...extra });
+  };
+
+  API.updateProject = async function (roomId, projectId, data) {
+    return API.put(`/api/rooms/${roomId}/projects/${projectId}`, data);
+  };
+
+  API.deleteProject = async function (roomId, projectId) {
+    return API.delete(`/api/rooms/${roomId}/projects/${projectId}`);
+  };
+
+  API.createAppProjectRequest = async function (payload) {
+    return API.post('/api/projects/app-request', payload);
+  };
+
+  API.initiateProjectCall = async function (projectId, options = {}) {
+    return API.post(`/api/projects/${projectId}/initiate-call`, options);
+  };
+
+  API.getProjectTranscripts = async function (projectId) {
+    return API.get(`/api/projects/${projectId}/transcripts`);
+  };
+
+  API.getProjectById = async function (projectId) {
+    return API.get(`/api/projects/${projectId}`);
+  };
+
+  // Share Link & Revocation Endpoints
+  API.generateShareLink = async function (roomId) {
+    return API.post(`/api/rooms/${roomId}/share-link/generate`, {});
+  };
+
+  API.revokeShareLink = async function (roomId) {
+    return API.post(`/api/rooms/${roomId}/share-link/revoke`, {});
+  };
+
+  // PII Breach Scanning & User Consent Endpoints
+  API.scanRoomPII = async function (roomId) {
+    return API.post(`/api/rooms/${roomId}/pii/scan`, {});
+  };
+
+  API.submitPIIConsent = async function (roomId, consentMode = 'mask', confirmAcknowledgment = true) {
+    return API.post(`/api/rooms/${roomId}/pii/consent`, {
+      consent_mode: consentMode,
+      confirm_acknowledgment: confirmAcknowledgment,
+    });
+  };
+
   // Document Endpoints
   API.getDocuments = async function (status = null, scope = 'all') {
     const params = new URLSearchParams();
@@ -202,6 +261,20 @@
     const token = API.getAccessToken();
     const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
     return `/api/documents/${docId}/file${tokenParam}#page=${page}&view=FitH`;
+  };
+
+  API.getQueueStatus = async function () {
+    return API.get('/api/documents/queue/status');
+  };
+
+  API.checkDocumentsReadiness = async function (roomId = null, documentIds = null) {
+    const params = new URLSearchParams();
+    if (roomId) params.set('room_id', roomId);
+    if (documentIds && documentIds.length) {
+      params.set('document_ids', Array.isArray(documentIds) ? documentIds.join(',') : documentIds);
+    }
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return API.get(`/api/documents/readiness/check${qs}`);
   };
 
   // Chat & Conversation Endpoints
@@ -265,5 +338,49 @@
 
   API.pruneExpiredMemories = async function () {
     return API.delete('/api/memory/prune');
+  };
+
+  API.getCompactMemoryEval = async function (roomId = null, projectId = null) {
+    const params = new URLSearchParams();
+    if (roomId) params.set('room_id', roomId);
+    if (projectId) params.set('project_id', projectId);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return API.get(`/api/memory/quick-eval${qs}`);
+  };
+
+  // Enterprise Audit Trail & Business Risk Endpoints
+  API.getRiskDashboard = async function (windowHours = 24) {
+    return API.get(`/api/audit/risk-dashboard?window_hours=${encodeURIComponent(windowHours)}`);
+  };
+
+  API.getAuditLogs = async function (params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return API.get(`/api/audit/logs${q ? '?' + q : ''}`);
+  };
+
+  API.getSingleAuditRecord = async function (recordId) {
+    return API.get(`/api/audit/logs/${encodeURIComponent(recordId)}`);
+  };
+
+  API.updateAuditComplianceRemark = async function (recordId, remark, complianceStatus = null) {
+    return API.patch(`/api/audit/logs/${encodeURIComponent(recordId)}/remark`, {
+      compliance_remark: remark,
+      compliance_status: complianceStatus,
+    });
+  };
+
+  API.triggerAuditBackup = async function (retentionDays = 90, remark = null) {
+    return API.post('/api/audit/backup', {
+      retention_days: retentionDays,
+      compliance_remark: remark,
+    });
+  };
+
+  API.listAuditBackups = async function () {
+    return API.get('/api/audit/backups');
+  };
+
+  API.verifyAuditIntegrity = async function (limit = 200) {
+    return API.get(`/api/audit/verify-integrity?limit=${encodeURIComponent(limit)}`);
   };
 })(window);

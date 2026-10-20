@@ -130,3 +130,33 @@ async def get_recent_chat_history(
     messages = list(reversed(hist_res.scalars().all()))
     return [{"role": m.role, "content": m.content} for m in messages]
 
+
+async def check_document_processing_readiness(
+    db: AsyncSession,
+    doc_ids: Optional[List[str]],
+) -> Dict[str, Any]:
+    """Check whether scoped documents are ready (completed) or still being processed in RabbitMQ queue."""
+    if not doc_ids or doc_ids == ["__none__"]:
+        return {"has_scoped_docs": False, "all_ready": True, "only_pending": False, "ready_doc_ids": [], "pending_docs": []}
+
+    res = await db.execute(select(Document).where(Document.id.in_(doc_ids)))
+    docs = res.scalars().all()
+    if not docs:
+        return {"has_scoped_docs": False, "all_ready": True, "only_pending": False, "ready_doc_ids": [], "pending_docs": []}
+
+    ready = [d for d in docs if d.status == "completed"]
+    pending = [d for d in docs if d.status in ("queued", "processing")]
+    failed = [d for d in docs if d.status == "failed"]
+
+    return {
+        "has_scoped_docs": True,
+        "all_ready": len(pending) == 0,
+        "only_pending": len(ready) == 0 and len(pending) > 0,
+        "ready_doc_ids": [d.id for d in ready],
+        "pending_docs": [{"id": d.id, "filename": d.filename, "status": d.status} for d in pending],
+        "failed_docs": [{"id": d.id, "filename": d.filename, "status": d.status} for d in failed],
+        "total_count": len(docs),
+        "ready_count": len(ready),
+        "pending_count": len(pending),
+    }
+

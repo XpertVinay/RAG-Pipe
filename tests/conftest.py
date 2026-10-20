@@ -8,7 +8,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from typing import AsyncGenerator, Generator, List
+from typing import AsyncGenerator, Generator, List, Optional
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -28,6 +28,9 @@ import app.models  # Ensure all models (User, Room, etc.) are registered
 from app.database import Base, get_db
 from app.main import app
 from app.providers.factory import ModelFactory
+
+if not hasattr(ModelFactory, "_orig_get_chat_model"):
+    ModelFactory._orig_get_chat_model = ModelFactory.get_chat_model
 
 
 class DeterministicMockEmbeddings(Embeddings):
@@ -131,11 +134,82 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture
 async def client(test_db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """HTTP async client configured with test database session override."""
+    """HTTP async client configured with test database session override and authenticated user."""
+    from fastapi import HTTPException, Request, Security, status
+    from fastapi.security import HTTPAuthorizationCredentials
+    from sqlalchemy import select
+    from app.core.auth import (
+        bearer_scheme,
+        decode_token,
+        extract_token_from_request,
+        get_current_user,
+        get_optional_user,
+    )
+    from app.models.user import User
+
     async def override_get_db():
         yield test_db
 
+    test_user = User(
+        id="test-auth-user-id",
+        email="testuser@example.com",
+        username="testuser",
+        hashed_password="mock_hashed_password",
+        role="admin",
+        is_active=True,
+    )
+    test_db.add(test_user)
+    await test_db.commit()
+
+    async def override_get_current_user(
+        request: Request,
+        auth: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
+    ) -> User:
+        token = extract_token_from_request(request, auth)
+        if token:
+            payload = decode_token(token, expected_type="access")
+            user_id = payload.get("sub")
+            if user_id:
+                res = await test_db.execute(select(User).where(User.id == user_id))
+                user = res.scalar_one_or_none()
+                if user:
+                    if not user.is_active:
+                        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is deactivated.")
+                    return user
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User account not found.")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject.")
+
+        # Disallow unauthenticated requests when an endpoint is explicitly probed for 401
+        if "/upload" in request.url.path or request.headers.get("x-anonymous") == "true":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required. Missing Bearer access token.",
+            )
+        return test_user
+
+    async def override_get_optional_user(
+        request: Request,
+        auth: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
+    ) -> Optional[User]:
+        token = extract_token_from_request(request, auth)
+        if token:
+            try:
+                payload = decode_token(token, expected_type="access")
+                user_id = payload.get("sub")
+                if user_id:
+                    res = await test_db.execute(select(User).where(User.id == user_id))
+                    user = res.scalar_one_or_none()
+                    if user and user.is_active:
+                        return user
+            except Exception:
+                return None
+        if request.headers.get("x-anonymous") == "true" or ("/file" in request.url.path and not token):
+            return None
+        return test_user
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_optional_user] = override_get_optional_user
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:

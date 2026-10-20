@@ -28,6 +28,10 @@
       if (embeddingModelInput) embeddingModelInput.value = s.default_embedding_model;
       if (topkSlider) topkSlider.value = s.retrieval_top_k;
       if (topkVal) topkVal.textContent = s.retrieval_top_k;
+      const themeSelect = document.getElementById('theme-select');
+      if (themeSelect && window.ThemeManager) {
+        themeSelect.value = window.ThemeManager.getMode();
+      }
     } catch (e) {
       console.warn('Failed to load settings:', e);
     }
@@ -55,6 +59,12 @@
     };
 
     openSettingsBtn?.addEventListener('click', () => {
+      document.querySelectorAll('.profile-dropdown-menu.show, .room-dropdown-menu.show, .theme-menu.show').forEach((m) => {
+        m.classList.remove('show');
+      });
+      document.getElementById('auth-user-btn')?.setAttribute('aria-expanded', 'false');
+      document.getElementById('room-dropdown-btn')?.setAttribute('aria-expanded', 'false');
+
       if (RAG.validator) {
         if (modelInput) RAG.validator.clearError(modelInput);
         if (embeddingModelInput) RAG.validator.clearError(embeddingModelInput);

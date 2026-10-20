@@ -44,15 +44,32 @@ async def lifespan(app: FastAPI):
     from app.services.config_service import config_service
     await config_service.seed_initial_config()
     configure_langsmith_tracing()
-    logger.info("Database, dynamic cache, and storage directories ready.")
+
+    # Initialize enterprise audit trail, backup directories, and baseline risk telemetry
+    try:
+        from app.services.audit_backup import audit_backup_manager
+        from app.services.audit_service import audit_service
+        from app.database import AsyncSessionLocal
+        audit_backup_manager._ensure_directories()
+        async with AsyncSessionLocal() as session:
+            await audit_service.seed_initial_audit_events_if_empty(session)
+    except Exception as e:
+        logger.warning(f"Audit trail initialization note: {e}")
+
+    logger.info("Database, dynamic cache, audit trail, and storage directories ready.")
 
     # Start Razorpay Mandate recurring sync scheduler
     start_mandate_sync_scheduler()
+
+    # Start embedded RabbitMQ document worker consumer if enabled
+    from app.services.document_worker import start_embedded_worker, stop_embedded_worker
+    start_embedded_worker()
 
     yield
 
     logger.info("Shutting down RAG Agent...")
     await stop_mandate_sync_scheduler()
+    await stop_embedded_worker()
 
 
 app = FastAPI(
@@ -169,6 +186,93 @@ async def render_pricing_page(request: Request):
         name="pricing.html",
         context={
             "app_name": settings.APP_NAME,
+        },
+    )
+
+
+# -------------------------------------------------------------------------
+# Legal & Compliance Routes
+# -------------------------------------------------------------------------
+@app.get("/privacy", response_class=HTMLResponse, tags=["legal"])
+@app.get("/legal/privacy", response_class=HTMLResponse, tags=["legal"])
+async def render_privacy_page(request: Request):
+    """Render Privacy Policy page."""
+    return templates.TemplateResponse(
+        request=request,
+        name="legal.html",
+        context={
+            "app_name": settings.APP_NAME,
+            "active_tab": "privacy",
+            "page_title": "Privacy Policy",
+            "page_description": "Our commitments to enterprise data privacy, document non-training guarantees, and multi-tenant security.",
+        },
+    )
+
+
+@app.get("/terms", response_class=HTMLResponse, tags=["legal"])
+@app.get("/terms-of-service", response_class=HTMLResponse, tags=["legal"])
+@app.get("/legal/terms", response_class=HTMLResponse, tags=["legal"])
+async def render_terms_page(request: Request):
+    """Render Terms of Service page."""
+    return templates.TemplateResponse(
+        request=request,
+        name="legal.html",
+        context={
+            "app_name": settings.APP_NAME,
+            "active_tab": "terms",
+            "page_title": "Terms of Service",
+            "page_description": "Terms and conditions governing the use of the RAG Agent multi-tenant intelligence and retrieval platform.",
+        },
+    )
+
+
+@app.get("/refund", response_class=HTMLResponse, tags=["legal"])
+@app.get("/refund-policy", response_class=HTMLResponse, tags=["legal"])
+@app.get("/legal/refund", response_class=HTMLResponse, tags=["legal"])
+async def render_refund_page(request: Request):
+    """Render Refund Policy page."""
+    return templates.TemplateResponse(
+        request=request,
+        name="legal.html",
+        context={
+            "app_name": settings.APP_NAME,
+            "active_tab": "refund",
+            "page_title": "Refund Policy",
+            "page_description": "Details regarding our 14-day satisfaction guarantee, recurring mandate cancellations, and Razorpay refund procedures.",
+        },
+    )
+
+
+@app.get("/ai-policy", response_class=HTMLResponse, tags=["legal"])
+@app.get("/ai-usage", response_class=HTMLResponse, tags=["legal"])
+@app.get("/ai-agent-policy", response_class=HTMLResponse, tags=["legal"])
+@app.get("/legal/ai-policy", response_class=HTMLResponse, tags=["legal"])
+@app.get("/legal/ai-usage", response_class=HTMLResponse, tags=["legal"])
+async def render_ai_policy_page(request: Request):
+    """Render AI Usage and AI Agent Policy page."""
+    return templates.TemplateResponse(
+        request=request,
+        name="legal.html",
+        context={
+            "app_name": settings.APP_NAME,
+            "active_tab": "ai-policy",
+            "page_title": "AI Usage & AI Agent Policy",
+            "page_description": "Standards and safety guardrails governing our agent autonomous architecture, tool executions, and RAG grounding.",
+        },
+    )
+
+
+@app.get("/legal", response_class=HTMLResponse, tags=["legal"])
+async def render_legal_hub_page(request: Request):
+    """Render Legal Center overview defaulting to Privacy Policy."""
+    return templates.TemplateResponse(
+        request=request,
+        name="legal.html",
+        context={
+            "app_name": settings.APP_NAME,
+            "active_tab": "privacy",
+            "page_title": "Legal Center & Policies",
+            "page_description": "Comprehensive legal agreements, privacy guarantees, refund terms, and AI governance policies.",
         },
     )
 

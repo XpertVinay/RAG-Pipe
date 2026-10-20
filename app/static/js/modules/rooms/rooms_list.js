@@ -48,8 +48,8 @@
         const convTitle = document.getElementById('conv-title');
         const convSubtitle = document.getElementById('conv-subtitle');
         if (bannerRoomName) bannerRoomName.textContent = 'No Workspace';
-        if (convTitle) convTitle.textContent = 'RAG AI Assistant';
-        if (convSubtitle) convSubtitle.textContent = 'Create a workspace room or start chatting to begin';
+        if (convTitle) convTitle.textContent = 'Chat with Docs';
+        if (convSubtitle) convSubtitle.textContent = '';
         if (RAG.chat?.showWelcomeScreen) RAG.chat.showWelcomeScreen();
         return;
       }
@@ -162,7 +162,10 @@
         }
       }
 
-      renderRoomReferences(room.references || []);
+    renderRoomReferences(room.references || []);
+
+      // Load Room Items (Projects & Chats) for the active room
+      await loadRoomItems(roomId, RAG.state.roomFilter || 'all');
 
       // Resolve conversation to load: URL ?conv=..., localStorage, or room.active_conversation_id
       const urlParams = new URLSearchParams(window.location.search);
@@ -187,6 +190,195 @@
       if (RAG.history?.loadConversations) RAG.history.loadConversations();
     } catch (err) {
       console.error('Error fetching room details:', err);
+    }
+  }
+
+  async function loadRoomItems(roomId, filterType = 'all') {
+    if (!roomId) return;
+    try {
+      const data = await API.getRoomItems(roomId, filterType);
+      RAG.state.roomItems = data.items || [];
+      renderRoomItemsList(data);
+    } catch (err) {
+      console.warn('Failed to load room items:', err);
+    }
+  }
+
+  function renderRoomItemsList(data) {
+    const activeRoomCard = document.querySelector(`.room-card.active`);
+    if (!activeRoomCard) return;
+
+    // Check if an items container already exists inside active card
+    let itemsContainer = activeRoomCard.querySelector('.room-card-items-panel');
+    if (!itemsContainer) {
+      itemsContainer = document.createElement('div');
+      itemsContainer.className = 'room-card-items-panel';
+      itemsContainer.style.cssText = 'margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08);';
+      activeRoomCard.appendChild(itemsContainer);
+    }
+
+    const items = data.items || [];
+    const filter = data.filter_type || 'all';
+
+    if (items.length === 0) {
+      itemsContainer.innerHTML = `
+        <div style="font-size: 0.72rem; color: var(--text-muted); text-align: center; padding: 6px 0;">
+          No ${filter === 'all' ? 'projects or chats' : filter} in this room yet.
+        </div>
+      `;
+      return;
+    }
+
+    itemsContainer.innerHTML = `
+      <div style="font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+        <span>📁 ${filter.toUpperCase()} (${items.length})</span>
+        <span style="font-size: 0.65rem; color: var(--text-muted);">Click to open</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto;">
+        ${items
+          .map((item) => {
+            const isProject = item.item_type === 'project';
+            const isAppRequest = isProject && (item.request_type === 'app_creation' || item.communication_channel);
+            const icon = isAppRequest ? '📱' : (isProject ? '📁' : '💬');
+            const badgeColor = isAppRequest ? '#34d399' : (isProject ? '#818cf8' : '#34d399');
+            const badgeBg = isAppRequest ? 'rgba(16, 185, 129, 0.18)' : (isProject ? 'rgba(99, 102, 241, 0.15)' : 'rgba(16, 185, 129, 0.15)');
+            const metaInfo = isAppRequest
+              ? (item.communication_channel ? `📞 ${item.communication_channel}` : 'App Request')
+              : (isProject ? `Status: ${item.status || 'active'}` : `${item.message_count || 0} msgs`);
+
+            return `
+              <div class="room-sub-item-pill" style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 5px 8px; cursor: pointer; transition: all 0.15s ease;"
+                onclick="event.stopPropagation(); window.selectRoomSubItem('${item.item_type}', '${item.id}', '${RAG.utils.escapeHtml(item.title).replace(/'/g, "\\'")}')"
+                onmouseover="this.style.borderColor='var(--accent-primary)'" onmouseout="this.style.borderColor='var(--border-color)'">
+                <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
+                  <span>${icon}</span>
+                  <span style="font-size: 0.75rem; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 125px;" title="${RAG.utils.escapeHtml(item.title)}">
+                    ${RAG.utils.escapeHtml(item.title)}
+                  </span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  <span style="font-size: 0.62rem; background: ${badgeBg}; color: ${badgeColor}; padding: 1px 5px; border-radius: 3px;">
+                    ${metaInfo}
+                  </span>
+                  ${
+                    isProject
+                      ? `
+                        <button type="button" class="doc-btn" style="padding: 1px 5px; font-size: 0.62rem; background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 3px; cursor: pointer;" onclick="event.stopPropagation(); window.openInitiateCallModal('${item.id}')" title="Initiate Call with Transcripts">📞</button>
+                        <button type="button" class="doc-btn delete" style="padding: 1px 4px; font-size: 0.65rem;" onclick="event.stopPropagation(); window.deleteProject('${RAG.state.currentRoomId}', '${item.id}')" title="Delete Project">✕</button>
+                      `
+                      : ''
+                  }
+                </div>
+              </div>
+            `;
+          })
+          .join('')}
+      </div>
+    `;
+  }
+
+  function selectRoomSubItem(itemType, id, title) {
+    if (itemType === 'project') {
+      RAG.state.activeProjectId = id;
+      const pill = document.getElementById('room-active-project-pill');
+      const label = document.getElementById('active-project-name');
+      if (pill && label) {
+        pill.style.display = 'inline-flex';
+        label.textContent = title;
+      }
+      RAG.utils.showToast(`Scoped to project: "${title}"`, 'info');
+      // If we have history or chats, we can filter conversations by project
+      if (RAG.history?.loadConversations) RAG.history.loadConversations();
+    } else if (itemType === 'chat') {
+      RAG.state.currentConversationId = id;
+      localStorage.setItem('rag_active_conv_id', id);
+      const url = new URL(window.location);
+      url.searchParams.set('conv', id);
+      window.history.replaceState({}, '', url);
+      if (RAG.history?.loadConversationMessages) {
+        RAG.history.loadConversationMessages(id);
+      } else if (RAG.chat?.loadConversationMessages) {
+        RAG.chat.loadConversationMessages(id);
+      }
+    }
+  }
+
+  function clearActiveProjectScope() {
+    RAG.state.activeProjectId = null;
+    const pill = document.getElementById('room-active-project-pill');
+    if (pill) pill.style.display = 'none';
+    RAG.utils.showToast('Cleared project scope', 'info');
+    if (RAG.history?.loadConversations) RAG.history.loadConversations();
+  }
+
+  async function openCompactMemoryModal() {
+    const modal = document.getElementById('compact-memory-modal');
+    if (!modal) return;
+    modal.classList.add('active');
+
+    const evalRawTokens = document.getElementById('eval-raw-tokens');
+    const evalCompactTokens = document.getElementById('eval-compact-tokens');
+    const evalTokensSaved = document.getElementById('eval-tokens-saved');
+    const evalReadinessScore = document.getElementById('eval-readiness-score');
+    const evalSynthesis = document.getElementById('eval-compact-synthesis');
+    const evalStmCount = document.getElementById('eval-stm-count');
+    const evalLtmCount = document.getElementById('eval-ltm-count');
+    const evalStmList = document.getElementById('eval-stm-list');
+    const evalLtmList = document.getElementById('eval-ltm-list');
+
+    try {
+      const data = await API.getCompactMemoryEval(RAG.state.currentRoomId, RAG.state.activeProjectId);
+
+      if (evalRawTokens) evalRawTokens.textContent = `${data.raw_estimated_tokens || 0} tok`;
+      if (evalCompactTokens) evalCompactTokens.textContent = `${data.compact_tokens || 0} tok`;
+      if (evalTokensSaved) evalTokensSaved.textContent = `${data.tokens_saved_percent || 0}%`;
+      if (evalReadinessScore) evalReadinessScore.textContent = `${Math.round((data.readiness_score || 0.5) * 100)}%`;
+      if (evalSynthesis) evalSynthesis.textContent = data.compact_synthesis || 'Standard verified context.';
+
+      if (evalStmCount) evalStmCount.textContent = `${data.short_term_count || 0} items`;
+      if (evalLtmCount) evalLtmCount.textContent = `${data.long_term_count || 0} items`;
+
+      if (evalStmList) {
+        if (!data.short_term_items || data.short_term_items.length === 0) {
+          evalStmList.innerHTML = `<div style="font-size: 0.74rem; color: var(--text-muted); padding: 4px;">No short-term inquiries recorded yet.</div>`;
+        } else {
+          evalStmList.innerHTML = data.short_term_items
+            .map(
+              (i) => `
+              <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 10px; font-size: 0.74rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                  <strong style="color: #818cf8;">${RAG.utils.escapeHtml(i.meaning_intent)}</strong>
+                  <span style="font-size: 0.65rem; color: var(--text-muted);">${i.age_hours}h ago</span>
+                </div>
+                <div style="color: var(--text-secondary);">${RAG.utils.escapeHtml(i.compact_content)}</div>
+              </div>
+            `
+            )
+            .join('');
+        }
+      }
+
+      if (evalLtmList) {
+        if (!data.long_term_items || data.long_term_items.length === 0) {
+          evalLtmList.innerHTML = `<div style="font-size: 0.74rem; color: var(--text-muted); padding: 4px;">No enduring constraints or preferences stored yet.</div>`;
+        } else {
+          evalLtmList.innerHTML = data.long_term_items
+            .map(
+              (i) => `
+              <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 10px; font-size: 0.74rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                  <strong style="color: #34d399;">${RAG.utils.escapeHtml(i.meaning_intent)}</strong>
+                  <span style="font-size: 0.65rem; color: var(--text-muted);">${i.age_hours}h ago</span>
+                </div>
+                <div style="color: var(--text-secondary);">${RAG.utils.escapeHtml(i.compact_content)}</div>
+              </div>
+            `
+            )
+            .join('');
+        }
+      }
+    } catch (err) {
+      RAG.utils.showToast(err.message || 'Failed to evaluate compact memory', 'error');
     }
   }
 
@@ -226,5 +418,12 @@
   RAG.rooms.loadRooms = loadRooms;
   RAG.rooms.renderRoomsList = renderRoomsList;
   RAG.rooms.selectRoom = selectRoom;
+  RAG.rooms.loadRoomItems = loadRoomItems;
+  RAG.rooms.selectRoomSubItem = selectRoomSubItem;
+  RAG.rooms.clearActiveProjectScope = clearActiveProjectScope;
+  RAG.rooms.openCompactMemoryModal = openCompactMemoryModal;
   RAG.rooms.renderRoomReferences = renderRoomReferences;
+  window.selectRoomSubItem = selectRoomSubItem;
+  window.clearActiveProjectScope = clearActiveProjectScope;
+  window.openCompactMemoryModal = openCompactMemoryModal;
 })(window);

@@ -14,6 +14,19 @@
     if (window.location.hostname === '0.0.0.0') {
       window.location.hostname = 'localhost';
     }
+
+    // Early Theme Init to eliminate Flash of Unstyled Content (FOUC)
+    (function() {
+      try {
+        var mode = localStorage.getItem('rag_agent_theme') || 'system';
+        var effective = mode;
+        if (mode === 'system') {
+          effective = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', effective);
+        document.documentElement.setAttribute('data-theme-mode', mode);
+      } catch (e) {}
+    })();
   </script>
 
   <!-- Google Fonts: Inter & JetBrains Mono -->
@@ -24,13 +37,15 @@
   {% if (use_optimized_assets is defined and use_optimized_assets()) %}
     <link rel="stylesheet" href="/static/dist/bundle.min.css?v={{ get_asset_manifest().files.get('bundle.min.css', {}).get('hash', '1.0.0') if get_asset_manifest is defined else '1.0.0' }}">
   {% else %}
-    <link rel="stylesheet" href="/static/css/variables.css?v=v2">
-    <link rel="stylesheet" href="/static/css/sidebar.css?v=v2">
-    <link rel="stylesheet" href="/static/css/chat.css?v=v2">
-    <link rel="stylesheet" href="/static/css/modals.css?v=v2">
-    <link rel="stylesheet" href="/static/css/responsive.css?v=v2">
-    <link rel="stylesheet" href="/static/css/app.css?v=v2">
+    <link rel="stylesheet" href="/static/css/variables.css?v=v5">
+    <link rel="stylesheet" href="/static/css/sidebar.css?v=v5">
+    <link rel="stylesheet" href="/static/css/chat.css?v=v5">
+    <link rel="stylesheet" href="/static/css/modals.css?v=v5">
+    <link rel="stylesheet" href="/static/css/responsive.css?v=v5">
+    <link rel="stylesheet" href="/static/css/app.css?v=v5">
+    <link rel="stylesheet" href="/static/css/audit_risk.css?v=v5">
   {% endif %}
+  <link rel="stylesheet" href="/static/css/theme.css?v=v5">
   {% block extra_head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -54,27 +69,30 @@
     <script src="/static/js/modules/validator/validator_ui.js?v=v7"></script>
     <script src="/static/js/modules/validator.js?v=v7"></script>
     <script src="/static/js/modules/markdown.js?v=v7"></script>
-    <script src="/static/js/modules/auth/auth_ui.js?v=v7"></script>
-    <script src="/static/js/modules/auth/auth_actions.js?v=v7"></script>
-    <script src="/static/js/modules/auth/auth_events.js?v=v7"></script>
-    <script src="/static/js/modules/auth.js?v=v7"></script>
-    <script src="/static/js/modules/rooms/rooms_list.js?v=v7"></script>
-    <script src="/static/js/modules/rooms/rooms_members.js?v=v7"></script>
-    <script src="/static/js/modules/rooms/rooms_crud.js?v=v7"></script>
-    <script src="/static/js/modules/rooms.js?v=v7"></script>
-    <script src="/static/js/modules/documents/documents_list.js?v=v7"></script>
-    <script src="/static/js/modules/documents/documents_upload.js?v=v7"></script>
-    <script src="/static/js/modules/documents/documents_actions.js?v=v7"></script>
-    <script src="/static/js/modules/documents.js?v=v7"></script>
-    <script src="/static/js/modules/memory.js?v=v7"></script>
-    <script src="/static/js/modules/history.js?v=v7"></script>
-    <script src="/static/js/modules/evidence.js?v=v7"></script>
-    <script src="/static/js/modules/settings.js?v=v7"></script>
-    <script src="/static/js/modules/organizations.js?v=v7"></script>
-    <script src="/static/js/modules/chat.js?v=v7"></script>
-    <script src="/static/js/modules/agents.js?v=v8"></script>
-    <script src="/static/js/app.js?v=v7"></script>
+    <script src="/static/js/modules/auth/auth_ui.js?v=v8"></script>
+    <script src="/static/js/modules/auth/auth_actions.js?v=v8"></script>
+    <script src="/static/js/modules/auth/auth_events.js?v=v8"></script>
+    <script src="/static/js/modules/auth.js?v=v8"></script>
+    <script src="/static/js/modules/rooms/rooms_list.js?v=v8"></script>
+    <script src="/static/js/modules/rooms/rooms_members.js?v=v8"></script>
+    <script src="/static/js/modules/rooms/rooms_crud.js?v=v8"></script>
+    <script src="/static/js/modules/rooms.js?v=v8"></script>
+    <script src="/static/js/modules/documents/documents_list.js?v=v8"></script>
+    <script src="/static/js/modules/documents/documents_upload.js?v=v8"></script>
+    <script src="/static/js/modules/documents/documents_actions.js?v=v8"></script>
+    <script src="/static/js/modules/documents.js?v=v8"></script>
+    <script src="/static/js/modules/memory.js?v=v8"></script>
+    <script src="/static/js/modules/history.js?v=v8"></script>
+    <script src="/static/js/modules/evidence.js?v=v8"></script>
+    <script src="/static/js/modules/settings.js?v=v9"></script>
+    <script src="/static/js/modules/organizations.js?v=v8"></script>
+    <script src="/static/js/modules/chat.js?v=v8"></script>
+    <script src="/static/js/modules/agents.js?v=v9"></script>
+    <script src="/static/js/modules/audit_risk.js?v=v2"></script>
+    <script src="/static/js/modules/call_workspace.js?v=v1"></script>
+    <script src="/static/js/app.js?v=v8"></script>
   {% endif %}
+  <script src="/static/js/modules/theme.js?v=v5"></script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

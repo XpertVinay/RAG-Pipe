@@ -144,6 +144,9 @@
         clearInterval(RAG.state.pollInterval);
         RAG.state.pollInterval = null;
       }
+      if (RAG.chat?.checkDocumentQueueReadiness) {
+        RAG.chat.checkDocumentQueueReadiness();
+      }
     } catch (e) {
       console.error('Error fetching documents:', e);
       if (docsList && !docsList.querySelector('.doc-card')) {

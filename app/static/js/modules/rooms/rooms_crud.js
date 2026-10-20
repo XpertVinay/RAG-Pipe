@@ -78,6 +78,9 @@
     const roomDocCheckboxes = document.getElementById('room-doc-checkboxes');
     const toggleReferencesBtn = document.getElementById('toggle-references-btn');
     const roomReferencesDrawer = document.getElementById('room-references-drawer');
+    const roomDropdownContainer = document.getElementById('roomDropdownContainer');
+    const roomDropdownBtn = document.getElementById('room-dropdown-btn');
+    const roomDropdownMenu = document.getElementById('roomDropdownMenu');
     const attachFileRoomBtn = document.getElementById('attach-file-room-btn');
     const shareRoomBtn = document.getElementById('share-room-btn');
     const shareRoomModal = document.getElementById('share-room-modal');
@@ -86,6 +89,54 @@
     const roomIsPublicCheckbox = document.getElementById('room-is-public-checkbox');
     const addRoomMemberForm = document.getElementById('add-room-member-form');
     const fileInput = document.getElementById('file-input');
+
+    function closeRoomMenu() {
+      if (roomDropdownMenu?.classList.contains('show')) {
+        roomDropdownMenu.classList.remove('show');
+        roomDropdownBtn?.setAttribute('aria-expanded', 'false');
+      }
+    }
+
+    function toggleRoomMenu() {
+      const isOpen = roomDropdownMenu?.classList.contains('show');
+      document.querySelectorAll('.profile-dropdown-menu.show').forEach((m) => {
+        m.classList.remove('show');
+        const b = document.getElementById('auth-user-btn');
+        if (b) b.setAttribute('aria-expanded', 'false');
+      });
+
+      if (isOpen) {
+        closeRoomMenu();
+      } else {
+        roomDropdownMenu?.classList.add('show');
+        roomDropdownBtn?.setAttribute('aria-expanded', 'true');
+      }
+    }
+
+    roomDropdownBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleRoomMenu();
+    });
+
+    roomDropdownMenu?.addEventListener('click', (e) => {
+      const item = e.target.closest('.room-menu-item');
+      if (item) {
+        closeRoomMenu();
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!roomDropdownContainer?.contains(e.target)) {
+        closeRoomMenu();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeRoomMenu();
+      }
+    });
 
     toggleReferencesBtn?.addEventListener('click', () => {
       if (!roomReferencesDrawer) return;
@@ -276,9 +327,172 @@
         RAG.utils.showToast(err.message, 'error');
       }
     });
+
+    // Project Modal Listeners
+    const projectModal = document.getElementById('project-modal');
+    const closeProjectBtn = document.getElementById('close-project-btn');
+    const cancelProjectBtn = document.getElementById('cancel-project-btn');
+    const projectForm = document.getElementById('project-form');
+    const createProjectBtn = document.getElementById('create-project-btn');
+    const addProjectBannerBtn = document.getElementById('add-project-banner-btn');
+
+    const openProjModal = () => {
+      if (!RAG.state.currentRoomId) {
+        RAG.utils.showToast('Please select a workspace room first', 'info');
+        return;
+      }
+      projectForm?.reset();
+      document.getElementById('project-id-input').value = '';
+      document.getElementById('project-modal-title').textContent = 'New Project';
+      
+      // Auto-prefill client info if logged in
+      const u = API.getCurrentUser?.();
+      if (u) {
+        const clientNameEl = document.getElementById('project-client-name-input');
+        const clientEmailEl = document.getElementById('project-email-input');
+        if (clientNameEl && !clientNameEl.value) clientNameEl.value = u.full_name || u.username || '';
+        if (clientEmailEl && !clientEmailEl.value) clientEmailEl.value = u.email || '';
+      }
+
+      projectModal?.classList.add('active');
+    };
+
+    createProjectBtn?.addEventListener('click', openProjModal);
+    addProjectBannerBtn?.addEventListener('click', openProjModal);
+
+    const closeProjModal = () => projectModal?.classList.remove('active');
+    closeProjectBtn?.addEventListener('click', closeProjModal);
+    cancelProjectBtn?.addEventListener('click', closeProjModal);
+
+    projectForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const roomId = RAG.state.currentRoomId;
+      if (!roomId) return;
+
+      const projectId = document.getElementById('project-id-input')?.value.trim();
+      const name = document.getElementById('project-name-input')?.value.trim();
+      const desc = document.getElementById('project-desc-input')?.value.trim();
+      const status = document.getElementById('project-status-select')?.value || 'active';
+      const rawTags = document.getElementById('project-tags-input')?.value || '';
+      const tags = rawTags.split(',').map((t) => t.trim()).filter(Boolean);
+
+      const clientName = document.getElementById('project-client-name-input')?.value.trim() || null;
+      const email = document.getElementById('project-email-input')?.value.trim() || null;
+      const phone = document.getElementById('project-phone-input')?.value.trim() || null;
+      const channel = document.getElementById('project-channel-select')?.value || 'Gmeet';
+
+      if (!name) {
+        RAG.utils.showToast('Project name is required', 'error');
+        return;
+      }
+
+      try {
+        const extra = {
+          client_name: clientName,
+          email,
+          phone,
+          communication_channel: channel,
+          request_type: (clientName || email) ? 'app_creation' : 'standard',
+        };
+
+        if (projectId) {
+          await API.updateProject(roomId, projectId, { name, description: desc, status, tags, ...extra });
+          RAG.utils.showToast(`Project "${name}" updated!`, 'success');
+        } else {
+          await API.createProject(roomId, name, desc, status, tags, extra);
+          RAG.utils.showToast(`Project "${name}" created!`, 'success');
+        }
+        closeProjModal();
+        await RAG.rooms.loadRoomItems(roomId, RAG.state.roomFilter || 'all');
+      } catch (err) {
+        RAG.utils.showToast(err.message || 'Failed to save project', 'error');
+      }
+    });
+
+    // Compact Memory Evaluation Modal Listeners
+    const compactMemoryEvalBtn = document.getElementById('compact-memory-eval-btn');
+    const compactMemoryModal = document.getElementById('compact-memory-modal');
+    const closeCompactMemoryBtn = document.getElementById('close-compact-memory-btn');
+    const doneCompactMemoryBtn = document.getElementById('done-compact-memory-btn');
+
+    compactMemoryEvalBtn?.addEventListener('click', () => {
+      if (!RAG.state.currentRoomId) {
+        RAG.utils.showToast('Please select a workspace room first', 'info');
+        return;
+      }
+      window.openCompactMemoryModal();
+    });
+
+    const closeCompactModal = () => compactMemoryModal?.classList.remove('active');
+    closeCompactMemoryBtn?.addEventListener('click', closeCompactModal);
+    doneCompactMemoryBtn?.addEventListener('click', closeCompactModal);
+
+    // Filter Buttons (Sidebar & Room Banner)
+    function applyRoomFilter(filter) {
+      RAG.state.roomFilter = filter;
+
+      // Update sidebar buttons
+      document.querySelectorAll('.sidebar-room-filter-btn').forEach((btn) => {
+        if (btn.dataset.filter === filter) {
+          btn.classList.add('active');
+          btn.style.background = 'var(--bg-secondary)';
+          btn.style.color = 'var(--text-primary)';
+          btn.style.fontWeight = '500';
+        } else {
+          btn.classList.remove('active');
+          btn.style.background = 'transparent';
+          btn.style.color = 'var(--text-muted)';
+          btn.style.fontWeight = 'normal';
+        }
+      });
+
+      // Update banner buttons
+      document.querySelectorAll('.room-view-filter-btn').forEach((btn) => {
+        if (btn.dataset.filter === filter) {
+          btn.classList.add('active');
+          btn.style.background = 'var(--bg-secondary)';
+          btn.style.color = 'var(--text-primary)';
+          btn.style.fontWeight = '500';
+        } else {
+          btn.classList.remove('active');
+          btn.style.background = 'transparent';
+          btn.style.color = 'var(--text-muted)';
+          btn.style.fontWeight = 'normal';
+        }
+      });
+
+      if (RAG.state.currentRoomId) {
+        RAG.rooms.loadRoomItems(RAG.state.currentRoomId, filter);
+      }
+    }
+
+    document.querySelectorAll('.sidebar-room-filter-btn').forEach((btn) => {
+      btn.addEventListener('click', () => applyRoomFilter(btn.dataset.filter));
+    });
+
+    document.querySelectorAll('.room-view-filter-btn').forEach((btn) => {
+      btn.addEventListener('click', () => applyRoomFilter(btn.dataset.filter));
+    });
+  }
+
+  async function deleteProject(roomId, projectId) {
+    const confirmed = confirm('Are you sure you want to delete this project? Associated chats will remain in the room.');
+    if (!confirmed) return;
+    try {
+      await API.deleteProject(roomId, projectId);
+      RAG.utils.showToast('Project deleted successfully', 'info');
+      if (RAG.state.activeProjectId === projectId) {
+        window.clearActiveProjectScope();
+      }
+      await RAG.rooms.loadRoomItems(roomId, RAG.state.roomFilter || 'all');
+    } catch (err) {
+      RAG.utils.showToast(err.message || 'Failed to delete project', 'error');
+    }
   }
 
   RAG.rooms.deleteRoom = deleteRoom;
   RAG.rooms.detachDocFromRoom = detachDocFromRoom;
+  RAG.rooms.deleteProject = deleteProject;
   RAG.rooms.init = initRoomListeners;
+  window.deleteProject = deleteProject;
 })(window);

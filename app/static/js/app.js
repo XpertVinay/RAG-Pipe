@@ -24,32 +24,45 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabMemoryBadge = document.getElementById('tab-memory-badge');
 
   function switchSidebarTab(tabName) {
+    const user = API.getCurrentUser();
+    const token = API.getAccessToken();
+    const isSuperAdmin = Boolean(
+      user && token && (user.role === 'super_admin' || user.role === 'superadmin' || user.role === 'super-admin')
+    );
+    const isAdminOrStaff = Boolean(
+      user && token && (user.role === 'admin' || user.role === 'staff' || user.role === 'staffs' || isSuperAdmin)
+    );
+
+    if (tabName === 'agents' && !isSuperAdmin) {
+      tabName = 'rooms';
+    } else if (tabName === 'memory' && !isAdminOrStaff) {
+      tabName = 'rooms';
+    }
+
     [tabBtnRooms, tabBtnDocs, tabBtnHistory, tabBtnMemory, tabBtnAgents].forEach((b) => b?.classList.remove('active'));
     [panelRooms, panelDocs, panelHistory, panelMemory, panelAgents].forEach((p) => p?.classList.remove('active'));
 
+    const activeBtn = document.getElementById(`tab-btn-${tabName}`);
+    if (activeBtn) {
+      activeBtn.classList.add('active');
+      if (activeBtn.scrollIntoView) {
+        activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      }
+    }
+
     if (tabName === 'rooms') {
-      tabBtnRooms?.classList.add('active');
       panelRooms?.classList.add('active');
       if (RAG.rooms?.loadRooms) RAG.rooms.loadRooms();
     } else if (tabName === 'docs') {
-      tabBtnDocs?.classList.add('active');
       panelDocs?.classList.add('active');
       if (RAG.documents?.loadDocuments) RAG.documents.loadDocuments();
     } else if (tabName === 'memory') {
-      const user = API.getCurrentUser();
-      const isAdminOrStaff = Boolean(user && API.getAccessToken() && (user.role === 'admin' || user.role === 'staff' || user.role === 'staffs'));
-      if (!isAdminOrStaff) {
-        return switchSidebarTab('rooms');
-      }
-      tabBtnMemory?.classList.add('active');
       panelMemory?.classList.add('active');
       if (RAG.memory?.loadMemoryDashboard) RAG.memory.loadMemoryDashboard();
     } else if (tabName === 'agents') {
-      tabBtnAgents?.classList.add('active');
       panelAgents?.classList.add('active');
       if (window.MultiAgent?.loadWorkflowsList) window.MultiAgent.loadWorkflowsList();
     } else {
-      tabBtnHistory?.classList.add('active');
       panelHistory?.classList.add('active');
       if (RAG.history?.loadConversations) RAG.history.loadConversations();
     }
@@ -60,6 +73,17 @@ document.addEventListener('DOMContentLoaded', () => {
   tabBtnHistory?.addEventListener('click', () => switchSidebarTab('history'));
   tabBtnMemory?.addEventListener('click', () => switchSidebarTab('memory'));
   tabBtnAgents?.addEventListener('click', () => switchSidebarTab('agents'));
+
+  // Horizontal wheel scroll for sidebar tabs if they overflow
+  const sidebarTabsContainer = document.querySelector('.sidebar-tabs');
+  if (sidebarTabsContainer) {
+    sidebarTabsContainer.addEventListener('wheel', (e) => {
+      if (e.deltaY !== 0 && sidebarTabsContainer.scrollWidth > sidebarTabsContainer.clientWidth) {
+        sidebarTabsContainer.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
+    }, { passive: false });
+  }
 
   // Mobile Drawer Navigation
   mobileSidebarToggle?.addEventListener('click', RAG.utils?.openMobileSidebar);
@@ -75,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('memory-modal'),
     document.getElementById('delete-confirm-modal'),
     document.getElementById('audit-modal'),
+    document.getElementById('agent-modal'),
   ].filter(Boolean);
 
   allModals.forEach((modal) => {
@@ -108,13 +133,24 @@ document.addEventListener('DOMContentLoaded', () => {
   async function updateMemoryBadgeInitial() {
     try {
       const user = API.getCurrentUser();
-      const isAdminOrStaff = Boolean(user && API.getAccessToken() && (user.role === 'admin' || user.role === 'staff' || user.role === 'staffs'));
+      const token = API.getAccessToken();
+      const isSuperAdmin = Boolean(
+        user && token && (user.role === 'super_admin' || user.role === 'superadmin' || user.role === 'super-admin')
+      );
+      const isAdminOrStaff = Boolean(
+        user && token && (user.role === 'admin' || user.role === 'staff' || user.role === 'staffs' || isSuperAdmin)
+      );
+
+      if (tabBtnAgents) {
+        tabBtnAgents.style.display = isSuperAdmin ? 'inline-flex' : 'none';
+      }
+
       if (!isAdminOrStaff) {
         if (tabBtnMemory) tabBtnMemory.style.display = 'none';
         if (tabMemoryBadge) tabMemoryBadge.textContent = '0';
         return;
       }
-      if (tabBtnMemory) tabBtnMemory.style.display = 'flex';
+      if (tabBtnMemory) tabBtnMemory.style.display = 'inline-flex';
       const stats = await API.getMemoryStats();
       if (tabMemoryBadge) tabMemoryBadge.textContent = stats.active_memories || stats.total_memories || 0;
     } catch {

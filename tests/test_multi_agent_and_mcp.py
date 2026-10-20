@@ -318,3 +318,74 @@ async def test_api_agents_endpoints(client):
     )
     assert mcp_msg_resp.status_code == 200
     assert mcp_msg_resp.json()["id"] == "test-rpc-1"
+
+
+@pytest.mark.asyncio
+async def test_admin_clear_workflows_and_logs(client):
+    """Verify super admin & admin permissions for wiping workflows, logs, and database storage optimization."""
+    # 1. Register admin user
+    reg_admin = await client.post("/api/auth/register", json={
+        "email": "wf_admin@test.local",
+        "username": "wfadmin",
+        "password": "Password123!",
+        "full_name": "Workflow Admin",
+        "role": "admin",
+    })
+    assert reg_admin.status_code == 201
+    admin_token = reg_admin.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # 2. Register regular user
+    reg_user = await client.post("/api/auth/register", json={
+        "email": "wf_user@test.local",
+        "username": "wfuser",
+        "password": "Password123!",
+        "full_name": "Standard User",
+        "role": "user",
+    })
+    assert reg_user.status_code == 201
+    user_token = reg_user.json()["access_token"]
+    user_headers = {"Authorization": f"Bearer {user_token}"}
+
+    # 3. Create a test workflow
+    create_resp = await client.post(
+        "/api/v1/agents/workflows",
+        json={"goal": "Test workflow for wipe and storage optimization", "anonymous": True},
+        headers=user_headers,
+    )
+    assert create_resp.status_code == 201
+    wf_id = create_resp.json()["workflow_id"]
+
+    # 4. Standard user attempt to clear all workflows must be rejected (403 Forbidden)
+    forbidden_wipe = await client.delete("/api/v1/agents/workflows", headers=user_headers)
+    assert forbidden_wipe.status_code == 403
+
+    # 5. Standard user attempt to clear logs must be rejected (403 Forbidden)
+    forbidden_logs = await client.delete("/api/v1/agents/logs", headers=user_headers)
+    assert forbidden_logs.status_code == 403
+
+    # 6. Admin clears logs successfully
+    admin_logs_res = await client.delete("/api/v1/agents/logs?optimize_db=true", headers=admin_headers)
+    assert admin_logs_res.status_code == 200
+    assert "cleared successfully" in admin_logs_res.json()["message"]
+
+    # 7. Delete single workflow
+    single_del = await client.delete(f"/api/v1/agents/workflows/{wf_id}", headers=user_headers)
+    assert single_del.status_code == 200
+    assert single_del.json()["workflow_id"] == wf_id
+
+    # 8. Create another workflow and admin wipes all workflows & optimizes DB
+    await client.post(
+        "/api/v1/agents/workflows",
+        json={"goal": "Another workflow to wipe", "anonymous": True},
+        headers=user_headers,
+    )
+    admin_wipe = await client.delete("/api/v1/agents/workflows?clear_logs=true&optimize_db=true", headers=admin_headers)
+    assert admin_wipe.status_code == 200
+    wipe_data = admin_wipe.json()
+    assert wipe_data["deleted_workflows"] >= 1
+    assert "storage optimized" in wipe_data["message"].lower()
+
+    # Confirm workflows list is now empty
+    list_after = await client.get("/api/v1/agents/workflows", headers=admin_headers)
+    assert len(list_after.json()) == 0

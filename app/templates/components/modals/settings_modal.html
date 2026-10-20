@@ -42,7 +42,21 @@
         <span id="topk-val" style="font-weight: 600; color: var(--accent-primary);">4</span>
       </div>
       <input type="range" id="topk-slider" min="1" max="12" value="4" class="form-control" style="padding: 0;">
-    <div class="form-group" style="margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border-color, rgba(255,255,255,0.08));">
+    </div>
+
+    <div class="form-group" style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-color, rgba(255,255,255,0.08));">
+      <label for="theme-select">Theme / Contrast &amp; Palette</label>
+      <select id="theme-select" class="form-control">
+        <option value="system">💻 System (Default - Match OS style)</option>
+        <option value="dark">🌌 Midnight Obsidian (Deep Indigo &amp; Violet)</option>
+        <option value="cyber">⚡ Cyber Neon (Electric Cyan &amp; Emerald)</option>
+        <option value="sunset">🌅 Sunset Solar (Cosmic Rose &amp; Amber Gold)</option>
+        <option value="light">☀️ Arctic Clarity (Crisp High-Contrast Daylight)</option>
+      </select>
+      <small style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 5px;">Choose from 4 tailored contrast palettes or let system settings automatically sync with your device.</small>
+    </div>
+
+    <div class="form-group" style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-color, rgba(255,255,255,0.08));">
       <label style="color: #ef4444; font-size: 0.78rem;">Data Management &amp; Privacy</label>
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
         <span style="font-size: 0.74rem; color: var(--text-muted);">Permanently purge all conversations, chat history, and memory items.</span>

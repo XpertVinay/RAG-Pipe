@@ -1,5 +1,6 @@
 """Memory Bridge integrating Multi-Agent workflows with Two-Tier L1/L2 STM and LTM storage."""
 
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -77,7 +78,7 @@ class MultiAgentMemoryBridge:
         db: Optional[AsyncSession] = None,
     ) -> None:
         """Persist high-value strategic decisions, requirements, and validated solutions into Long-Term Memory (LTM)."""
-        clean_title = title.lower().replace(" ", "_")[:50]
+        clean_title = re.sub(r"[^a-zA-Z0-9_.:-]+", "_", title.lower())[:50].strip("_")
         key = f"ltm_{category}_{clean_title}"
         scope = MemoryScope.USER_SPECIFIC.value if user_id else MemoryScope.GLOBAL.value
 

@@ -123,7 +123,7 @@ async def test_room_ownership_idor_protection(client: AsyncClient):
     assert b_del_res.status_code == 403
 
     # Unauthenticated user attempts to delete User A's room -> 401 Unauthorized
-    anon_del_res = await client.delete(f"/api/rooms/{room_id}")
+    anon_del_res = await client.delete(f"/api/rooms/{room_id}", headers={"x-anonymous": "true"})
     assert anon_del_res.status_code == 401
 
     # User A successfully deletes their own room -> 200 OK

@@ -14,12 +14,16 @@
 
 
 .sidebar-header {
-  padding: 18px 20px;
+  height: var(--navbar-height, 60px);
+  min-height: var(--navbar-height, 60px);
+  max-height: var(--navbar-height, 60px);
+  padding: 0 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-color);
   gap: 8px;
+  box-sizing: border-box;
 }
 
 .sidebar-header-actions {
@@ -114,17 +118,19 @@
 /* Sidebar Navigation Tabs */
 .sidebar-tabs {
   display: flex;
+  align-items: stretch;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-color);
   padding: 4px 6px 0;
-  gap: 3px;
+  gap: 4px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sidebar-tabs::-webkit-scrollbar {
@@ -132,63 +138,76 @@
 }
 
 .sidebar-tab {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 1 0 auto;
+  min-width: max-content;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 6px;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  padding: 8px 3px;
+  padding: 8px 10px;
   color: var(--text-muted);
-  font-size: 0.73rem;
+  font-size: 0.76rem;
   font-weight: 500;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: all var(--transition-fast);
   white-space: nowrap;
+  user-select: none;
 }
 
 .sidebar-tab .tab-icon {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   flex-shrink: 0;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
 }
 
 .sidebar-tab .tab-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .sidebar-tab:hover {
   color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 
 .sidebar-tab.active {
   color: var(--accent-primary);
   border-bottom-color: var(--accent-primary);
-  background: rgba(99, 102, 241, 0.08);
+  background: rgba(99, 102, 241, 0.12);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  font-weight: 600;
 }
 
 .tab-badge {
   font-size: 0.62rem;
-  background: var(--bg-tertiary);
-  padding: 1px 4px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 5px;
   border-radius: var(--radius-full);
   color: var(--text-secondary);
   flex-shrink: 0;
-  min-width: 15px;
-  text-align: center;
-  line-height: 1.2;
+  min-width: 17px;
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .sidebar-tab.active .tab-badge {
-  background: rgba(99, 102, 241, 0.2);
-  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.25);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: #a5b4fc;
 }
 
 

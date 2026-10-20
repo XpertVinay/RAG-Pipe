@@ -18,6 +18,7 @@ from app.memory.schemas import (
 )
 from app.models.memory import MemoryItem, MemoryScope, MemoryType
 from app.models.user import User
+from app.memory.quick_eval import CompactMemoryEvalResponse, quick_memory_evaluator
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -62,28 +63,32 @@ async def list_memories(
     for item in items:
         if not include_expired and item.is_expired():
             continue
-        resp = MemoryResponse(
-            id=item.id,
-            scope=item.scope,
-            memory_type=item.memory_type,
-            user_id=item.user_id,
-            room_id=item.room_id,
-            document_id=item.document_id,
-            document_hash=item.document_hash,
-            key=item.key,
-            content=item.content,
-            importance=item.importance,
-            metadata_payload=item.metadata_payload or {},
-            created_at=item.created_at,
-            updated_at=item.updated_at,
-            expires_at=item.expires_at,
-            revaluated_at=item.revaluated_at,
-            revaluation_interval_seconds=item.revaluation_interval_seconds,
-            access_count=item.access_count,
-            is_expired=item.is_expired(),
-            needs_revaluation=item.needs_revaluation(),
-        )
-        output.append(resp)
+        try:
+            resp = MemoryResponse(
+                id=item.id,
+                scope=item.scope,
+                memory_type=item.memory_type,
+                user_id=item.user_id,
+                room_id=item.room_id,
+                document_id=item.document_id,
+                document_hash=item.document_hash,
+                key=item.key,
+                content=item.content,
+                importance=item.importance,
+                metadata_payload=item.metadata_payload or {},
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+                expires_at=item.expires_at,
+                revaluated_at=item.revaluated_at,
+                revaluation_interval_seconds=item.revaluation_interval_seconds,
+                access_count=item.access_count,
+                is_expired=item.is_expired(),
+                needs_revaluation=item.needs_revaluation(),
+            )
+            output.append(resp)
+        except Exception as e:
+            # Skip invalid memory item gracefully and continue
+            continue
 
     return output
 
@@ -210,3 +215,21 @@ async def delete_memory(
         memory_manager.l1_cache._make_cache_key(item.scope, item.key, item.user_id)
     )
     return {"message": "Memory deleted.", "id": memory_id}
+
+
+@router.get("/quick-eval", response_model=CompactMemoryEvalResponse)
+async def get_compact_memory_eval(
+    room_id: Optional[str] = Query(None, description="Room workspace ID"),
+    project_id: Optional[str] = Query(None, description="Project ID"),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate compact + meaning-rich short-term and long-term memory synthesis for instant evaluation in new chats/rooms."""
+    user_id = current_user.id if current_user else None
+    return await quick_memory_evaluator.evaluate_room_context(
+        db=db,
+        room_id=room_id,
+        project_id=project_id,
+        user_id=user_id,
+    )
+

@@ -1,0 +1,109 @@
+{
+  "version": "1.0",
+  "archives": [
+    {
+      "filename": "audit_archive_20261019T162740Z.tar.gz",
+      "path": "logs/backups/audit_archive_20261019T162740Z.tar.gz",
+      "size_bytes": 280,
+      "sha256": "0e390694da3d4709c96d63fc44e42b0a6fae4bb63ad5eefe709e71f5d01a9d76",
+      "created_at": "2026-10-19T16:27:40.683482+00:00",
+      "operator": "testuser",
+      "compliance_remark": "Triggered via test suite",
+      "files_included": [
+        "audit_trail.jsonl"
+      ],
+      "verified": true
+    },
+    {
+      "filename": "audit_archive_20261019T162740Z.tar.gz",
+      "path": "logs/backups/audit_archive_20261019T162740Z.tar.gz",
+      "size_bytes": 280,
+      "sha256": "0e390694da3d4709c96d63fc44e42b0a6fae4bb63ad5eefe709e71f5d01a9d76",
+      "created_at": "2026-10-19T16:27:40.569909+00:00",
+      "operator": "test_super_admin",
+      "compliance_remark": "Test backup for legal preservation",
+      "files_included": [
+        "audit_trail.jsonl"
+      ],
+      "verified": true
+    },
+    {
+      "filename": "audit_archive_20261019T162728Z.tar.gz",
+      "path": "logs/backups/audit_archive_20261019T162728Z.tar.gz",
+      "size_bytes": 280,
+      "sha256": "bcfaa1b08b7c6d443fbb5b5c3ea245a8722bdf0f55ea43228aac81fb40fe40de",
+      "created_at": "2026-10-19T16:27:28.146643+00:00",
+      "operator": "testuser",
+      "compliance_remark": "Triggered via test suite",
+      "files_included": [
+        "audit_trail.jsonl"
+      ],
+      "verified": true
+    },
+    {
+      "filename": "audit_archive_20261019T162728Z.tar.gz",
+      "path": "logs/backups/audit_archive_20261019T162728Z.tar.gz",
+      "size_bytes": 280,
+      "sha256": "bcfaa1b08b7c6d443fbb5b5c3ea245a8722bdf0f55ea43228aac81fb40fe40de",
+      "created_at": "2026-10-19T16:27:28.014156+00:00",
+      "operator": "test_super_admin",
+      "compliance_remark": "Test backup for legal preservation",
+      "files_included": [
+        "audit_trail.jsonl"
+      ],
+      "verified": true
+    },
+    {
+      "filename": "audit_archive_20261019T161150Z.tar.gz",
+      "path": "logs/backups/audit_archive_20261019T161150Z.tar.gz",
+      "size_bytes": 281,
+      "sha256": "03577b200a2e504adf40c04c901f15fb22a1e3b2b1c725b6e9fa46467950a619",
+      "created_at": "2026-10-19T16:11:50.015942+00:00",
+      "operator": "testuser",
+      "compliance_remark": "Triggered via test suite",
+      "files_included": [
+        "audit_trail.jsonl"
+      ],
+      "verified": true
+    },
+    {
+      "filename": "audit_archive_20261019T161149Z.tar.gz",
+      "path": "logs/backups/audit_archive_20261019T161149Z.tar.gz",
+      "size_bytes": 281,
+      "sha256": "9e0eba1ec14f3b5c376df44e5135b2a8ef6fef89f982609ca968d3df56700cd2",
+      "created_at": "2026-10-19T16:11:49.856147+00:00",
+      "operator": "test_super_admin",
+      "compliance_remark": "Test backup for legal preservation",
+      "files_included": [
+        "audit_trail.jsonl"
+      ],
+      "verified": true
+    },
+    {
+      "filename": "audit_archive_20261019T160946Z.tar.gz",
+      "path": "logs/backups/audit_archive_20261019T160946Z.tar.gz",
+      "size_bytes": 280,
+      "sha256": "86f3b2796f67ae15911b90abeecfdcdd7f27f5b95787e35ec00bf140bb5505d3",
+      "created_at": "2026-10-19T16:09:46.310907+00:00",
+      "operator": "test_super_admin",
+      "compliance_remark": "Test backup for legal preservation",
+      "files_included": [
+        "audit_trail.jsonl"
+      ],
+      "verified": true
+    },
+    {
+      "filename": "audit_archive_20261019T160737Z.tar.gz",
+      "path": "logs/backups/audit_archive_20261019T160737Z.tar.gz",
+      "size_bytes": 280,
+      "sha256": "5ffe134ecbd9002b2ee0b88e982fdc16c915f31749b2e65e07bf9df8fa79ddbf",
+      "created_at": "2026-10-19T16:07:37.654593+00:00",
+      "operator": "test_super_admin",
+      "compliance_remark": "Test backup for legal preservation",
+      "files_included": [
+        "audit_trail.jsonl"
+      ],
+      "verified": true
+    }
+  ]
+}

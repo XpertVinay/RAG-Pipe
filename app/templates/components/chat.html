@@ -2,51 +2,137 @@
 <main class="main-chat">
   <header class="chat-navbar">
     <div class="chat-nav-left">
-      <button id="mobile-sidebar-toggle" class="mobile-sidebar-toggle" title="Toggle navigation menu" aria-label="Toggle navigation menu">
+      <button id="mobile-sidebar-toggle" class="mobile-sidebar-toggle" title="Toggle navigation menu"
+        aria-label="Toggle navigation menu">
         <span class="hamburger-bar"></span>
         <span class="hamburger-bar"></span>
         <span class="hamburger-bar"></span>
       </button>
       <div class="chat-title-group">
-        <h2 id="conv-title">Document Q&amp;A Session</h2>
-        <p id="conv-subtitle">Strictly grounded answers with verifiable source attribution</p>
+        <h2 id="conv-title">Chat with Docs</h2>
+        <p id="conv-subtitle"></p>
       </div>
     </div>
 
     <div class="chat-nav-right">
-      <!-- Multi-Agent Collaborative System Button -->
-      <button id="open-agents-btn" class="btn btn-outline" style="align-items: center; gap: 5px; font-size: 0.76rem; padding: 5px 10px; background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.4); color: #818cf8;" title="Launch Multi-Agent Collaborative System (6 Autonomous Agents & MCP Tools)">
-        <span>🤖</span>
-        <span>Multi-Agent</span>
-      </button>
+      <!-- Profile Dropdown Menu (Only item on chat-navbar right) -->
+      <div class="profile-dropdown-container" id="profileDropdownContainer">
+        <button id="auth-user-btn" class="auth-user-pill profile-dropdown-trigger" type="button" aria-haspopup="true" aria-expanded="false" title="User Profile & Navigation Menu">
+          <span class="auth-avatar" id="auth-avatar-letter">👤</span>
+          <span id="auth-username-label">Sign In</span>
+          <span class="profile-dropdown-caret" aria-hidden="true">▾</span>
+        </button>
 
-      <!-- Plan & Pricing Link -->
-      <a href="/pricing" class="btn btn-outline" style="text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-size: 0.76rem; padding: 5px 10px;" title="View Plans & Pricing">
-        <span>💎</span>
-        <span>Plans &amp; Pricing</span>
-      </a>
+        <div class="profile-dropdown-menu" id="profileDropdownMenu" role="menu" aria-label="User profile and navigation options" style="display: none;">
+          <!-- Profile Card Header -->
+          <div class="profile-menu-header">
+            <div class="profile-menu-user-row">
+              <span class="auth-avatar profile-menu-avatar" id="profile-menu-avatar-letter">👤</span>
+              <div class="profile-menu-user-details">
+                <span class="profile-menu-username" id="profile-menu-username">demo_user</span>
+                <span class="profile-menu-role-badge" id="profile-menu-role">Guest</span>
+              </div>
+            </div>
+            <div class="profile-menu-email" id="profile-menu-email">Sign in to access all tools</div>
+          </div>
 
-      <!-- Admin Organization & Invites Dashboard Button -->
-      <button id="open-org-btn" class="btn btn-outline" style="display: none; align-items: center; gap: 5px; font-size: 0.76rem; padding: 5px 10px;" title="Manage Organization & Invite Users (Admin Only)">
-        <span>🏢</span>
-        <span>Team Invites</span>
-      </button>
+          <div class="profile-menu-divider"></div>
 
-      <!-- Auth User Status Pill -->
-      <button id="auth-user-btn" class="auth-user-pill" title="User Account & JWT Tokens">
-        <span class="auth-avatar" id="auth-avatar-letter">👤</span>
-        <span id="auth-username-label">Sign In</span>
-      </button>
+          <!-- 1. modle name -->
+          <div class="profile-menu-model-row" title="Active Model / Provider">
+            <span class="status-pulse" style="color: var(--status-completed);"></span>
+            <div class="profile-menu-model-info">
+              <span class="profile-menu-model-label">Model</span>
+              <span id="provider-badge" class="profile-menu-model-val">OLLAMA / QWEN2.5:3B</span>
+            </div>
+          </div>
 
-      <div class="badge-pill">
-        <span class="status-pulse" style="color: var(--status-completed);"></span>
-        <span id="provider-badge">OLLAMA / QWEN2.5:3B</span>
+          <!-- 2. pricing -->
+          <a href="/pricing" id="profile-pricing-link" class="profile-menu-item" role="menuitem" title="View Plans & Pricing">
+            <span class="profile-menu-item-icon">💎</span>
+            <div class="profile-menu-item-content">
+              <span class="profile-menu-item-title">Pricing</span>
+              <span class="profile-menu-item-desc">Plans, tiers &amp; compute limits</span>
+            </div>
+          </a>
+
+          <!-- 3. Invites -->
+          <button id="open-org-btn" class="profile-menu-item" style="display: none;" role="menuitem"
+            title="Manage Organization & Invite Users (Admin Only)">
+            <span class="profile-menu-item-icon">🏢</span>
+            <div class="profile-menu-item-content">
+              <span class="profile-menu-item-title">Invites</span>
+              <span class="profile-menu-item-desc">Teams, seats &amp; invitations</span>
+            </div>
+            <span class="profile-menu-badge admin-badge">Admin</span>
+          </button>
+
+          <!-- Multi-Agent & Audit (Super Admin / Admin items preserved in menu) -->
+          <button id="open-agents-btn" class="profile-menu-item nav-agents-btn"
+            title="Launch Multi-Agent Collaborative System (Super Admin Only)" style="display: none;" role="menuitem">
+            <span class="profile-menu-item-icon">🤖</span>
+            <div class="profile-menu-item-content">
+              <span class="profile-menu-item-title">Multi-Agent</span>
+              <span class="profile-menu-item-desc">Collaborative agents</span>
+            </div>
+            <span class="profile-menu-badge superadmin-badge">Super Admin</span>
+          </button>
+
+          <button id="open-audit-risk-btn" class="profile-menu-item"
+            title="Business Risk Telemetry & Legal Audit Compliance (Admin Only)" style="display: none;" role="menuitem">
+            <span class="profile-menu-item-icon">🛡️</span>
+            <div class="profile-menu-item-content">
+              <span class="profile-menu-item-title">Audit &amp; Risk</span>
+              <span class="profile-menu-item-desc">Compliance telemetry</span>
+            </div>
+            <span class="profile-menu-badge admin-badge">Admin</span>
+          </button>
+
+          <!-- 4. theme -->
+          <div class="profile-menu-theme-block">
+            <div class="profile-menu-theme-head">
+              <span class="profile-menu-item-icon">🎨</span>
+              <span class="profile-menu-item-title">Theme</span>
+              <span class="profile-theme-current" id="profile-current-theme-name">System</span>
+            </div>
+            <div class="profile-theme-options-grid" role="group" aria-label="Select color theme">
+              <button type="button" class="profile-theme-btn active" data-theme-choice="system" title="System Auto OS Sync">💻 Auto</button>
+              <button type="button" class="profile-theme-btn" data-theme-choice="dark" title="Midnight Obsidian">🌌 Dark</button>
+              <button type="button" class="profile-theme-btn" data-theme-choice="cyber" title="Cyber Neon">⚡ Cyber</button>
+              <button type="button" class="profile-theme-btn" data-theme-choice="sunset" title="Sunset Solar">🌅 Sunset</button>
+              <button type="button" class="profile-theme-btn" data-theme-choice="light" title="Arctic Clarity">☀️ Light</button>
+            </div>
+          </div>
+
+          <!-- 5. settings -->
+          <button id="open-settings-btn" class="profile-menu-item" type="button" role="menuitem" title="Model & Retrieval Configuration">
+            <span class="profile-menu-item-icon">⚙️</span>
+            <div class="profile-menu-item-content">
+              <span class="profile-menu-item-title">Settings</span>
+              <span class="profile-menu-item-desc">Model &amp; retrieval parameters</span>
+            </div>
+          </button>
+
+          <div class="profile-menu-divider"></div>
+
+          <!-- User Account & JWT Tokens Trigger -->
+          <button id="profile-menu-tokens-btn" class="profile-menu-item" role="menuitem" title="User Account, Tokens & JWT Claims">
+            <span class="profile-menu-item-icon">🔑</span>
+            <div class="profile-menu-item-content">
+              <span class="profile-menu-item-title">Account &amp; Tokens</span>
+              <span class="profile-menu-item-desc">Inspect JWT claims &amp; credentials</span>
+            </div>
+          </button>
+
+          <!-- Sign Out or Sign In action -->
+          <button id="profile-menu-logout-btn" class="profile-menu-item profile-menu-item-danger" role="menuitem" title="Sign out of your session">
+            <span class="profile-menu-item-icon" id="profile-menu-logout-icon">🚪</span>
+            <div class="profile-menu-item-content">
+              <span class="profile-menu-item-title" id="profile-menu-logout-label">Sign Out</span>
+            </div>
+          </button>
+        </div>
       </div>
-
-      <button id="open-settings-btn" class="btn btn-outline" title="Model & Retrieval Configuration">
-        <span class="settings-btn-icon">⚙️</span>
-        <span class="settings-btn-text">Settings</span>
-      </button>
     </div>
   </header>
 
@@ -54,27 +140,89 @@
   <div id="room-context-banner" class="room-context-banner">
     <div class="room-banner-top">
       <div class="room-banner-left">
-        <span class="room-banner-name">
-          <span>🏠</span>
-          <span id="banner-room-name">General Workspace</span>
-          <span id="banner-room-privacy" class="badge-pill" style="font-size: 0.65rem; background: rgba(107, 114, 128, 0.15); color: #9ca3af; padding: 2px 6px;">🔒 Private</span>
-        </span>
+        <!-- Room Name Dropdown (Room Name v) -->
+        <div class="room-dropdown-container" id="roomDropdownContainer">
+          <button id="room-dropdown-btn" class="room-dropdown-trigger" type="button" aria-haspopup="true" aria-expanded="false" title="Room Actions & Context">
+            <span>🏠</span>
+            <span id="banner-room-name">General Workspace</span>
+            <span id="banner-room-privacy" class="badge-pill room-privacy-badge"
+              style="font-size: 0.65rem; background: rgba(107, 114, 128, 0.15); color: #9ca3af; padding: 2px 6px;">🔒 Private</span>
+            <span class="room-dropdown-caret" aria-hidden="true">▾</span>
+          </button>
+
+          <div class="room-dropdown-menu" id="roomDropdownMenu" role="menu" aria-label="Room actions and tools" style="display: none;">
+            <div class="room-dropdown-header">Room Actions</div>
+
+            <!-- 1. memory eval -->
+            <button id="compact-memory-eval-btn" class="room-menu-item" type="button" role="menuitem"
+              title="Quick evaluation of compact short-term and long-term memory for this room">
+              <span class="room-menu-icon">🧠</span>
+              <div class="room-menu-text">
+                <span class="room-menu-title">Memory Eval</span>
+                <span class="room-menu-desc">Evaluate short &amp; long-term memory</span>
+              </div>
+            </button>
+
+            <!-- 2. DB References -->
+            <button id="toggle-references-btn" class="room-menu-item ref-toggle-btn" type="button" role="menuitem"
+              title="View key references loaded from database">
+              <span class="room-menu-icon">📚</span>
+              <div class="room-menu-text">
+                <span class="room-menu-title">DB References</span>
+                <span class="room-menu-desc">Loaded database citations</span>
+              </div>
+              <span id="ref-count-badge" class="room-menu-badge">0</span>
+            </button>
+
+            <div class="room-menu-divider"></div>
+
+            <!-- + Project Workspace Inside Room -->
+            <button id="add-project-banner-btn" class="room-menu-item" type="button" role="menuitem"
+              title="Create a project workspace inside this room">
+              <span class="room-menu-icon">📁</span>
+              <div class="room-menu-text">
+                <span class="room-menu-title">+ Project</span>
+                <span class="room-menu-desc">Create workspace inside room</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
         <div id="banner-room-files" class="room-files-pills">
           <!-- Attached document pills injected via JavaScript -->
         </div>
       </div>
+
+      <!-- Add Files and Share (Only two buttons displayed on the right) -->
       <div class="room-banner-right">
-        <button id="toggle-references-btn" class="ref-toggle-btn" title="View key references loaded from database">
-          <span>📚</span>
-          <span>Database References</span>
-          <span id="ref-count-badge" style="background: rgba(255,255,255,0.15); padding: 1px 5px; border-radius: 4px; font-size: 0.68rem;">0</span>
+        <button id="attach-file-room-btn" class="btn btn-outline" style="font-size: 0.74rem; padding: 4px 10px;"
+          title="Upload or link files to this room">
+          <span>+</span>
+          <span>Add Files</span>
         </button>
-        <button id="attach-file-room-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 8px;" title="Upload or link files to this room">
-          + Add Files
+        <button id="share-room-btn" class="btn btn-outline" style="font-size: 0.74rem; padding: 4px 10px;"
+          title="Workspace Sharing, Revoke Link & PII Breach Protection">
+          <span>👥</span>
+          <span>Share</span>
         </button>
-        <button id="share-room-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 8px;" title="Workspace Sharing & Members Access (RBAC)">
-          👥 Share
-        </button>
+      </div>
+    </div>
+
+    <!-- Room Workspace Hierarchy & Value Filter Bar -->
+    <div class="room-hierarchy-bar" style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.73rem;">
+      <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary); flex-wrap: wrap;">
+        <span style="font-weight: 500;">Room</span>
+        <span style="opacity: 0.4;">&gt;</span>
+        <div class="room-filter-group" style="display: inline-flex; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px;">
+          <button type="button" class="room-view-filter-btn active" data-filter="all" style="border: none; background: var(--bg-secondary); padding: 2px 8px; font-size: 0.7rem; color: var(--text-primary); cursor: pointer; border-radius: 3px; font-weight: 500;">All Items</button>
+          <button type="button" class="room-view-filter-btn" data-filter="projects" style="border: none; background: transparent; padding: 2px 8px; font-size: 0.7rem; color: var(--text-muted); cursor: pointer; border-radius: 3px;">Projects</button>
+          <button type="button" class="room-view-filter-btn" data-filter="chats" style="border: none; background: transparent; padding: 2px 8px; font-size: 0.7rem; color: var(--text-muted); cursor: pointer; border-radius: 3px;">Chats</button>
+        </div>
+      </div>
+      <div id="room-active-project-pill" style="display: none; align-items: center; gap: 4px; background: rgba(99, 102, 241, 0.15); color: #818cf8; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem;">
+        <span>📁 Scoped Project:</span>
+        <strong id="active-project-name">Project</strong>
+        <span style="cursor: pointer; opacity: 0.7; margin-left: 4px;" onclick="window.clearActiveProjectScope?.()">×</span>
       </div>
     </div>
 
@@ -82,7 +230,8 @@
     <div id="room-references-drawer" class="room-references-drawer" style="display: none;">
       <div class="ref-drawer-header">
         <span>KEY DATABASE REFERENCES &amp; CHUNKS (Persistent Context)</span>
-        <span style="font-weight: normal; font-size: 0.7rem; color: var(--text-muted);">Quickly resume chatting about these topics</span>
+        <span style="font-weight: normal; font-size: 0.7rem; color: var(--text-muted);">Quickly resume chatting about
+          these topics</span>
       </div>
       <div id="ref-cards-grid" class="ref-cards-grid">
         <!-- Reference cards injected here -->
@@ -92,19 +241,204 @@
 
   <!-- Chat Messages Stream Container -->
   <div id="messages-container" class="messages-container">
-    <!-- Injected via JavaScript -->
+    <div class="welcome-screen">
+      <!-- Hero / Application Objective -->
+      <div class="welcome-screen-hero">
+        <div class="welcome-pill-badge">
+          <span>✨</span>
+          <span>Enterprise RAG &amp; Grounded Multi-Tenant Intelligence</span>
+        </div>
+        <h3 id="welcome-title">RAG Agent — Verifiable Document Intelligence</h3>
+        <p class="welcome-lead">
+          Ingest, index, and query complex enterprise files (PDF, DOCX, CSV, TXT, Markdown, and Code) with zero hallucinations.
+          Powered by stateful LangGraph agent orchestration, hybrid vector retrieval, and verifiable citations pinned to source database chunks.
+        </p>
+
+        <!-- Objective Feature Matrix & Priority Messages -->
+        <div class="priority-messages-header mobile-only">
+          <span class="priority-messages-title">Priority Architecture Directives</span>
+          <span class="mobile-scroll-hint">Swipe ⟷</span>
+        </div>
+        <div class="objective-matrix horizontal-scrollable-track">
+          <div class="objective-item">
+            <span class="objective-icon">🎯</span>
+            <h4>Zero Hallucinations</h4>
+            <p>Strictly grounded in validated document chunks with verifiable citation badges.</p>
+          </div>
+          <div class="objective-item">
+            <span class="objective-icon">⚡</span>
+            <h4>LangGraph Agent</h4>
+            <p>Stateful multi-turn reasoning, dynamic query decomposition, and autonomous tools.</p>
+          </div>
+          <div class="objective-item">
+            <span class="objective-icon">🏢</span>
+            <h4>Isolated Workspaces</h4>
+            <p>Role-based access control (RBAC), room multi-tenancy, and persistent context.</p>
+          </div>
+          <div class="objective-item">
+            <span class="objective-icon">🔒</span>
+            <h4>Enterprise Privacy</h4>
+            <p>AES-256 encrypted vector embeddings at rest and TLS 1.3 streaming security.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Curated Industry Intelligence & Top News Header -->
+      <div class="intel-news-header">
+        <div class="intel-news-header-left">
+          <span>📰</span>
+          <h4>Industry Briefing: AI Breakthroughs, PropTech Markets &amp; Security Defense</h4>
+        </div>
+        <div class="intel-live-indicator">
+          <span>Live Briefing Feed</span>
+          <span class="mobile-scroll-hint">Swipe ⟷</span>
+        </div>
+      </div>
+
+      <!-- 3-Column News & Intelligence Grid -->
+      <div class="intel-cards-grid horizontal-scrollable-track">
+        <!-- Card 1: AI (Artificial Intelligence) -->
+        <div class="intel-card card-ai">
+          <span class="intel-card-badge badge-ai">🤖 AI &amp; Autonomous Agents</span>
+          <h5 class="intel-card-title">Autonomous Agentic RAG &amp; Reasoning Models</h5>
+          <p class="intel-card-headline">
+            Enterprise workflows are transitioning from static vector similarity searches to multi-agent LangGraph architectures that autonomously verify citations and self-correct.
+          </p>
+          <div class="intel-news-item">
+            <strong>Multimodal Ingestion:</strong> Frontier reasoning models extract tables, balance sheets, and schematics directly from scanned documents with high layout fidelity.
+          </div>
+          <div class="intel-news-item">
+            <strong>Hallucination Defense:</strong> Recursive citation cross-referencing reduces factual drift to under 2% across enterprise benchmarks.
+          </div>
+          <div class="intel-card-action">
+            <button class="intel-prompt-btn" type="button" onclick="window.usePrompt('Explain how autonomous agentic RAG and LangGraph workflows eliminate hallucinations compared to standard vector search.')">
+              <span>Ask: "How does agentic RAG eliminate hallucinations?"</span>
+              <span class="arrow">➤</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 2: Real Estate & PropTech -->
+        <div class="intel-card card-realestate">
+          <span class="intel-card-badge badge-realestate">🏙️ Real Estate &amp; PropTech</span>
+          <h5 class="intel-card-title">Predictive Underwriting &amp; Automated Lease Audits</h5>
+          <p class="intel-card-headline">
+            Commercial real estate firms are accelerating deal velocity by using AI agents to parse 200+ page lease agreements, rent rolls, and zoning covenants in seconds.
+          </p>
+          <div class="intel-news-item">
+            <strong>Automated Valuation:</strong> Spatial telemetry and predictive underwriting models streamline title review and cap-rate sensitivity stress testing.
+          </div>
+          <div class="intel-news-item">
+            <strong>ESG &amp; Carbon Audits:</strong> Institutional landlords deploy IoT telemetry agents to satisfy mandatory corporate climate disclosures and building energy ratings.
+          </div>
+          <div class="intel-card-action">
+            <button class="intel-prompt-btn" type="button" onclick="window.usePrompt('What are the key legal, financial, and environmental risks to audit in commercial real estate lease agreements?')">
+              <span>Ask: "Audit commercial real estate lease risks"</span>
+              <span class="arrow">➤</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 3: Security & How to Become Safe and Secure -->
+        <div class="intel-card card-security">
+          <span class="intel-card-badge badge-security">🛡️ Security &amp; Defense</span>
+          <h5 class="intel-card-title">Securing Vector Stores &amp; Prompt Injections</h5>
+          <p class="intel-card-headline">
+            OWASP Top 10 for LLMs identifies indirect prompt injection, vector data poisoning, and unauthorized retrieval leakage as paramount threats to enterprise generative AI.
+          </p>
+
+          <!-- How to Become Safe and Secure Actionable Guide -->
+          <div class="security-guide-box">
+            <div class="security-guide-title">
+              <span>🔒</span>
+              <span>How to Become Safe &amp; Secure</span>
+            </div>
+            <ul class="security-steps-list">
+              <li>
+                <span class="security-step-bullet">1.</span>
+                <span><strong>Passkeys &amp; MFA:</strong> Mandate hardware FIDO2 or authenticator apps; eliminate SMS OTPs to block credential phishing.</span>
+              </li>
+              <li>
+                <span class="security-step-bullet">2.</span>
+                <span><strong>Zero-Trust &amp; RBAC:</strong> Segment workspace rooms so sensitive documents are never indexed into general pools.</span>
+              </li>
+              <li>
+                <span class="security-step-bullet">3.</span>
+                <span><strong>Encryption at Rest &amp; Transit:</strong> Enforce AES-256 for vector embeddings and TLS 1.3 for all streaming SSE channels.</span>
+              </li>
+              <li>
+                <span class="security-step-bullet">4.</span>
+                <span><strong>Prompt Injection Guardrails:</strong> Sanitize all retrieval inputs and scrub PII or secrets before LLM synthesis.</span>
+              </li>
+              <li>
+                <span class="security-step-bullet">5.</span>
+                <span><strong>Immutable Backups &amp; Audit Logs:</strong> Maintain tamper-proof revision trails and rotate API keys regularly.</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="intel-card-action">
+            <button class="intel-prompt-btn" type="button" onclick="window.usePrompt('Provide an actionable enterprise security checklist to safeguard our RAG pipelines against prompt injections and data leaks.')">
+              <span>Ask: "Security checklist for safe RAG pipelines"</span>
+              <span class="arrow">➤</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Prompts Tray -->
+      <div class="quick-prompts">
+        <div style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 4px;">
+          ⚡ Quick Starters — Click any prompt to query active room documents:
+        </div>
+        <div class="quick-prompts-tray">
+          <button class="quick-prompt-btn" type="button" onclick="window.usePrompt('Summarize the key concepts and points from the uploaded documents in this room.')">
+            <span>✨</span>
+            <span>"Summarize key concepts from active documents"</span>
+          </button>
+          <button class="quick-prompt-btn" type="button" onclick="window.usePrompt('What are the main topics and important references covered in these files?')">
+            <span>🔍</span>
+            <span>"Identify main topics and key database references"</span>
+          </button>
+          <button class="quick-prompt-btn" type="button" onclick="window.usePrompt('What security controls and compliance practices are required to protect our enterprise data?')">
+            <span>🛡️</span>
+            <span>"Audit data security &amp; zero-trust guidelines"</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <!-- Floating Scroll To Bottom Button -->
+  <button id="scroll-bottom-btn" class="scroll-bottom-btn" type="button" title="Jump to latest message" aria-label="Scroll to bottom">
+    <span class="scroll-bottom-icon">↓</span>
+    <span class="scroll-bottom-text">Latest</span>
+    <span id="scroll-bottom-pulse" class="scroll-bottom-pulse" style="display: none;"></span>
+  </button>
 
   <!-- Bottom Chat Input Bar -->
   <footer class="chat-input-area">
+    <!-- Real-Time Document Queue & Processing Readiness Banner -->
+    <div id="doc-queue-banner" class="doc-queue-banner" style="display: none;">
+      <div class="doc-queue-inner">
+        <div class="doc-queue-left">
+          <span class="doc-queue-spinner"></span>
+          <span class="doc-queue-badge">🐰 RabbitMQ Queue</span>
+          <span id="doc-queue-title-text" class="doc-queue-title-text">Documents processing in background queue...</span>
+        </div>
+        <div class="doc-queue-right">
+          <span id="doc-queue-status-detail" class="doc-queue-status-detail">LLM prompts will unlock once indexing is ready</span>
+          <button id="doc-queue-refresh-btn" type="button" class="doc-queue-refresh-btn" title="Refresh queue & document readiness">
+            🔄 Check
+          </button>
+        </div>
+      </div>
+    </div>
+
     <form id="chat-form" novalidate>
       <div class="input-box-container">
-        <textarea
-          id="chat-input"
-          class="chat-textarea"
-          placeholder="Ask a question about the active workspace documents..."
-          rows="1"
-        ></textarea>
+        <textarea id="chat-input" class="chat-textarea"
+          placeholder="Ask a question about the active workspace documents..." rows="1"></textarea>
         <button id="send-btn" type="submit" formnovalidate class="send-btn" title="Send Question (Enter)">
           ➤
         </button>
@@ -115,5 +449,33 @@
         <span>Context persistent across page refresh • Verified citations</span>
       </div>
     </form>
+
+    <!-- Legal & Compliance Links Footer below Chat Input -->
+    <div class="chat-legal-footer"
+      style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.68rem; color: var(--text-muted); flex-wrap: wrap;">
+      <span style="display: inline-flex; align-items: center; gap: 4px; color: #94a3b8;">
+        <span>🛡️</span>
+        <span>Compliance:</span>
+      </span>
+      <a href="/privacy" target="_blank"
+        style="color: var(--text-muted); text-decoration: none; transition: color 0.15s ease;"
+        onmouseover="this.style.color='#a5b4fc'" onmouseout="this.style.color='var(--text-muted)'">Privacy</a>
+      <span style="opacity: 0.4;">•</span>
+      <a href="/terms" target="_blank"
+        style="color: var(--text-muted); text-decoration: none; transition: color 0.15s ease;"
+        onmouseover="this.style.color='#a5b4fc'" onmouseout="this.style.color='var(--text-muted)'">Terms of Service</a>
+      <span style="opacity: 0.4;">•</span>
+      <a href="/refund" target="_blank"
+        style="color: var(--text-muted); text-decoration: none; transition: color 0.15s ease;"
+        onmouseover="this.style.color='#a5b4fc'" onmouseout="this.style.color='var(--text-muted)'">Refund Policy</a>
+      <span style="opacity: 0.4;">•</span>
+      <a href="/ai-policy" target="_blank"
+        style="color: var(--text-muted); text-decoration: none; transition: color 0.15s ease;"
+        onmouseover="this.style.color='#a5b4fc'" onmouseout="this.style.color='var(--text-muted)'">AI &amp; Agent
+        Policy</a>
+      <span style="opacity: 0.4;">•</span>
+      <a href="/legal" target="_blank" style="color: #818cf8; text-decoration: none; font-weight: 500;"
+        onmouseover="this.style.color='#c7d2fe'" onmouseout="this.style.color='#818cf8'">Legal Center ↗</a>
+    </div>
   </footer>
 </main>

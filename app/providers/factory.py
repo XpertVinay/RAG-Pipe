@@ -66,12 +66,26 @@ class ModelFactory:
             )
 
         logger.info(f"Instantiating chat model with provider='{name}', model='{model_name or 'default'}'")
-        return provider.get_chat_model(
+        chat_model = provider.get_chat_model(
             model_name=model_name,
             temperature=temperature,
             streaming=streaming,
             **kwargs,
         )
+
+        if settings.is_llm_logging_enabled:
+            from app.core.llm_logging import get_llm_logging_callback_handler
+            handler = get_llm_logging_callback_handler(provider=name, model=model_name)
+            current_callbacks = getattr(chat_model, "callbacks", None)
+            if current_callbacks is None:
+                chat_model.callbacks = [handler]
+            elif isinstance(current_callbacks, list):
+                if handler not in current_callbacks:
+                    chat_model.callbacks.append(handler)
+            elif hasattr(current_callbacks, "add_handler"):
+                current_callbacks.add_handler(handler)
+
+        return chat_model
 
     _cached_embeddings: Dict[str, Embeddings] = {}
 

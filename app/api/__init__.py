@@ -16,6 +16,8 @@ from app.api.organizations import router as organizations_router
 from app.api.pricing import router as pricing_router
 from app.api.agents import router as agents_router
 from app.api.mcp import router as mcp_router
+from app.api.audit import router as audit_router
+from app.api.projects import router as projects_router, projects_direct_router
 
 settings = get_settings()
 
@@ -28,6 +30,8 @@ api_router.include_router(v1_router)
 # Ensures 100% backward compatibility for existing frontend clients and test suites.
 api_router.include_router(auth_router, include_in_schema=False)
 api_router.include_router(rooms_router, include_in_schema=False)
+api_router.include_router(projects_router, include_in_schema=False)
+api_router.include_router(projects_direct_router, include_in_schema=False)
 api_router.include_router(documents_router, include_in_schema=False)
 api_router.include_router(chat_router, include_in_schema=False)
 api_router.include_router(memory_router, include_in_schema=False)
@@ -37,6 +41,7 @@ api_router.include_router(organizations_router, include_in_schema=False)
 api_router.include_router(pricing_router, include_in_schema=False)
 api_router.include_router(agents_router, include_in_schema=False)
 api_router.include_router(mcp_router, include_in_schema=False)
+api_router.include_router(audit_router, include_in_schema=False)
 
 
 @api_router.get("/version", tags=["version"], summary="API Version Discovery Endpoint")

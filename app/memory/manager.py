@@ -41,6 +41,7 @@ class MemoryManager:
         content: str,
         user_id: Optional[str] = None,
         room_id: Optional[str] = None,
+        project_id: Optional[str] = None,
         document_id: Optional[str] = None,
         document_hash: Optional[str] = None,
         ttl_seconds: Optional[int] = None,
@@ -83,6 +84,7 @@ class MemoryManager:
                 existing.memory_type = memory_type
                 existing.importance = importance
                 existing.room_id = room_id or existing.room_id
+                existing.project_id = project_id or existing.project_id
                 existing.document_id = document_id or existing.document_id
                 existing.document_hash = document_hash or existing.document_hash
                 existing.metadata_payload = meta
@@ -99,6 +101,7 @@ class MemoryManager:
                     importance=importance,
                     user_id=user_id,
                     room_id=room_id,
+                    project_id=project_id,
                     document_id=document_id,
                     document_hash=document_hash,
                     metadata_payload=meta,
@@ -276,6 +279,7 @@ class MemoryManager:
         conversation_id: str,
         query: str,
         answer: str,
+        project_id: Optional[str] = None,
         db: Optional[AsyncSession] = None,
     ) -> None:
         """Automatically distill and persist Short-Term and Long-Term memory for the user's chat."""
@@ -286,6 +290,7 @@ class MemoryManager:
             conversation_id=conversation_id,
             query=query,
             answer=answer,
+            project_id=project_id,
             db=db,
         )
 

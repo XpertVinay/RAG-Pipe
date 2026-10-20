@@ -1,0 +1,73 @@
+<!-- Theme Controller Dropdown with Vibrant Multi-Theme Presets -->
+<div class="theme-dropdown-container" id="themeDropdownContainer" style="position: relative; display: inline-flex; align-items: center; z-index: 100;">
+  <button type="button" class="theme-toggle-btn" aria-haspopup="true" aria-expanded="false" title="Change color theme & contrast">
+    <span class="theme-current-icon" aria-hidden="true">💻</span>
+    <span class="theme-current-label">System</span>
+    <span class="theme-caret" aria-hidden="true">▾</span>
+  </button>
+  <div class="theme-menu" role="menu" aria-label="Select color theme" style="min-width: 250px; width: 250px; z-index: 1000;">
+    <div class="theme-menu-header">THEME &amp; CONTRAST</div>
+
+    <!-- 1. System -->
+    <button type="button" class="theme-option active" data-theme-choice="system" role="menuitemradio" aria-selected="true">
+      <span class="theme-option-icon">💻</span>
+      <div class="theme-option-text">
+        <span class="theme-option-title">System (Default)</span>
+        <span class="theme-option-desc">Auto-syncs with device OS</span>
+      </div>
+      <span class="theme-option-check">✓</span>
+    </button>
+
+    <!-- 2. Midnight Dark -->
+    <button type="button" class="theme-option" data-theme-choice="dark" role="menuitemradio" aria-selected="false">
+      <span class="theme-option-icon">🌌</span>
+      <div class="theme-option-text">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="theme-option-title">Midnight Obsidian</span>
+          <span class="theme-swatch" style="background: linear-gradient(135deg, #6366f1, #a855f7);"></span>
+        </div>
+        <span class="theme-option-desc">Deep slate, indigo &amp; violet</span>
+      </div>
+      <span class="theme-option-check">✓</span>
+    </button>
+
+    <!-- 3. Cyberpunk Neon -->
+    <button type="button" class="theme-option" data-theme-choice="cyber" role="menuitemradio" aria-selected="false">
+      <span class="theme-option-icon">⚡</span>
+      <div class="theme-option-text">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="theme-option-title">Cyber Neon</span>
+          <span class="theme-swatch" style="background: linear-gradient(135deg, #06b6d4, #10b981);"></span>
+        </div>
+        <span class="theme-option-desc">OLED carbon, electric cyan &amp; emerald</span>
+      </div>
+      <span class="theme-option-check">✓</span>
+    </button>
+
+    <!-- 4. Sunset Amber -->
+    <button type="button" class="theme-option" data-theme-choice="sunset" role="menuitemradio" aria-selected="false">
+      <span class="theme-option-icon">🌅</span>
+      <div class="theme-option-text">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="theme-option-title">Sunset Solar</span>
+          <span class="theme-swatch" style="background: linear-gradient(135deg, #f43f5e, #f59e0b);"></span>
+        </div>
+        <span class="theme-option-desc">Cosmic nebula, rose &amp; gold</span>
+      </div>
+      <span class="theme-option-check">✓</span>
+    </button>
+
+    <!-- 5. Arctic Light -->
+    <button type="button" class="theme-option" data-theme-choice="light" role="menuitemradio" aria-selected="false">
+      <span class="theme-option-icon">☀️</span>
+      <div class="theme-option-text">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="theme-option-title">Arctic Clarity</span>
+          <span class="theme-swatch" style="background: linear-gradient(135deg, #2563eb, #4f46e5);"></span>
+        </div>
+        <span class="theme-option-desc">Crisp daylight, high-contrast text</span>
+      </div>
+      <span class="theme-option-check">✓</span>
+    </button>
+  </div>
+</div>

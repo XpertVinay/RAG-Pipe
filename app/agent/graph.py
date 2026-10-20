@@ -19,8 +19,8 @@ settings = get_settings()
 
 
 def route_after_validation(state: AgentState) -> Literal["generate", "retrieve"]:
-    """Route after validating query and loading memory: skip retrieval for greetings."""
-    if state.get("intent") in ["greeting", "invalid"]:
+    """Route after validating query and loading memory: skip retrieval for greetings or safety guardrails."""
+    if state.get("intent") in ["greeting", "invalid", "guardrail_blocked", "app_creation"]:
         return "generate"
     return "retrieve"
 

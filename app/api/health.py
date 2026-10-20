@@ -53,6 +53,18 @@ async def check_system_health(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         components["providers"] = ServiceHealth(status="degraded", message=str(e))
 
+    # 4. RabbitMQ Queue check
+    try:
+        from app.services.queue_service import queue_service
+        q_health = await queue_service.check_health()
+        components["queue"] = ServiceHealth(
+            status=q_health.get("status", "unknown"),
+            message=q_health.get("message", "RabbitMQ status"),
+            details=q_health,
+        )
+    except Exception as e:
+        components["queue"] = ServiceHealth(status="degraded", message=str(e))
+
     return SystemHealthResponse(
         status=overall_status,
         version="1.0.0",

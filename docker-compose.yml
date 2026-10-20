@@ -9,13 +9,16 @@ services:
       - "${PORT:-8000}:8000"
     environment:
       - APP_NAME=Production RAG Agent
-      - APP_ENV=production
-      - DEBUG=false
+      - APP_ENV=${APP_ENV:-development}
+      - DEBUG=${DEBUG:-true}
       - HOST=0.0.0.0
       - PORT=8000
       - SECRET_KEY=${SECRET_KEY:-15089b6839ce0958a73278a07df19be61de00d05fb3855878ad8bd6426426332}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
-      - DATABASE_URL=sqlite+aiosqlite:///./data/sqlite.db
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-rag_agent}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-rag_agent}
       - DEFAULT_CHAT_PROVIDER=${DEFAULT_CHAT_PROVIDER:-ollama}
       - DEFAULT_CHAT_MODEL=${DEFAULT_CHAT_MODEL:-qwen2.5:3b}
       - DEFAULT_EMBEDDING_PROVIDER=${DEFAULT_EMBEDDING_PROVIDER:-ollama}
@@ -28,6 +31,19 @@ services:
       - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2:-false}
       - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
       - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT:-rag-agent-production}
+      - ENABLE_LLM_LOGGING=${ENABLE_LLM_LOGGING:-true}
+      - LLM_LOG_ENVIRONMENTS=${LLM_LOG_ENVIRONMENTS:-local,development,dev,stage,staging,test}
+      - LLM_LOG_MAX_CHARS=${LLM_LOG_MAX_CHARS:-10000}
+      - LLM_LOG_FORMAT=${LLM_LOG_FORMAT:-text}
+      - RABBITMQ_ENABLED=true
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-rag_admin}:${RABBITMQ_PASSWORD:-rag_secret_pass}@rabbitmq:5672/
+      - RABBITMQ_QUEUE_NAME=document_processing_queue
+      - RABBITMQ_EMBEDDED_WORKER=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -35,28 +51,112 @@ services:
       - ./app:/app/app
     networks:
       - rag_network
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: rag-ollama
-  #   restart: unless-stopped
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama_models:/root/.ollama
-  #   networks:
-  #     - rag_network
-  #   healthcheck:
-  #     test: [ "CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1" ]
-  #     interval: 15s
-  #     timeout: 5s
-  #     retries: 5
-  #     start_period: 10s
+
+  # Dedicated Scalable Document Processing Worker (scale with --scale rag-worker=N)
+  rag-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-worker
+    restart: unless-stopped
+    command: python scripts/rabbitmq_worker.py
+    environment:
+      - APP_NAME=RAG Document Worker
+      - APP_ENV=${APP_ENV:-development}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-rag_agent}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-rag_agent}
+      - DEFAULT_CHAT_PROVIDER=${DEFAULT_CHAT_PROVIDER:-ollama}
+      - DEFAULT_EMBEDDING_PROVIDER=${DEFAULT_EMBEDDING_PROVIDER:-ollama}
+      - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-nomic-embed-text}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - RABBITMQ_ENABLED=true
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-rag_admin}:${RABBITMQ_PASSWORD:-rag_secret_pass}@rabbitmq:5672/
+      - RABBITMQ_QUEUE_NAME=document_processing_queue
+      - RABBITMQ_PREFETCH_COUNT=2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - rag_data:/app/data
+      - ./app:/app/app
+      - ./scripts:/app/scripts
+    networks:
+      - rag_network
+
+  # High-Performance PostgreSQL Database with pgvector Extension
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: rag-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-rag_agent}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      rag_network:
+        aliases:
+          - postgres
+          - db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-rag_agent} || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # High-Traffic RabbitMQ Message Broker & Management Console
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rag-rabbitmq
+    hostname: rabbitmq
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-rag_admin}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-rag_secret_pass}
+      - RABBITMQ_DEFAULT_VHOST=${RABBITMQ_DEFAULT_VHOST:-/}
+      - RABBITMQ_NODENAME=rabbit@rabbitmq
+      - RABBITMQ_LOGS=-
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      rag_network:
+        aliases:
+          - rabbitmq
+          - rag-rabbitmq
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
 
 volumes:
   rag_data:
     name: rag_agent_data
-  # ollama_models:
-  #   name: rag_ollama_models
+  postgres_data:
+    name: rag_postgres_data
+  rabbitmq_data:
+    name: rag_rabbitmq_data
 
 networks:
   rag_network:

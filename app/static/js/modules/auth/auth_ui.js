@@ -20,28 +20,93 @@
     const logoutBtn = document.getElementById('logout-btn');
     const openOrgBtn = document.getElementById('open-org-btn');
 
+    // Profile Dropdown Elements
+    const profileMenuUsername = document.getElementById('profile-menu-username');
+    const profileMenuEmail = document.getElementById('profile-menu-email');
+    const profileMenuAvatar = document.getElementById('profile-menu-avatar-letter');
+    const profileMenuRole = document.getElementById('profile-menu-role');
+    const profileMenuLogoutLabel = document.getElementById('profile-menu-logout-label');
+    const profileMenuLogoutIcon = document.getElementById('profile-menu-logout-icon');
+    const profileMenuLogoutBtn = document.getElementById('profile-menu-logout-btn');
+
+    const isSuperAdmin = Boolean(
+      user && accessToken && (user.role === 'super_admin' || user.role === 'superadmin' || user.role === 'super-admin')
+    );
+    const isAdminOrStaff = Boolean(
+      user && accessToken && (user.role === 'admin' || user.role === 'staff' || user.role === 'staffs' || isSuperAdmin)
+    );
+
+    let roleText = 'Guest';
+    let roleClass = 'member-badge';
+    if (isSuperAdmin) {
+      roleText = 'Super Admin';
+      roleClass = 'superadmin-badge';
+    } else if (user?.role === 'admin') {
+      roleText = 'Admin';
+      roleClass = 'admin-badge';
+    } else if (user?.role === 'staff' || user?.role === 'staffs') {
+      roleText = 'Staff';
+      roleClass = 'admin-badge';
+    } else if (user && accessToken) {
+      roleText = 'Member';
+      roleClass = 'member-badge';
+    }
+
     if (user && accessToken) {
-      if (authUsernameLabel) authUsernameLabel.textContent = user.username || user.email;
-      if (authAvatarLetter) authAvatarLetter.textContent = (user.username || user.email)[0].toUpperCase();
-      if (authUserBtn) authUserBtn.title = `Signed in as ${user.email} (${user.role})`;
+      const displayName = user.username || user.email;
+      const initial = displayName ? displayName[0].toUpperCase() : '👤';
+      if (authUsernameLabel) authUsernameLabel.textContent = displayName;
+      if (authAvatarLetter) authAvatarLetter.textContent = initial;
+      if (authUserBtn) authUserBtn.title = `Signed in as ${user.email} (${user.role}) • Click for options`;
       if (logoutBtn) logoutBtn.style.display = 'inline-block';
+
+      if (profileMenuUsername) profileMenuUsername.textContent = displayName;
+      if (profileMenuEmail) profileMenuEmail.textContent = user.email || displayName;
+      if (profileMenuAvatar) profileMenuAvatar.textContent = initial;
+      if (profileMenuRole) {
+        profileMenuRole.textContent = roleText;
+        profileMenuRole.className = `profile-menu-role-badge ${roleClass}`;
+        profileMenuRole.style.display = 'inline-flex';
+      }
+      if (profileMenuLogoutLabel) profileMenuLogoutLabel.textContent = 'Sign Out';
+      if (profileMenuLogoutIcon) profileMenuLogoutIcon.textContent = '🚪';
+      if (profileMenuLogoutBtn) {
+        profileMenuLogoutBtn.classList.add('profile-menu-item-danger');
+        profileMenuLogoutBtn.title = 'Sign out of current session';
+      }
     } else {
       if (authUsernameLabel) authUsernameLabel.textContent = 'Sign In';
       if (authAvatarLetter) authAvatarLetter.textContent = '👤';
-      if (authUserBtn) authUserBtn.title = 'Click to Sign In or Register';
+      if (authUserBtn) authUserBtn.title = 'Click to open account & navigation menu';
       if (logoutBtn) logoutBtn.style.display = 'none';
+
+      if (profileMenuUsername) profileMenuUsername.textContent = 'Guest User';
+      if (profileMenuEmail) profileMenuEmail.textContent = 'Sign in to access all tools';
+      if (profileMenuAvatar) profileMenuAvatar.textContent = '👤';
+      if (profileMenuRole) {
+        profileMenuRole.textContent = 'Guest';
+        profileMenuRole.className = 'profile-menu-role-badge';
+        profileMenuRole.style.display = 'inline-flex';
+      }
+      if (profileMenuLogoutLabel) profileMenuLogoutLabel.textContent = 'Sign In / Register';
+      if (profileMenuLogoutIcon) profileMenuLogoutIcon.textContent = '🔑';
+      if (profileMenuLogoutBtn) {
+        profileMenuLogoutBtn.classList.remove('profile-menu-item-danger');
+        profileMenuLogoutBtn.title = 'Click to Sign In or Register';
+      }
     }
 
     if (openOrgBtn) {
-      openOrgBtn.style.display = user && accessToken && user.role === 'admin' ? 'inline-flex' : 'none';
+      openOrgBtn.style.display = user && accessToken && (user.role === 'admin' || isSuperAdmin) ? 'flex' : 'none';
     }
 
-    const isAdminOrStaff = Boolean(user && accessToken && (user.role === 'admin' || user.role === 'staff' || user.role === 'staffs'));
     const tabBtnMemory = document.getElementById('tab-btn-memory');
     const panelMemory = document.getElementById('panel-memory');
+    const tabBtnAgents = document.getElementById('tab-btn-agents');
+    const panelAgents = document.getElementById('panel-agents');
 
     if (tabBtnMemory) {
-      tabBtnMemory.style.display = isAdminOrStaff ? 'flex' : 'none';
+      tabBtnMemory.style.display = isAdminOrStaff ? 'inline-flex' : 'none';
     }
 
     if (!isAdminOrStaff) {
@@ -60,6 +125,30 @@
             if (tabMemoryBadge) tabMemoryBadge.textContent = stats.active_memories || stats.total_memories || 0;
           })
           .catch(() => {});
+      }
+    }
+
+    if (tabBtnAgents) {
+      tabBtnAgents.style.display = isSuperAdmin ? 'inline-flex' : 'none';
+    }
+
+    const openAgentsBtn = document.getElementById('open-agents-btn');
+    if (openAgentsBtn) {
+      openAgentsBtn.style.display = isSuperAdmin ? 'flex' : 'none';
+    }
+
+    const openAuditRiskBtn = document.getElementById('open-audit-risk-btn');
+    if (openAuditRiskBtn) {
+      openAuditRiskBtn.style.display = (isAdminOrStaff || isSuperAdmin) ? 'flex' : 'none';
+    }
+
+    if (!isSuperAdmin) {
+      if (tabBtnAgents?.classList.contains('active') || panelAgents?.classList.contains('active')) {
+        if (window.switchSidebarTab) {
+          window.switchSidebarTab('rooms');
+        } else {
+          document.getElementById('tab-btn-rooms')?.click();
+        }
       }
     }
 

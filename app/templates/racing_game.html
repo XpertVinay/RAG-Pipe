@@ -1126,8 +1126,8 @@
           logAgentEvent('Task Generator', 'Generated 3 atomic micro-tasks: Canvas rendering, Traffic physics, Audio synthesis.');
           logAgentEvent('Task Performer', 'Executed game mechanics with 0 syntax errors.');
           logAgentEvent('Validator', 'Quality assurance passed: 100% acceptance criteria satisfied.');
-          logAgentEvent('Deployer', `Deployment active. Telemetry: Optimal (${data.deployment?.health || 'Optimal'}).`);
-          logAgentEvent('Decision Maker', `Executive Advice: ${data.customer_advice?.slice(0, 100) || 'All tasks accomplished.'}...`);
+          const adviceTxt = typeof data.customer_advice === 'string' ? data.customer_advice : (data.customer_advice ? JSON.stringify(data.customer_advice) : 'All tasks accomplished.');
+          logAgentEvent('Decision Maker', `Executive Advice: ${adviceTxt.slice(0, 100)}...`);
         } catch (e) {
           logAgentEvent('Decision Maker', 'Live pipeline executed in deterministic local mode: 0 errors detected.');
         } finally {

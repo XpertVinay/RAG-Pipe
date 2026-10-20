@@ -23,50 +23,206 @@
     RAG.utils.scheduleScrollToBottom(true);
   }
 
+  function renderInitialViewHtml(options = {}) {
+    const { title, subtitle, authButtonsHtml } = options;
+    return `
+      <div class="welcome-screen">
+        <!-- Hero / Application Objective -->
+        <div class="welcome-screen-hero">
+          <div class="welcome-pill-badge">
+            <span>✨</span>
+            <span>Enterprise RAG &amp; Grounded Multi-Tenant Intelligence</span>
+          </div>
+          <h3 id="welcome-title">${title || 'RAG Agent — Verifiable Document Intelligence'}</h3>
+          <p class="welcome-lead">
+            ${subtitle || 'Ingest, index, and query complex enterprise files (PDF, DOCX, CSV, TXT, Markdown, and Code) with zero hallucinations. Powered by stateful LangGraph agent orchestration, hybrid vector retrieval, and verifiable citations pinned to source database chunks.'}
+          </p>
+          ${authButtonsHtml || ''}
+
+          <!-- Objective Feature Matrix -->
+          <div class="objective-matrix">
+            <div class="objective-item">
+              <span class="objective-icon">🎯</span>
+              <h4>Zero Hallucinations</h4>
+              <p>Strictly grounded in validated document chunks with verifiable citation badges.</p>
+            </div>
+            <div class="objective-item">
+              <span class="objective-icon">⚡</span>
+              <h4>LangGraph Agent</h4>
+              <p>Stateful multi-turn reasoning, dynamic query decomposition, and autonomous tools.</p>
+            </div>
+            <div class="objective-item">
+              <span class="objective-icon">🏢</span>
+              <h4>Isolated Workspaces</h4>
+              <p>Role-based access control (RBAC), room multi-tenancy, and persistent context.</p>
+            </div>
+            <div class="objective-item">
+              <span class="objective-icon">🔒</span>
+              <h4>Enterprise Privacy</h4>
+              <p>AES-256 encrypted vector embeddings at rest and TLS 1.3 streaming security.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Curated Industry Intelligence & Top News Header -->
+        <div class="intel-news-header">
+          <div class="intel-news-header-left">
+            <span>📰</span>
+            <h4>Industry Briefing: AI Breakthroughs, PropTech Markets &amp; Security Defense</h4>
+          </div>
+          <div class="intel-live-indicator">
+            <span>Live Briefing Feed</span>
+          </div>
+        </div>
+
+        <!-- 3-Column News & Intelligence Grid -->
+        <div class="intel-cards-grid">
+          <!-- Card 1: AI (Artificial Intelligence) -->
+          <div class="intel-card card-ai">
+            <span class="intel-card-badge badge-ai">🤖 AI &amp; Autonomous Agents</span>
+            <h5 class="intel-card-title">Autonomous Agentic RAG &amp; Reasoning Models</h5>
+            <p class="intel-card-headline">
+              Enterprise workflows are transitioning from static vector similarity searches to multi-agent LangGraph architectures that autonomously verify citations and self-correct.
+            </p>
+            <div class="intel-news-item">
+              <strong>Multimodal Ingestion:</strong> Frontier reasoning models extract tables, balance sheets, and schematics directly from scanned documents with high layout fidelity.
+            </div>
+            <div class="intel-news-item">
+              <strong>Hallucination Defense:</strong> Recursive citation cross-referencing reduces factual drift to under 2% across enterprise benchmarks.
+            </div>
+            <div class="intel-card-action">
+              <button class="intel-prompt-btn" type="button" onclick="window.usePrompt('Explain how autonomous agentic RAG and LangGraph workflows eliminate hallucinations compared to standard vector search.')">
+                <span>Ask: "How does agentic RAG eliminate hallucinations?"</span>
+                <span class="arrow">➤</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Card 2: Real Estate & PropTech -->
+          <div class="intel-card card-realestate">
+            <span class="intel-card-badge badge-realestate">🏙️ Real Estate &amp; PropTech</span>
+            <h5 class="intel-card-title">Predictive Underwriting &amp; Automated Lease Audits</h5>
+            <p class="intel-card-headline">
+              Commercial real estate firms are accelerating deal velocity by using AI agents to parse 200+ page lease agreements, rent rolls, and zoning covenants in seconds.
+            </p>
+            <div class="intel-news-item">
+              <strong>Automated Valuation:</strong> Spatial telemetry and predictive underwriting models streamline title review and cap-rate sensitivity stress testing.
+            </div>
+            <div class="intel-news-item">
+              <strong>ESG &amp; Carbon Audits:</strong> Institutional landlords deploy IoT telemetry agents to satisfy mandatory corporate climate disclosures and building energy ratings.
+            </div>
+            <div class="intel-card-action">
+              <button class="intel-prompt-btn" type="button" onclick="window.usePrompt('What are the key legal, financial, and environmental risks to audit in commercial real estate lease agreements?')">
+                <span>Ask: "Audit commercial real estate lease risks"</span>
+                <span class="arrow">➤</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Card 3: Security & How to Become Safe and Secure -->
+          <div class="intel-card card-security">
+            <span class="intel-card-badge badge-security">🛡️ Security &amp; Defense</span>
+            <h5 class="intel-card-title">Securing Vector Stores &amp; Prompt Injections</h5>
+            <p class="intel-card-headline">
+              OWASP Top 10 for LLMs identifies indirect prompt injection, vector data poisoning, and unauthorized retrieval leakage as paramount threats to enterprise generative AI.
+            </p>
+
+            <!-- How to Become Safe and Secure Actionable Guide -->
+            <div class="security-guide-box">
+              <div class="security-guide-title">
+                <span>🔒</span>
+                <span>How to Become Safe &amp; Secure</span>
+              </div>
+              <ul class="security-steps-list">
+                <li>
+                  <span class="security-step-bullet">1.</span>
+                  <span><strong>Passkeys &amp; MFA:</strong> Mandate hardware FIDO2 or authenticator apps; eliminate SMS OTPs to block credential phishing.</span>
+                </li>
+                <li>
+                  <span class="security-step-bullet">2.</span>
+                  <span><strong>Zero-Trust &amp; RBAC:</strong> Segment workspace rooms so sensitive documents are never indexed into general pools.</span>
+                </li>
+                <li>
+                  <span class="security-step-bullet">3.</span>
+                  <span><strong>Encryption at Rest &amp; Transit:</strong> Enforce AES-256 for vector embeddings and TLS 1.3 for all streaming SSE channels.</span>
+                </li>
+                <li>
+                  <span class="security-step-bullet">4.</span>
+                  <span><strong>Prompt Injection Guardrails:</strong> Sanitize all retrieval inputs and scrub PII or secrets before LLM synthesis.</span>
+                </li>
+                <li>
+                  <span class="security-step-bullet">5.</span>
+                  <span><strong>Immutable Backups &amp; Audit Logs:</strong> Maintain tamper-proof revision trails and rotate API keys regularly.</span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="intel-card-action">
+              <button class="intel-prompt-btn" type="button" onclick="window.usePrompt('Provide an actionable enterprise security checklist to safeguard our RAG pipelines against prompt injections and data leaks.')">
+                <span>Ask: "Security checklist for safe RAG pipelines"</span>
+                <span class="arrow">➤</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Action Prompts Tray -->
+        <div class="quick-prompts">
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 4px;">
+            ⚡ Quick Starters — Click any prompt to query active room documents:
+          </div>
+          <div class="quick-prompts-tray">
+            <button class="quick-prompt-btn" type="button" onclick="window.usePrompt('Summarize the key concepts and points from the uploaded documents in this room.')">
+              <span>✨</span>
+              <span>"Summarize key concepts from active documents"</span>
+            </button>
+            <button class="quick-prompt-btn" type="button" onclick="window.usePrompt('What are the main topics and important references covered in these files?')">
+              <span>🔍</span>
+              <span>"Identify main topics and key database references"</span>
+            </button>
+            <button class="quick-prompt-btn" type="button" onclick="window.usePrompt('What security controls and compliance practices are required to protect our enterprise data?')">
+              <span>🛡️</span>
+              <span>"Audit data security &amp; zero-trust guidelines"</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function showWelcomeScreen() {
     const messagesContainer = document.getElementById('messages-container');
     if (!messagesContainer) return;
     const currentUser = API.getCurrentUser();
 
     if (!currentUser) {
-      messagesContainer.innerHTML = `
-        <div class="welcome-screen">
-          <h3>RAG Agent — Grounded AI Assistant</h3>
-          <p>Sign in or register to create workspaces, upload documents, and ask grounded questions with verifiable citations.</p>
-          <div style="margin-top: 18px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-            <button class="btn btn-primary" onclick="window.showAuthModal ? window.showAuthModal('signin') : (window.switchAuthTab?.('signin'), document.getElementById('auth-modal')?.classList.add('active'))">
-              Sign In / Register
-            </button>
-            <button class="btn btn-outline" id="welcome-demo-login-btn" onclick="document.getElementById('demo-login-btn')?.click()">
-              ⚡ Demo Account
-            </button>
-          </div>
+      const authButtonsHtml = `
+        <div style="margin-top: 12px; margin-bottom: 22px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+          <button class="btn btn-primary" onclick="window.showAuthModal ? window.showAuthModal('signin') : (window.switchAuthTab?.('signin'), document.getElementById('auth-modal')?.classList.add('active'))">
+            Sign In / Register
+          </button>
+          <button class="btn btn-outline" id="welcome-demo-login-btn" onclick="document.getElementById('demo-login-btn')?.click()">
+            ⚡ Demo Account
+          </button>
         </div>
       `;
+      messagesContainer.innerHTML = renderInitialViewHtml({
+        title: 'RAG Agent — Verifiable Document Intelligence',
+        subtitle: 'Sign in or register to create workspaces, upload multi-format documents, and ask grounded questions with verifiable citations.',
+        authButtonsHtml,
+      });
       return;
     }
 
     const fileCount = RAG.state.currentRoom?.documents?.length || 0;
     const roomTitle = RAG.state.currentRoom?.name || 'Workspace';
 
-    messagesContainer.innerHTML = `
-      <div class="welcome-screen">
-        <h3>${RAG.utils.escapeHtml(roomTitle)} — Grounded AI Assistant</h3>
-        <p>${
-          fileCount > 0
-            ? `Ready to answer questions grounded in <strong>${fileCount} indexed file(s)</strong> in this room. Context persists across browser refreshes.`
-            : `Upload or attach documents to this workspace room to begin grounded Q&A with verifiable citations.`
-        }</p>
-        <div class="quick-prompts">
-          <button class="quick-prompt-btn" onclick="window.usePrompt('Summarize the key concepts and points from the uploaded documents in this room.')">
-            ✨ "Summarize the key concepts and points from the uploaded documents."
-          </button>
-          <button class="quick-prompt-btn" onclick="window.usePrompt('What are the main topics and important references covered in these files?')">
-            🔍 "What are the main topics and important references covered in these files?"
-          </button>
-        </div>
-      </div>
-    `;
+    messagesContainer.innerHTML = renderInitialViewHtml({
+      title: `${RAG.utils.escapeHtml(roomTitle)} — Grounded AI Assistant`,
+      subtitle: fileCount > 0
+        ? `Ready to answer questions grounded in <strong>${fileCount} indexed file(s)</strong> in this room. Context persists across browser refreshes.`
+        : `Upload or attach documents to this workspace room to begin grounded Q&amp;A with verifiable citations.`,
+    });
   }
 
   async function startNewChat() {
@@ -147,6 +303,7 @@
     const welcome = messagesContainer?.querySelector('.welcome-screen');
     if (welcome) welcome.remove();
 
+    RAG.utils?.setIsUserScrolledUp?.(false);
     appendMessage('user', text);
     chatInput.value = '';
     chatInput.style.height = 'auto';
@@ -205,6 +362,9 @@
         } else if (meta.response_type === 'greeting') {
           avatarEl.textContent = '✨';
           avatarEl.className = 'message-avatar greeting';
+        } else if (meta.response_type === 'queue_pending') {
+          avatarEl.textContent = '⏳';
+          avatarEl.className = 'message-avatar queue_pending';
         }
       },
       onToken: (tok) => {
@@ -215,12 +375,18 @@
       onCitations: (citations) => {
         currentCitations = citations || [];
       },
+      onVisualization: (vis) => {
+        receivedMeta.visualization = vis;
+      },
       onDone: (data) => {
         if (sendBtn) sendBtn.disabled = false;
         chatInput.focus();
 
         const finalCitations = (data && data.citations) || currentCitations;
         const finalMeta = Object.assign({}, receivedMeta, data || {});
+
+        const wasScrolledUp = RAG.utils?.getIsUserScrolledUp?.() || false;
+        const prevScrollTop = messagesContainer ? messagesContainer.scrollTop : 0;
 
         assistantRow.remove();
         if (RAG.markdown?.renderAssistantMessage) {
@@ -230,6 +396,23 @@
             meta: finalMeta,
             timestamp: new Date().toISOString(),
           });
+        }
+
+        // If the user was reading initial/earlier content, preserve their exact scroll position
+        if (wasScrolledUp && messagesContainer) {
+          messagesContainer.scrollTop = prevScrollTop;
+        }
+
+        if (finalMeta.guardrail_alert || finalMeta.guardrail_blocked) {
+          RAG.utils.showToast(
+            finalMeta.guardrail_alert || '⚠️ Safety Guardrail: Prohibited query blocked. Repeated violations will restrict your access and be reported to authorities.',
+            'error',
+            10000
+          );
+        }
+
+        if (finalMeta.pii_breach_alert) {
+          RAG.utils.showToast(finalMeta.pii_breach_alert, 'warning', 8000);
         }
 
         if (RAG.history?.loadConversations) RAG.history.loadConversations();
@@ -326,6 +509,8 @@
   }
 
   function initChatListeners() {
+    RAG.utils?.initScrollManager?.();
+
     const chatForm = document.getElementById('chat-form');
     const chatInput = document.getElementById('chat-input');
     const newChatBtn = document.getElementById('new-chat-btn');
@@ -370,6 +555,93 @@
         if (sendBtn) sendBtn.disabled = false;
       }
     });
+
+    // Wire document queue banner refresh button
+    const queueRefreshBtn = document.getElementById('doc-queue-refresh-btn');
+    queueRefreshBtn?.addEventListener('click', () => {
+      checkDocumentQueueReadiness(true);
+    });
+  }
+
+  let readinessPollTimer = null;
+  let wasPreviouslyPending = false;
+
+  async function checkDocumentQueueReadiness(forceToast = false) {
+    const queueBanner = document.getElementById('doc-queue-banner');
+    const titleText = document.getElementById('doc-queue-title-text');
+    const detailText = document.getElementById('doc-queue-status-detail');
+    const chatInput = document.getElementById('chat-input');
+
+    const currentUser = API.getCurrentUser ? API.getCurrentUser() : null;
+    if (!currentUser) {
+      if (queueBanner) queueBanner.style.display = 'none';
+      return;
+    }
+
+    try {
+      const roomDocIds = RAG.state?.currentRoom?.documents?.map((d) => d.id) || null;
+      if (typeof API.checkDocumentsReadiness !== 'function') return;
+
+      const res = await API.checkDocumentsReadiness(RAG.state?.currentRoomId, roomDocIds);
+      if (!queueBanner) return;
+
+      if (res && res.pending_count > 0) {
+        wasPreviouslyPending = true;
+        queueBanner.style.display = 'block';
+        queueBanner.classList.remove('ready');
+        if (titleText) {
+          titleText.textContent = `${res.pending_count} file(s) processing in RabbitMQ queue...`;
+        }
+        if (detailText) {
+          detailText.textContent = `Worker is parsing & indexing chunks (${res.ready_count}/${res.total} ready). LLM prompts ready soon.`;
+        }
+        if (forceToast && RAG.utils?.showToast) {
+          RAG.utils.showToast(`${res.pending_count} document(s) currently being indexed by RabbitMQ worker.`, 'info');
+        }
+
+        if (!readinessPollTimer) {
+          readinessPollTimer = setInterval(() => checkDocumentQueueReadiness(false), 3000);
+        }
+      } else if (res && res.total > 0 && res.all_ready && wasPreviouslyPending) {
+        wasPreviouslyPending = false;
+        if (readinessPollTimer) {
+          clearInterval(readinessPollTimer);
+          readinessPollTimer = null;
+        }
+        queueBanner.style.display = 'block';
+        queueBanner.classList.add('ready');
+        if (titleText) {
+          titleText.textContent = `✨ All ${res.total} document(s) are ready for LLM prompts!`;
+        }
+        if (detailText) {
+          detailText.textContent = 'Document chunks & vectors are persistent in Chroma. You can now prompt the LLM.';
+        }
+        if (RAG.utils?.showToast) {
+          RAG.utils.showToast(`✨ Documents ready! You can now ask questions about your documents.`, 'success');
+        }
+        if (chatInput) {
+          chatInput.focus();
+        }
+        if (RAG.documents?.loadDocuments) {
+          RAG.documents.loadDocuments();
+        }
+
+        setTimeout(() => {
+          if (!wasPreviouslyPending && queueBanner) {
+            queueBanner.style.display = 'none';
+          }
+        }, 6000);
+      } else {
+        if (readinessPollTimer) {
+          clearInterval(readinessPollTimer);
+          readinessPollTimer = null;
+        }
+        queueBanner.style.display = 'none';
+        wasPreviouslyPending = false;
+      }
+    } catch (err) {
+      console.warn('Error checking document readiness:', err);
+    }
   }
 
   RAG.chat = {
@@ -381,6 +653,7 @@
     copyAnswer,
     usePrompt,
     retryLastQuery,
+    checkDocumentQueueReadiness,
     init: initChatListeners,
   };
 
@@ -392,4 +665,5 @@
   global.copyAnswer = copyAnswer;
   global.usePrompt = usePrompt;
   global.retryLastQuery = retryLastQuery;
+  global.checkDocumentQueueReadiness = checkDocumentQueueReadiness;
 })(window);

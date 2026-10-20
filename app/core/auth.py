@@ -123,7 +123,12 @@ def decode_token(token: str, expected_type: Optional[str] = "access") -> Dict[st
     """Decode and validate a JWT token signature and expiration."""
     auth_cfg = get_auth_config()
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[auth_cfg["algorithm"], "HS256"])
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[auth_cfg["algorithm"], "HS256"],
+            options={"verify_aud": False},
+        )
         if expected_type and payload.get("type") != expected_type:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -215,31 +220,58 @@ async def get_optional_user(
 
 
 def is_admin_or_staff(user: Optional[User]) -> bool:
-    """Return True if user has administrator or staff privileges."""
+    """Return True if user has administrator, super admin, or staff privileges."""
     if not user:
         return False
-    return getattr(user, "role", "user") in ("admin", "staff", "staffs")
+    return getattr(user, "role", "user") in ("admin", "super_admin", "staff", "staffs")
 
 
 async def require_admin_or_staff(
     user: User = Depends(get_current_user),
 ) -> User:
-    """FastAPI dependency requiring authenticated user to have admin or staff role."""
+    """FastAPI dependency requiring authenticated user to have admin, super admin, or staff role."""
     if not is_admin_or_staff(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access restricted. Short-term and long-term memory inspection requires admin or staff privileges.",
+            detail="Access restricted. Admin, Super Admin, or Staff privileges required.",
         )
     return user
+
+
+def is_admin(user: Optional[User]) -> bool:
+    """Return True if user has super admin or admin privileges."""
+    if not user:
+        return False
+    return getattr(user, "role", "user") in ("admin", "super_admin", "superadmin", "super-admin")
 
 
 async def require_admin(
     user: User = Depends(get_current_user),
 ) -> User:
-    """FastAPI dependency requiring authenticated user to have admin role."""
-    if getattr(user, "role", "user") != "admin":
+    """FastAPI dependency requiring authenticated user to have admin or super_admin role."""
+    if not is_admin(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access restricted. Administrator privileges required.",
+            detail="Access restricted. Super Admin or Administrator privileges required.",
         )
     return user
+
+
+def is_super_admin(user: Optional[User]) -> bool:
+    """Return True if user has super admin privileges."""
+    if not user:
+        return False
+    return getattr(user, "role", "user") in ("super_admin", "superadmin", "super-admin")
+
+
+async def require_super_admin(
+    user: User = Depends(get_current_user),
+) -> User:
+    """FastAPI dependency requiring authenticated user to have super_admin role."""
+    if not is_super_admin(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted. Super Admin privileges required.",
+        )
+    return user
+

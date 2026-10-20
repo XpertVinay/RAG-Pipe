@@ -792,6 +792,11 @@
       <span>RAG Agent</span>
     </a>
     <div class="pricing-nav-actions">
+      {% include "components/theme_toggle.html" %}
+      <a href="/legal" class="btn btn-outline" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none; border-color: rgba(255, 255, 255, 0.12); display: flex; align-items: center; gap: 6px;" title="Legal Policies & Governance">
+        <span>⚖️</span>
+        <span>Legal</span>
+      </a>
       <button id="view-invoices-btn" class="btn btn-outline" onclick="window.openInvoicesModal()" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none; border-color: rgba(99, 102, 241, 0.4); color: #a5b4fc; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 8px;">
         <span>📜</span>
         <span>Invoices &amp; Mandates</span>
@@ -1193,6 +1198,29 @@
       </div>
     </div>
   </div>
+
+  <!-- Pricing Page Legal & Trust Footer -->
+  <footer style="margin-top: 60px; border-top: 1px solid var(--pricing-card-border); background: rgba(7, 9, 14, 0.95); padding: 40px 32px 32px; width: 100%;">
+    <div style="max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 24px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 1.2rem;">⚡</span>
+        <strong style="color: #fff;">{{ app_name }}</strong>
+        <span style="color: #64748b; font-size: 0.82rem;">| Enterprise Retrieval &amp; AI Agents</span>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap; font-size: 0.84rem;">
+        <a href="/privacy" style="color: #94a3b8; text-decoration: none;">Privacy Policy</a>
+        <a href="/terms" style="color: #94a3b8; text-decoration: none;">Terms of Service</a>
+        <a href="/refund" style="color: #94a3b8; text-decoration: none;">Refund Policy</a>
+        <a href="/ai-policy" style="color: #94a3b8; text-decoration: none;">AI &amp; Agent Policy</a>
+        <a href="/legal" style="color: #818cf8; text-decoration: none; font-weight: 600;">Legal Center</a>
+      </div>
+
+      <div style="font-size: 0.78rem; color: #64748b;">
+        &copy; 2026 {{ app_name }} Technologies Inc. All rights reserved.
+      </div>
+    </div>
+  </footer>
 </div>
 
 <!-- Invoice Receipt Detail Modal -->

@@ -334,8 +334,8 @@
     const user = e.detail?.user || window.currentUser;
     const orgBtn = document.getElementById('open-org-btn');
     if (orgBtn) {
-      if (user && user.role === 'admin') {
-        orgBtn.style.display = 'inline-flex';
+      if (user && (user.role === 'admin' || user.role === 'super_admin' || user.role === 'superadmin')) {
+        orgBtn.style.display = 'flex';
       } else {
         orgBtn.style.display = 'none';
       }

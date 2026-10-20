@@ -12,6 +12,51 @@ body {
 }
 
 /* --------------------------------------------------------------------------
+   Desktop & Laptop Compact Navbar Optimization (993px - 1380px)
+   Prevents navbar buttons from squishing or breaking layout alongside sidebar
+   -------------------------------------------------------------------------- */
+@media screen and (min-width: 993px) and (max-width: 1380px) {
+  .chat-nav-right {
+    gap: 6px;
+  }
+
+  .nav-action-btn {
+    padding: 0 8px;
+    font-size: 0.74rem;
+  }
+
+  .badge-pill {
+    max-width: 140px;
+    padding: 0 8px;
+    font-size: 0.72rem;
+  }
+
+  .badge-pill #provider-badge {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .theme-toggle-btn {
+    padding: 0 8px;
+  }
+}
+
+@media screen and (min-width: 993px) and (max-width: 1220px) {
+  .nav-action-btn .nav-btn-text {
+    display: none;
+  }
+
+  .theme-toggle-btn .theme-current-label {
+    display: none;
+  }
+
+  .nav-action-btn {
+    padding: 0 8px;
+  }
+}
+
+/* --------------------------------------------------------------------------
    Breakpoint 1: Tablets & Smaller Desktop (< 992px)
    Off-Canvas Sidebar Drawer & Toggle Button
    -------------------------------------------------------------------------- */
@@ -90,9 +135,11 @@ body {
 
   /* Navbar Adjustments */
   .chat-navbar {
-    padding: 10px 14px;
+    padding: 0 14px;
     gap: 8px;
-    background: rgba(11, 15, 25, 0.95);
+    background: var(--bg-card);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
   }
 
   .chat-nav-left {
@@ -126,8 +173,28 @@ body {
     flex-shrink: 0;
   }
 
+  .nav-action-btn .nav-btn-text {
+    display: none !important;
+  }
+
+  .nav-action-btn {
+    padding: 0 6px !important;
+    min-width: 32px;
+    justify-content: center;
+  }
+
+  .theme-toggle-btn .theme-current-label,
+  .theme-toggle-btn .theme-caret {
+    display: none !important;
+  }
+
+  .theme-toggle-btn {
+    padding: 0 8px !important;
+  }
+
   #open-settings-btn {
-    padding: 6px 10px;
+    padding: 0 8px;
+    height: 32px;
     font-size: 0.85rem;
   }
 
@@ -137,16 +204,16 @@ body {
   }
 
   .badge-pill {
-    padding: 4px 8px;
+    padding: 0 8px;
     font-size: 0.7rem;
-    max-width: 140px;
+    max-width: 110px;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
 
   #auth-user-btn {
-    padding: 4px 8px;
+    padding: 0 8px;
     font-size: 0.74rem;
   }
 
@@ -203,11 +270,16 @@ body {
   }
 
   #toggle-references-btn,
-  #attach-file-room-btn {
+  #attach-file-room-btn,
+  #share-room-btn {
     flex: 1;
+    min-width: 0;
     justify-content: center;
     font-size: 0.72rem;
-    padding: 6px 8px;
+    padding: 6px 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   #room-references-drawer {
@@ -217,8 +289,20 @@ body {
   }
 
   .ref-cards-grid {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
     gap: 8px;
+    padding-bottom: 6px;
+  }
+
+  .ref-card {
+    flex: 0 0 min(260px, 78vw);
+    scroll-snap-align: start;
   }
 
   /* Chat Messages & Stream */
@@ -242,6 +326,49 @@ body {
     font-size: 0.82rem;
     line-height: 1.5;
     margin-bottom: 16px;
+  }
+
+  /* Mobile Horizontal Scrollable News & Priority Directives */
+  .objective-matrix,
+  .objective-matrix.horizontal-scrollable-track {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scroll-snap-type: x mandatory !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 12px !important;
+    padding: 4px 4px 14px !important;
+    margin-bottom: 20px !important;
+    scrollbar-width: thin;
+  }
+
+  .objective-item {
+    flex: 0 0 min(240px, 75vw) !important;
+    min-width: 220px !important;
+    scroll-snap-align: start !important;
+  }
+
+  .intel-cards-grid,
+  .intel-cards-grid.horizontal-scrollable-track {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scroll-snap-type: x mandatory !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 14px !important;
+    padding: 4px 4px 16px !important;
+    margin-bottom: 22px !important;
+    scrollbar-width: thin;
+  }
+
+  .intel-card {
+    flex: 0 0 min(310px, 85vw) !important;
+    min-width: 280px !important;
+    scroll-snap-align: start !important;
   }
 
   .quick-prompts {
@@ -373,6 +500,13 @@ body {
     border-top: 1px solid var(--border-color);
   }
 
+  .scroll-bottom-btn {
+    bottom: 120px !important;
+    right: 14px !important;
+    padding: 5px 11px !important;
+    font-size: 0.72rem !important;
+  }
+
   .input-box-container {
     padding: 4px 6px 4px 10px;
     border-radius: 20px;
@@ -404,18 +538,50 @@ body {
     gap: 2px;
   }
 
+  /* Document Queue Banner on Mobile */
+  .doc-queue-banner {
+    padding: 8px 10px;
+    font-size: 0.75rem;
+    margin-bottom: 8px;
+  }
+
+  .doc-queue-inner {
+    gap: 8px;
+  }
+
+  /* Multi-Agent Pipeline Ribbon on Mobile */
+  .agent-pipeline-ribbon {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 6px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .agent-stage-card {
+    padding: 6px 4px !important;
+  }
+
   /* Modals Layout & Touch Responsiveness */
   .modal-overlay {
-    padding: 10px;
-    align-items: center;
+    padding: 16px 10px !important;
+    align-items: flex-start !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
   }
 
   .modal-card {
-    width: min(520px, calc(100vw - 20px)) !important;
-    max-height: calc(100dvh - 24px);
-    padding: 18px 14px;
-    border-radius: 14px;
-    overflow-y: auto;
+    width: min(560px, calc(100vw - 20px)) !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: calc(100dvh - 32px) !important;
+    padding: 20px 16px !important;
+    border-radius: 14px !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    touch-action: pan-y !important;
+    margin: auto !important;
+    box-sizing: border-box !important;
   }
 
   /* Prevent zoom on form inputs */
@@ -565,12 +731,73 @@ body {
 }
 
 /* --------------------------------------------------------------------------
+   Breakpoint 2.5: Compact Phones (< 600px)
+   -------------------------------------------------------------------------- */
+@media screen and (max-width: 600px) {
+  .nav-action-btn {
+    display: none !important;
+  }
+
+  .badge-pill {
+    display: none !important;
+  }
+
+  #auth-username-label {
+    display: none !important;
+  }
+
+  .theme-toggle-btn {
+    padding: 0 6px !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
    Breakpoint 3: Compact Mobile Screens (< 480px)
    -------------------------------------------------------------------------- */
 @media screen and (max-width: 480px) {
   #conv-title {
     max-width: 130px;
     font-size: 0.86rem;
+  }
+
+  /* Theme & profile dropdown menus fit on screen */
+  .theme-menu {
+    right: -6px !important;
+    width: min(250px, calc(100vw - 20px)) !important;
+    min-width: auto !important;
+  }
+
+  .profile-dropdown-menu {
+    right: 0 !important;
+    width: min(290px, calc(100vw - 20px)) !important;
+    min-width: auto !important;
+  }
+
+  .room-dropdown-menu {
+    left: 0 !important;
+    width: min(270px, calc(100vw - 20px)) !important;
+    min-width: auto !important;
+  }
+
+  .welcome-pill-badge {
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+    font-size: 0.72rem;
+    padding: 4px 10px;
+  }
+
+  .modal-overlay {
+    padding: 12px 6px !important;
+    align-items: flex-start !important;
+  }
+
+  .modal-card {
+    width: calc(100vw - 12px) !important;
+    max-width: calc(100vw - 12px) !important;
+    max-height: calc(100dvh - 20px) !important;
+    padding: 16px 12px !important;
+    margin: auto !important;
   }
 
   /* Hide model badge on ultra-compact phones to prioritize settings and auth buttons */

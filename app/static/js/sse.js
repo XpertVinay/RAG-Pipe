@@ -19,6 +19,7 @@ class SSEClient {
     onMeta,
     onToken,
     onCitations,
+    onVisualization,
     onDone,
     onError,
   }) {
@@ -107,6 +108,8 @@ class SSEClient {
               onToken(parsed.token || '');
             } else if (eventType === 'citations' && onCitations) {
               onCitations(parsed.citations || []);
+            } else if (eventType === 'visualization' && onVisualization) {
+              onVisualization(parsed);
             } else if (eventType === 'done' && onDone) {
               onDone(parsed);
             } else if (eventType === 'error' && onError) {

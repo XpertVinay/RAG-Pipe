@@ -53,6 +53,25 @@ class EntityNotFoundError(RAGException):
 
 async def rag_exception_handler(request: Request, exc: RAGException) -> JSONResponse:
     """FastAPI error handler for RAGException hierarchy."""
+    import asyncio
+    try:
+        from app.services.audit_service import audit_service
+        domain = "third_party_failure" if isinstance(exc, ProviderUnavailableError) else (
+            "core_logic" if isinstance(exc, (VectorStoreError, DocumentParsingError)) else "exception_handling"
+        )
+        asyncio.create_task(
+            audit_service.log_event(
+                domain_category=domain,
+                event_name=f"handled_exception_{exc.__class__.__name__.lower()}",
+                execution_status="failed",
+                error_type=exc.__class__.__name__,
+                error_message=exc.message,
+                metadata_payload={"path": request.url.path, "method": request.method, "details": exc.details},
+            )
+        )
+    except Exception:
+        pass
+
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -98,7 +117,25 @@ async def validation_exception_handler(request: Request, exc: Any) -> JSONRespon
 
 
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Fallback handler to prevent stack traces leaking to clients."""
+    """Fallback handler to prevent stack traces leaking to clients and record critical audit trail event."""
+    import asyncio
+    try:
+        from app.services.audit_service import audit_service
+        asyncio.create_task(
+            audit_service.log_event(
+                domain_category="exception_handling",
+                event_name="unhandled_server_exception",
+                execution_status="critical",
+                error_type=exc.__class__.__name__,
+                error_message=str(exc),
+                metadata_payload={"path": request.url.path, "method": request.method},
+                compliance_status="REVIEW_REQUIRED",
+                compliance_remark="Auto-flagged unhandled server exception requiring root-cause inspection",
+            )
+        )
+    except Exception:
+        pass
+
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={

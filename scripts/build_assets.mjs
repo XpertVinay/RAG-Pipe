@@ -46,6 +46,8 @@ const CSS_SOURCES = [
   'css/modals.css',
   'css/responsive.css',
   'css/app.css',
+  'css/audit_risk.css',
+  'css/theme.css',
 ];
 
 // Ordered JS sources for main app bundle
@@ -79,6 +81,9 @@ const JS_SOURCES = [
   'js/modules/settings.js',
   'js/modules/organizations.js',
   'js/modules/chat.js',
+  'js/modules/agents.js',
+  'js/modules/audit_risk.js',
+  'js/modules/theme.js',
   'js/app.js',
 ];
 

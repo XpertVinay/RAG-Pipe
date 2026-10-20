@@ -42,7 +42,7 @@ Featuring asynchronous background document ingestion, multi-format parsing, anti
 
 ### Key Design Decisions
 
-1. **Decoupled Asynchronous Ingestion**: File validation and storage occur immediately, while parsing, chunking, and vector embedding run via `BackgroundTasks` to keep HTTP endpoints responsive. Status progresses deterministically: `queued` ➔ `processing` ➔ `completed` / `failed`.
+1. **Decoupled Asynchronous & Event-Driven Ingestion**: File validation and storage occur immediately, emitting an ingestion event to a durable RabbitMQ broker (`document_processing_queue`) with persistent delivery and automatic retry backoff. Independent, horizontally-scalable workers (`rag-worker`) consume jobs and execute parsing, chunking, and vector embedding (with seamless fallback to FastAPI background tasks if RabbitMQ is unavailable). Status progresses deterministically: `queued` ➔ `processing` ➔ `completed` / `failed`.
 2. **LangGraph Stateful Agent Architecture**: Instead of a brittle single-pass chain, queries flow through a cyclic LangGraph state machine:
    - **Validation Node**: Identifies query intent (conversation vs. document Q&A).
    - **Retrieval Node**: Gathers top-k semantic vectors with metadata provenance.
@@ -176,25 +176,72 @@ MAX_RETRIEVAL_RETRIES=2
 LANGCHAIN_TRACING_V2=false
 LANGCHAIN_API_KEY=
 LANGCHAIN_PROJECT=rag-agent-production
+
+# RabbitMQ High-Traffic Document Processing Queue & Broker
+RABBITMQ_ENABLED=true
+RABBITMQ_USER=rag_admin
+RABBITMQ_PASSWORD=rag_secret_pass
+RABBITMQ_PORT=5672
+RABBITMQ_MGMT_PORT=15672
+RABBITMQ_DEFAULT_VHOST=/
+RABBITMQ_URL=amqp://rag_admin:rag_secret_pass@localhost:5672/
+RABBITMQ_QUEUE_NAME=document_processing_queue
+RABBITMQ_PREFETCH_COUNT=2
+RABBITMQ_MAX_RETRIES=3
+RABBITMQ_RETRY_DELAY_SECONDS=5
+RABBITMQ_EMBEDDED_WORKER=false
+RABBITMQ_VM_MEMORY_HIGH_WATERMARK=0.7
+RABBITMQ_DISK_FREE_LIMIT=2GB
 ```
 
 ---
 
 ## Running with Docker Compose
 
-Run the entire stack (FastAPI web application + Ollama) containerized:
+The application includes a production-grade multi-container architecture orchestrated via Docker Compose:
+
+| Service | Container Name | Port(s) | Description |
+| :--- | :--- | :--- | :--- |
+| **`rag-agent`** | `rag-agent-app` | `8000:8000` | FastAPI Web API, SSE streaming, Jinja2 UI, and authentication |
+| **`rabbitmq`** | `rag-rabbitmq` | `5672:5672`<br>`15672:15672` | AMQP 0-9-1 message broker and Web Management Console |
+| **`rag-worker`** | `rag-worker` | Internal AMQP | Dedicated asynchronous consumer for parsing, chunking, and vector indexing |
+
+### 1. Launch the Stack
+
+Start the entire distributed architecture in detached mode:
 
 ```bash
 docker compose up --build -d
 ```
 
-Pull the local models inside the Ollama container:
+### 2. RabbitMQ Production Features & Guarantees
+
+- **Persistent Static Hostname (`hostname: rabbitmq`)**: Prevents RabbitMQ from creating volatile database folders indexed by ephemeral container IDs; durable queues and user permissions persist reliably across container restarts.
+- **Dual Network Aliases (`rabbitmq`, `rag-rabbitmq`)**: Ensures microservices within the Docker bridge network can resolve the broker seamlessly.
+- **Resource Guardrails & Backpressure**:
+  - `RABBITMQ_VM_MEMORY_HIGH_WATERMARK=0.7`: Limits broker RAM usage and applies safe backpressure to publishers before memory exhaustion.
+  - `RABBITMQ_DISK_FREE_LIMIT=2GB`: Prevents node crashes when host disk space is constrained.
+  - Deploy limits capped at `1024M` memory.
+- **Healthcheck & Startup Ordering**: Health checks via `rabbitmq-diagnostics -q ping` guarantee that the web app and workers only connect when the broker is fully responsive.
+- **Direct Stdout Logging**: `RABBITMQ_LOGS=-` streams broker event logs straight to Docker logging.
+
+### 3. Scaling Ingestion Workers
+
+To scale up processing throughput during high-traffic ingestion batches, spin up multiple independent worker replicas:
+
 ```bash
-docker exec -it rag-ollama ollama pull llama3.2
-docker exec -it rag-ollama ollama pull nomic-embed-text
+# Scale to 4 parallel ingestion workers
+docker compose up -d --scale rag-worker=4
 ```
 
-The app will be available at [http://localhost:8000](http://localhost:8000).
+### 4. Accessing Services
+
+- **Web Application & UI**: [http://localhost:8000](http://localhost:8000)
+- **Interactive Swagger Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **RabbitMQ Management Dashboard**: [http://localhost:15672](http://localhost:15672)
+  - **Username**: `rag_admin` (or `${RABBITMQ_USER}`)
+  - **Password**: `rag_secret_pass` (or `${RABBITMQ_PASSWORD}`)
+- **AMQP Broker URI**: `amqp://rag_admin:rag_secret_pass@localhost:5672/`
 
 ---
 

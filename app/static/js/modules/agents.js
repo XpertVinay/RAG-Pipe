@@ -25,6 +25,10 @@ class MultiAgentModule {
     this.finalReportContent = document.getElementById('agent-final-report-content');
     this.copyReportBtn = document.getElementById('copy-report-btn');
     this.sidebarWorkflowsList = document.getElementById('agents-workflow-list');
+    this.clearWorkflowsBtn = document.getElementById('sidebar-clear-workflows-btn');
+    this.clearLogsBtn = document.getElementById('sidebar-clear-logs-btn');
+    this.deleteWfBtn = document.getElementById('agent-delete-wf-btn');
+    this.currentWorkflowId = null;
 
     this.abortController = null;
     this.timerInterval = null;
@@ -37,12 +41,18 @@ class MultiAgentModule {
     // Open modal buttons
     const navBtn = document.getElementById('open-agents-btn');
     if (navBtn) {
-      navBtn.addEventListener('click', () => this.showModal());
+      navBtn.addEventListener('click', () => {
+        this.resetForm();
+        this.showModal();
+      });
     }
 
     const sidebarBtn = document.getElementById('sidebar-launch-agent-btn');
     if (sidebarBtn) {
-      sidebarBtn.addEventListener('click', () => this.showModal());
+      sidebarBtn.addEventListener('click', () => {
+        this.resetForm();
+        this.showModal();
+      });
     }
 
     if (this.closeBtn) {
@@ -61,6 +71,42 @@ class MultiAgentModule {
 
     if (this.newRunBtn) {
       this.newRunBtn.addEventListener('click', () => this.resetForm());
+    }
+
+    // Admin & Super Admin maintenance handlers
+    if (this.clearWorkflowsBtn) {
+      this.clearWorkflowsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.confirmClearAllWorkflows();
+      });
+    }
+
+    if (this.clearLogsBtn) {
+      this.clearLogsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.confirmClearLogs();
+      });
+    }
+
+    if (this.deleteWfBtn) {
+      this.deleteWfBtn.addEventListener('click', () => {
+        if (this.currentWorkflowId) {
+          this.deleteSingleWorkflow(this.currentWorkflowId);
+        }
+      });
+    }
+
+    const reqToggle = document.getElementById('toggle-requirements-btn');
+    if (reqToggle) {
+      reqToggle.addEventListener('click', () => {
+        const content = document.getElementById('agent-requirements-content');
+        const icon = document.getElementById('requirements-expand-icon');
+        if (content) {
+          const isHidden = content.style.display === 'none';
+          content.style.display = isHidden ? 'block' : 'none';
+          if (icon) icon.textContent = isHidden ? '▴ Hide Directives' : '▾ View Directives';
+        }
+      });
     }
 
     if (this.copyReportBtn) {
@@ -83,12 +129,163 @@ class MultiAgentModule {
       });
     });
 
+    // Update admin buttons visibility on load and auth state changes
+    window.addEventListener('auth:login', () => this.updateAdminVisibility());
+    window.addEventListener('auth:logout', () => this.updateAdminVisibility());
+    this.updateAdminVisibility();
+
     // Load existing workflows for sidebar
     this.loadWorkflowsList();
   }
 
+  updateAdminVisibility() {
+    const user = window.API?.getCurrentUser ? window.API.getCurrentUser() : null;
+    const isAdmin = Boolean(user && (user.role === 'admin' || user.role === 'super_admin'));
+    if (this.clearWorkflowsBtn) {
+      this.clearWorkflowsBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+    }
+    if (this.clearLogsBtn) {
+      this.clearLogsBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+    }
+  }
+
+  async confirmClearAllWorkflows() {
+    const confirmAction = async () => {
+      const token = window.API?.getAccessToken ? window.API.getAccessToken() : null;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      try {
+        const res = await fetch('/api/v1/agents/workflows?clear_logs=true&optimize_db=true', {
+          method: 'DELETE',
+          headers,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || 'Failed to clear workflows');
+        }
+        if (window.showToast) {
+          window.showToast(data.message || 'Workflows and logs cleared. Database storage optimized.', 'success');
+        }
+        this.hideModal();
+        this.loadWorkflowsList();
+      } catch (err) {
+        console.error('Error clearing workflows:', err);
+        if (window.showToast) window.showToast(err.message, 'error');
+      }
+    };
+
+    if (window.RAG?.utils?.confirmModal) {
+      window.RAG.utils.confirmModal({
+        title: 'Clear Agent Workflows & Logs',
+        headerIcon: '⚠️',
+        itemIcon: '🤖',
+        itemName: 'All Agent Workflows & Operational Logs',
+        itemMeta: 'Super Admin / Admin Maintenance Action',
+        prompt: 'Permanently delete all agent workflows, micro-task execution traces, and audit logs to optimize database storage? This action cannot be undone.',
+        confirmText: 'Wipe & Optimize DB',
+        confirmClass: 'btn btn-danger',
+        onConfirm: confirmAction,
+      });
+    } else {
+      if (confirm('Permanently delete all agent workflows, execution logs, and optimize database storage?')) {
+        await confirmAction();
+      }
+    }
+  }
+
+  async confirmClearLogs() {
+    const confirmAction = async () => {
+      const token = window.API?.getAccessToken ? window.API.getAccessToken() : null;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      try {
+        const res = await fetch('/api/v1/agents/logs?optimize_db=true', {
+          method: 'DELETE',
+          headers,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || 'Failed to clear logs');
+        }
+        if (window.showToast) {
+          window.showToast(data.message || 'Audit logs and execution traces cleared. Database optimized.', 'success');
+        }
+        this.loadWorkflowsList();
+      } catch (err) {
+        console.error('Error clearing logs:', err);
+        if (window.showToast) window.showToast(err.message, 'error');
+      }
+    };
+
+    if (window.RAG?.utils?.confirmModal) {
+      window.RAG.utils.confirmModal({
+        title: 'Purge Operational & Audit Logs',
+        headerIcon: '🧹',
+        itemIcon: '📜',
+        itemName: 'Audit Trails & Execution Logs',
+        itemMeta: 'Database Optimization & Log Cleanup',
+        prompt: 'Purge all system audit logs and task execution traces to reclaim disk space?',
+        confirmText: 'Purge Logs',
+        confirmClass: 'btn btn-danger',
+        onConfirm: confirmAction,
+      });
+    } else {
+      if (confirm('Purge all system audit logs and agent execution traces to optimize database storage?')) {
+        await confirmAction();
+      }
+    }
+  }
+
+  async deleteSingleWorkflow(wfId) {
+    const confirmAction = async () => {
+      const token = window.API?.getAccessToken ? window.API.getAccessToken() : null;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      try {
+        const res = await fetch(`/api/v1/agents/workflows/${wfId}`, {
+          method: 'DELETE',
+          headers,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || 'Failed to delete workflow');
+        }
+        if (window.showToast) {
+          window.showToast(data.message || 'Workflow deleted.', 'success');
+        }
+        this.hideModal();
+        this.loadWorkflowsList();
+      } catch (err) {
+        console.error('Error deleting workflow:', err);
+        if (window.showToast) window.showToast(err.message, 'error');
+      }
+    };
+
+    if (window.RAG?.utils?.confirmModal) {
+      window.RAG.utils.confirmModal({
+        title: 'Delete Agent Workflow',
+        headerIcon: '🗑️',
+        itemIcon: '🤖',
+        itemName: `Workflow ${wfId}`,
+        itemMeta: 'Permanent Deletion',
+        prompt: 'Are you sure you want to delete this specific workflow and its subtasks?',
+        confirmText: 'Delete',
+        confirmClass: 'btn btn-danger',
+        onConfirm: confirmAction,
+      });
+    } else {
+      if (confirm('Delete this workflow and its subtasks?')) {
+        await confirmAction();
+      }
+    }
+  }
+
   showModal() {
     if (this.modal) {
+      this.modal.classList.add('active');
       this.modal.style.display = 'flex';
       this.modal.setAttribute('aria-hidden', 'false');
     }
@@ -96,6 +293,7 @@ class MultiAgentModule {
 
   hideModal() {
     if (this.modal) {
+      this.modal.classList.remove('active');
       this.modal.style.display = 'none';
       this.modal.setAttribute('aria-hidden', 'true');
     }
@@ -105,6 +303,10 @@ class MultiAgentModule {
     if (this.inputSection) this.inputSection.style.display = 'block';
     if (this.dashboardSection) this.dashboardSection.style.display = 'none';
     if (this.finalReportWrapper) this.finalReportWrapper.style.display = 'none';
+    const reqWrapper = document.getElementById('agent-requirements-wrapper');
+    if (reqWrapper) reqWrapper.style.display = 'none';
+    const depWrapper = document.getElementById('agent-deployment-wrapper');
+    if (depWrapper) depWrapper.style.display = 'none';
     if (this.progressBar) this.progressBar.style.width = '0%';
     if (this.progressPct) this.progressPct.textContent = '0%';
     if (this.subtasksContainer) this.subtasksContainer.innerHTML = '';
@@ -304,30 +506,168 @@ class MultiAgentModule {
     }
   }
 
-  renderSubtasks(tasks) {
+  renderSubtasks(tasks, logicalErrors = []) {
     if (!this.subtasksContainer) return;
     this.subtasksContainer.innerHTML = '';
+
+    const roleMap = {
+      'decision_maker': '🧠 Decision Maker',
+      'researcher': '🔍 Researcher',
+      'task_generator': '📋 Task Generator',
+      'task_executor': '⚡ Task Executor',
+      'validator': '🛡️ Validator',
+      'deployer': '🚀 Deployer',
+    };
 
     tasks.forEach((t) => {
       const card = document.createElement('div');
       card.id = `subtask-card-${t.task_number}`;
-      card.style.cssText = 'background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;';
+      card.style.cssText = 'background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; transition: all 0.2s ease;';
 
-      const toolsList = t.assigned_tools.join(', ') || 'native';
+      const toolsList = (t.assigned_tools && t.assigned_tools.length > 0) ? t.assigned_tools.join(', ') : 'native';
+      const roleName = roleMap[t.agent_role] || '⚡ Task Executor';
+
+      // Check validation result
+      const val = t.validation_result || {};
+      const isPassed = val.passed === true || (t.validation_score !== null && t.validation_score >= 0.7);
+      const isPending = t.status === 'pending' && (!val || Object.keys(val).length === 0);
+
+      let badgeBg = 'rgba(255,255,255,0.06)';
+      let badgeColor = 'var(--text-muted)';
+      let badgeLabel = 'Pending';
+
+      if (!isPending) {
+        if (isPassed) {
+          badgeBg = 'rgba(16, 185, 129, 0.15)';
+          badgeColor = '#10b981';
+          badgeLabel = `PASSED (${t.validation_score ?? val.score ?? 1.0})`;
+        } else {
+          badgeBg = 'rgba(239, 68, 68, 0.15)';
+          badgeColor = '#ef4444';
+          badgeLabel = `FLAGGED (${t.validation_score ?? val.score ?? 0.3})`;
+        }
+      }
+
+      // Format output data
+      let outputDisplay = '';
+      if (t.output_data && Object.keys(t.output_data).length > 0) {
+        if (typeof t.output_data === 'string') {
+          outputDisplay = t.output_data;
+        } else if (t.output_data.summary) {
+          outputDisplay = t.output_data.summary;
+        } else {
+          try {
+            outputDisplay = JSON.stringify(t.output_data, null, 2);
+          } catch (e) {
+            outputDisplay = String(t.output_data);
+          }
+        }
+      } else {
+        outputDisplay = `Operation performed by ${roleName} using [${toolsList}] via [${t.mcp_provider || 'native'}] provider.`;
+      }
+
+      // Check matching logical errors for this task
+      const taskErrors = logicalErrors.filter(err => err.task_number === t.task_number || err.task_title === t.title);
+
+      // Validation feedback
+      let feedbackText = val.feedback || (isPassed ? 'All operational acceptance criteria and verification gates satisfied.' : 'One or more execution criteria flagged for review.');
+      if (taskErrors.length > 0) {
+        feedbackText += ' • Alerts: ' + taskErrors.map(e => e.message || e.note || e.type).join(' | ');
+      }
+
       card.innerHTML = `
-        <div>
-          <span style="font-weight: 700; color: #818cf8; margin-right: 6px;">#${t.task_number}</span>
-          <span style="font-weight: 600; color: var(--text-main);">${t.title}</span>
-          <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 2px;">
-            Tool: <span style="color: #3b82f6;">${toolsList}</span> • Provider: <span style="color: #10b981;">${t.mcp_provider}</span>
+        <div class="subtask-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; cursor: pointer; gap: 8px;">
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px;">
+              <span style="font-weight: 700; color: #818cf8; font-size: 0.8rem;">#${t.task_number}</span>
+              <span style="font-weight: 600; color: var(--text-main); font-size: 0.82rem;">${this.escapeHtml(t.title)}</span>
+              <span style="font-size: 0.65rem; background: rgba(99, 102, 241, 0.15); color: #818cf8; padding: 1px 6px; border-radius: 4px; font-weight: 600;">
+                ${roleName}
+              </span>
+            </div>
+            <div style="font-size: 0.68rem; color: var(--text-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span>Tool: <strong style="color: #38bdf8;">${toolsList}</strong></span>
+              <span>•</span>
+              <span>Provider: <strong style="color: #34d399;">${t.mcp_provider || 'native'}</strong></span>
+              <span>•</span>
+              <span id="subtask-toggle-hint-${t.task_number}" style="color: var(--accent-primary); font-weight: 500;">
+                ▾ Details &amp; Fulfillment
+              </span>
+            </div>
+          </div>
+          <div id="subtask-badge-${t.task_number}" style="font-size: 0.68rem; padding: 2px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; font-weight: 700; white-space: nowrap;">
+            ${badgeLabel}
           </div>
         </div>
-        <div id="subtask-badge-${t.task_number}" style="font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.06); color: var(--text-muted);">
-          Pending
+
+        <!-- Collapsible Details Body -->
+        <div id="subtask-details-${t.task_number}" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.74rem;">
+          <!-- 1. Requirements Scope -->
+          <div style="margin-bottom: 8px;">
+            <div style="font-weight: 700; color: #818cf8; font-size: 0.68rem; text-transform: uppercase; margin-bottom: 2px;">
+              📌 Requirements &amp; Scope:
+            </div>
+            <div style="color: var(--text-muted); line-height: 1.4; background: rgba(255,255,255,0.02); padding: 6px 8px; border-radius: 4px;">
+              ${this.escapeHtml(t.description || 'No specific requirement description recorded.')}
+            </div>
+          </div>
+
+          <!-- 2. Agent Operation & Output -->
+          <div style="margin-bottom: 8px;">
+            <div style="font-weight: 700; color: #38bdf8; font-size: 0.68rem; text-transform: uppercase; margin-bottom: 2px;">
+              ⚡ Agent Execution &amp; Output:
+            </div>
+            <div style="color: var(--text-main); line-height: 1.4; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05); padding: 6px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; white-space: pre-wrap; max-height: 140px; overflow-y: auto;">
+              ${this.escapeHtml(outputDisplay)}
+            </div>
+          </div>
+
+          <!-- 3. Validation & Acceptance Criteria Fulfillment -->
+          <div>
+            <div style="font-weight: 700; color: #10b981; font-size: 0.68rem; text-transform: uppercase; margin-bottom: 2px;">
+              🛡️ Acceptance Criteria &amp; Verification Verdict:
+            </div>
+            <div style="background: ${isPassed ? 'rgba(16, 185, 129, 0.06)' : 'rgba(239, 68, 68, 0.06)'}; border: 1px solid ${isPassed ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}; border-radius: 4px; padding: 6px 8px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 0.7rem;">
+                <span><strong>Status:</strong> <span style="color: ${isPassed ? '#10b981' : '#ef4444'}; font-weight: 700;">${isPassed ? 'PASSED' : 'FLAGGED'}</span></span>
+                <span><strong>Verification Score:</strong> ${t.validation_score ?? val.score ?? (isPassed ? 1.0 : 0.3)}</span>
+              </div>
+              <div style="color: var(--text-muted); font-size: 0.7rem; line-height: 1.4;">
+                ${this.escapeHtml(feedbackText)}
+              </div>
+            </div>
+          </div>
         </div>
       `;
+
+      // Click header to toggle details
+      const header = card.querySelector('.subtask-card-header');
+      if (header) {
+        header.addEventListener('click', () => {
+          const details = document.getElementById(`subtask-details-${t.task_number}`);
+          const hint = document.getElementById(`subtask-toggle-hint-${t.task_number}`);
+          if (details) {
+            const isHidden = details.style.display === 'none';
+            details.style.display = isHidden ? 'block' : 'none';
+            if (hint) {
+              hint.textContent = isHidden ? '▴ Collapse Details' : '▾ Details & Fulfillment';
+            }
+          }
+        });
+      }
+
       this.subtasksContainer.appendChild(card);
     });
+  }
+
+  escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   updateSubtaskValidation(taskNumber, validation) {
@@ -335,12 +675,12 @@ class MultiAgentModule {
     const card = document.getElementById(`subtask-card-${taskNumber}`);
     if (badge) {
       if (validation.passed) {
-        badge.textContent = `Passed (${validation.score})`;
+        badge.textContent = `PASSED (${validation.score || 1.0})`;
         badge.style.background = 'rgba(16, 185, 129, 0.15)';
         badge.style.color = '#10b981';
         badge.style.fontWeight = '700';
       } else {
-        badge.textContent = `Flagged`;
+        badge.textContent = `FLAGGED (${validation.score || 0.3})`;
         badge.style.background = 'rgba(239, 68, 68, 0.15)';
         badge.style.color = '#ef4444';
       }
@@ -352,10 +692,19 @@ class MultiAgentModule {
 
   async loadWorkflowsList() {
     if (!this.sidebarWorkflowsList) return;
+    this.updateAdminVisibility();
+
     try {
-      const res = await fetch('/api/v1/agents/workflows?limit=10');
+      const token = window.API?.getAccessToken ? window.API.getAccessToken() : null;
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/v1/agents/workflows?limit=25', { headers });
       if (!res.ok) return;
       const workflows = await res.json();
+
+      const user = window.API?.getCurrentUser ? window.API.getCurrentUser() : null;
+      const isAdmin = Boolean(user && (user.role === 'admin' || user.role === 'super_admin'));
 
       if (!workflows || workflows.length === 0) {
         this.sidebarWorkflowsList.innerHTML = `
@@ -368,26 +717,44 @@ class MultiAgentModule {
 
       this.sidebarWorkflowsList.innerHTML = '';
       workflows.forEach((wf) => {
+        const canDelete = isAdmin || (user && wf.user_id === user.id);
         const item = document.createElement('div');
-        item.style.cssText = 'padding: 8px 10px; margin-bottom: 6px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; transition: all 0.2s ease;';
+        item.style.cssText = 'padding: 8px 10px; margin-bottom: 6px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; transition: all 0.2s ease; position: relative;';
         item.innerHTML = `
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-            <span style="font-weight: 600; font-size: 0.78rem; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px;">
-              ${wf.title}
+            <span style="font-weight: 600; font-size: 0.78rem; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px;">
+              ${this.escapeHtml(wf.title)}
             </span>
-            <span style="font-size: 0.62rem; padding: 1px 5px; border-radius: 4px; background: ${wf.status === 'completed' ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.15)'}; color: ${wf.status === 'completed' ? '#10b981' : '#818cf8'}; text-transform: uppercase;">
-              ${wf.status}
-            </span>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span style="font-size: 0.62rem; padding: 1px 5px; border-radius: 4px; background: ${wf.status === 'completed' ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.15)'}; color: ${wf.status === 'completed' ? '#10b981' : '#818cf8'}; text-transform: uppercase;">
+                ${wf.status}
+              </span>
+              ${canDelete ? `
+                <button class="delete-wf-item-btn" title="Delete workflow" data-wf-id="${wf.id}" style="background: none; border: none; cursor: pointer; color: #ef4444; padding: 1px 4px; font-size: 0.72rem; border-radius: 3px; line-height: 1; opacity: 0.75; transition: opacity 0.2s ease;">
+                  ✕
+                </button>
+              ` : ''}
+            </div>
           </div>
           <div style="font-size: 0.65rem; color: var(--text-muted);">
             ${wf.task_count} subtasks • ${new Date(wf.created_at).toLocaleDateString()}
           </div>
         `;
 
-        item.addEventListener('click', () => {
+        item.addEventListener('click', (e) => {
+          if (e.target.closest('.delete-wf-item-btn')) return;
           this.showModal();
           this.loadWorkflowDetail(wf.id);
         });
+
+        const deleteBtn = item.querySelector('.delete-wf-item-btn');
+        if (deleteBtn) {
+          deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = deleteBtn.getAttribute('data-wf-id');
+            if (id) this.deleteSingleWorkflow(id);
+          });
+        }
 
         this.sidebarWorkflowsList.appendChild(item);
       });
@@ -398,25 +765,111 @@ class MultiAgentModule {
 
   async loadWorkflowDetail(wfId) {
     try {
-      const res = await fetch(`/api/v1/agents/workflows/${wfId}`);
+      this.currentWorkflowId = wfId;
+      const token = window.API?.getAccessToken ? window.API.getAccessToken() : null;
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/v1/agents/workflows/${wfId}`, { headers });
       if (!res.ok) return;
       const wf = await res.json();
+
+      const user = window.API?.getCurrentUser ? window.API.getCurrentUser() : null;
+      const canDelete = Boolean(user && (user.role === 'admin' || user.role === 'super_admin' || wf.user_id === user.id));
+      if (this.deleteWfBtn) {
+        this.deleteWfBtn.style.display = canDelete ? 'inline-flex' : 'none';
+      }
 
       if (this.inputSection) this.inputSection.style.display = 'none';
       if (this.dashboardSection) this.dashboardSection.style.display = 'block';
 
-      if (this.statusText) this.statusText.textContent = `Viewing Workflow: ${wf.title}`;
+      if (this.statusText) {
+        this.statusText.textContent = `Workflow: ${wf.title}`;
+      }
       if (this.progressBar) this.progressBar.style.width = '100%';
       if (this.progressPct) this.progressPct.textContent = '100%';
       this.setStageActive(5);
 
-      if (wf.tasks) {
-        this.renderSubtasks(wf.tasks);
-        wf.tasks.forEach((t) => {
-          this.updateSubtaskValidation(t.task_number, t.validation_result || { passed: true, score: 1.0 });
-        });
+      // Context Compaction Telemetry
+      if (wf.metrics?.context_compaction) {
+        const cc = wf.metrics.context_compaction;
+        if (this.tokensSavedElem) {
+          this.tokensSavedElem.textContent = `${(cc.tokens_saved || 0).toLocaleString()} Saved`;
+        }
+        if (this.ratioElem) {
+          this.ratioElem.textContent = `${cc.compression_ratio || 0}% reduction`;
+        }
       }
 
+      // Requirements Specification & Architecture Directives
+      const reqWrapper = document.getElementById('agent-requirements-wrapper');
+      const reqContent = document.getElementById('agent-requirements-content');
+      const reqIcon = document.getElementById('requirements-expand-icon');
+      if (reqWrapper && reqContent) {
+        const spec = wf.requirements_spec || wf.metrics?.customer_advice || '';
+        if (spec) {
+          reqWrapper.style.display = 'block';
+          reqContent.textContent = spec;
+          reqContent.style.display = 'none';
+          if (reqIcon) reqIcon.textContent = '▾ View Directives';
+        } else {
+          reqWrapper.style.display = 'none';
+        }
+      }
+
+      // Deployer Health & Quality Gate
+      const depWrapper = document.getElementById('agent-deployment-wrapper');
+      const depBadge = document.getElementById('agent-deploy-health-badge');
+      const depSummary = document.getElementById('agent-deploy-summary-text');
+      const depErrors = document.getElementById('agent-deploy-errors-list');
+      const logicalErrors = (wf.deployment_info && wf.deployment_info.logical_errors) || [];
+      const syntaxErrors = (wf.deployment_info && wf.deployment_info.syntax_errors) || [];
+
+      if (depWrapper && wf.deployment_info) {
+        depWrapper.style.display = 'block';
+        const health = (wf.deployment_info.health || 'operational').toUpperCase();
+        if (depBadge) {
+          depBadge.textContent = health;
+          depBadge.style.background = health === 'HEALTHY' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(234, 179, 8, 0.15)';
+          depBadge.style.color = health === 'HEALTHY' ? '#10b981' : '#eab308';
+        }
+        if (depSummary) {
+          depSummary.textContent = `${syntaxErrors.length} syntax • ${logicalErrors.length} logical errors`;
+        }
+        if (depErrors) {
+          if (logicalErrors.length > 0 || syntaxErrors.length > 0) {
+            depErrors.style.display = 'block';
+            depErrors.innerHTML = logicalErrors.map(e => `<div>⚠️ Task ${e.task_number || ''}: ${this.escapeHtml(e.message || e.note || e.type)}</div>`).join('');
+          } else {
+            depErrors.style.display = 'none';
+          }
+        }
+      } else if (depWrapper) {
+        depWrapper.style.display = 'none';
+      }
+
+      // Activity logs console
+      if (this.logsConsole) {
+        this.logsConsole.innerHTML = '';
+        if (wf.deployment_info?.logs && wf.deployment_info.logs.length > 0) {
+          wf.deployment_info.logs.forEach(l => {
+            const div = document.createElement('div');
+            div.textContent = `[Deployer] ${l}`;
+            this.logsConsole.appendChild(div);
+          });
+        } else {
+          const div = document.createElement('div');
+          div.textContent = `[System] Workflow completed with ${wf.tasks?.length || 0} subtasks in ${wf.metrics?.duration_seconds || '60'}s.`;
+          this.logsConsole.appendChild(div);
+        }
+      }
+
+      // Render Subtasks with fulfillment & validation
+      if (wf.tasks) {
+        this.renderSubtasks(wf.tasks, logicalErrors);
+      }
+
+      // Executive Summary Report
       if (this.finalReportWrapper) this.finalReportWrapper.style.display = 'block';
       if (this.finalReportContent) {
         this.finalReportContent.textContent = wf.executive_summary || 'No summary available.';

@@ -4,6 +4,7 @@ from app.models.document import Document, DocumentChunk, AuditLog
 from app.models.conversation import Conversation, Message
 from app.models.user import User, RefreshToken
 from app.models.room import Room, RoomDocument
+from app.models.project import Project
 from app.models.memory import MemoryItem, MemoryScope, MemoryType
 
 from app.models.organization import (
@@ -22,6 +23,7 @@ from app.models.multi_agent import (
     SubTaskStatus,
     AgentRole,
 )
+from app.models.audit_trail import AuditTrailRecord
 
 __all__ = [
     "Document",
@@ -33,6 +35,7 @@ __all__ = [
     "RefreshToken",
     "Room",
     "RoomDocument",
+    "Project",
     "MemoryItem",
     "MemoryScope",
     "MemoryType",
@@ -48,6 +51,7 @@ __all__ = [
     "WorkflowStatus",
     "SubTaskStatus",
     "AgentRole",
+    "AuditTrailRecord",
 ]
 
 

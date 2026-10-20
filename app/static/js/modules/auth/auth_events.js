@@ -26,10 +26,106 @@
     authTabRegister?.addEventListener('click', () => RAG.auth.switchAuthTab && RAG.auth.switchAuthTab('register'));
     authTabTokens?.addEventListener('click', () => RAG.auth.switchAuthTab && RAG.auth.switchAuthTab('tokens'));
 
-    authUserBtn?.addEventListener('click', () => {
+    // Profile Dropdown Elements
+    const profileDropdownContainer = document.getElementById('profileDropdownContainer');
+    const profileDropdownMenu = document.getElementById('profileDropdownMenu');
+    const profileMenuTokensBtn = document.getElementById('profile-menu-tokens-btn');
+    const profileMenuSettingsBtn = document.getElementById('profile-menu-settings-btn');
+    const profileMenuLogoutBtn = document.getElementById('profile-menu-logout-btn');
+    const openSettingsBtn = document.getElementById('open-settings-btn');
+
+    function closeProfileMenu() {
+      if (profileDropdownMenu?.classList.contains('show')) {
+        profileDropdownMenu.classList.remove('show');
+        authUserBtn?.setAttribute('aria-expanded', 'false');
+      }
+    }
+
+    function toggleProfileMenu() {
+      const isOpen = profileDropdownMenu?.classList.contains('show');
+      // Close theme or room menus if open
+      document.querySelectorAll('.theme-menu.show').forEach((m) => {
+        m.classList.remove('show');
+        const b = m.closest('.theme-dropdown-container')?.querySelector('.theme-toggle-btn');
+        if (b) b.setAttribute('aria-expanded', 'false');
+      });
+      document.querySelectorAll('.room-dropdown-menu.show').forEach((m) => {
+        m.classList.remove('show');
+        const b = document.getElementById('room-dropdown-btn');
+        if (b) b.setAttribute('aria-expanded', 'false');
+      });
+
+      if (isOpen) {
+        closeProfileMenu();
+      } else {
+        profileDropdownMenu?.classList.add('show');
+        authUserBtn?.setAttribute('aria-expanded', 'true');
+      }
+    }
+
+    // Toggle dropdown on profile button click
+    authUserBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleProfileMenu();
+    });
+
+    // Account & Tokens option in profile dropdown
+    profileMenuTokensBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeProfileMenu();
       const user = API.getCurrentUser();
       if (RAG.auth.switchAuthTab) RAG.auth.switchAuthTab(user ? 'tokens' : 'signin');
       authModal?.classList.add('active');
+    });
+
+    // Settings shortcut in profile dropdown
+    profileMenuSettingsBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeProfileMenu();
+      openSettingsBtn?.click();
+    });
+
+    // Sign out / Sign in button in profile dropdown
+    profileMenuLogoutBtn?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeProfileMenu();
+      const user = API.getCurrentUser();
+      const accessToken = API.getAccessToken();
+      if (user && accessToken) {
+        await API.logout();
+        RAG.utils.showToast('Signed out', 'info');
+        authModal?.classList.remove('active');
+        if (RAG.auth.handleLogoutState) RAG.auth.handleLogoutState();
+      } else {
+        if (RAG.auth.switchAuthTab) RAG.auth.switchAuthTab('signin');
+        authModal?.classList.add('active');
+      }
+    });
+
+    // Auto-close profile menu when any profile menu item is clicked
+    profileDropdownMenu?.addEventListener('click', (e) => {
+      const item = e.target.closest('.profile-menu-item');
+      if (item && item !== profileMenuTokensBtn && item !== profileMenuSettingsBtn && item !== profileMenuLogoutBtn) {
+        closeProfileMenu();
+      }
+    });
+
+    // Close when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!profileDropdownContainer?.contains(e.target)) {
+        closeProfileMenu();
+      }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeProfileMenu();
+      }
     });
 
     closeAuthBtn?.addEventListener('click', () => authModal?.classList.remove('active'));

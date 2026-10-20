@@ -43,6 +43,9 @@ class MemoryItem(Base):
     room_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("rooms.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     document_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True
     )

@@ -129,6 +129,9 @@
       }
       await RAG.documents.loadDocuments();
       if (RAG.state.currentRoomId && RAG.rooms?.selectRoom) RAG.rooms.selectRoom(RAG.state.currentRoomId, false);
+      if (RAG.chat?.checkDocumentQueueReadiness) {
+        RAG.chat.checkDocumentQueueReadiness(true);
+      }
     } catch (e) {
       RAG.utils.showToast(e.message, 'error');
     } finally {

@@ -55,9 +55,27 @@ class Settings(BaseSettings):
     DATA_DIR: Path = Field(default=Path("./data"))
     UPLOAD_DIR: Path = Field(default=Path("./data/uploads"))
     CHROMA_PERSIST_DIR: Path = Field(default=Path("./data/chroma"))
+    LOGS_DIR: Path = Field(default=Path("./data/logs"))
+    LOG_BACKUP_DIR: Path = Field(default=Path("./data/logs/backups"))
+
+    # Enterprise Audit Trail, Legal Compliance & Risk Logging
+    ENABLE_FILE_LOGGING: bool = True
+    LOG_ROTATION_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MB
+    LOG_ROTATION_BACKUP_COUNT: int = 10
+    AUDIT_LOG_RETENTION_DAYS: int = 90
+    AUDIT_TAMPER_EVIDENT_CHAIN: bool = True
+    COMPLIANCE_DEFAULT_FRAMEWORK: str = "ISO27001_SOC2_GDPR"
 
     # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./data/sqlite.db"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/rag_agent"
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: str = "postgres"
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "rag_agent"
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_RECYCLE: int = 3600
 
     # Default LLM & Embedding Providers
     DEFAULT_CHAT_PROVIDER: Literal["ollama", "openai", "anthropic", "openai-compatible", "gemini", "google"] = "ollama"
@@ -88,6 +106,15 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: str = "pdf,docx,txt,md,csv,html"
     MAX_INGESTION_CONCURRENCY: int = 3
 
+    # RabbitMQ Queue Settings for High-Traffic Document Ingestion
+    RABBITMQ_ENABLED: bool = True
+    RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
+    RABBITMQ_QUEUE_NAME: str = "document_processing_queue"
+    RABBITMQ_PREFETCH_COUNT: int = 2
+    RABBITMQ_MAX_RETRIES: int = 3
+    RABBITMQ_RETRY_DELAY_SECONDS: int = 5
+    RABBITMQ_EMBEDDED_WORKER: bool = True
+
     # RAG Retrieval & LangGraph Workflow
     RETRIEVAL_TOP_K: int = 4
     SIMILARITY_THRESHOLD: float = 0.3
@@ -102,6 +129,12 @@ class Settings(BaseSettings):
     LANGCHAIN_PROJECT: str = "rag-agent-production"
     REDACT_SENSITIVE_TRACES: bool = True
 
+    # LLM Request/Response Logging (Non-Prod / Non-Preprod Only)
+    ENABLE_LLM_LOGGING: bool = True
+    LLM_LOG_ENVIRONMENTS: str = "local,development,dev,stage,staging,test"
+    LLM_LOG_MAX_CHARS: int = 10000
+    LLM_LOG_FORMAT: Literal["text", "json"] = "text"
+
     @field_validator("DEFAULT_CHAT_PROVIDER", "DEFAULT_EMBEDDING_PROVIDER", mode="before")
     @classmethod
     def normalize_provider(cls, v: Any) -> Any:
@@ -112,7 +145,7 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL", mode="after")
     @classmethod
     def normalize_database_url(cls, v: str) -> str:
-        """Resolve relative SQLite paths to absolute paths relative to BASE_DIR."""
+        """Resolve relative SQLite paths and normalize PostgreSQL async driver prefixes."""
         if "sqlite" in v:
             prefix, sep, path_str = v.partition(":///")
             if sep and not path_str.startswith("/"):
@@ -120,7 +153,23 @@ class Settings(BaseSettings):
                 abs_path = (base_dir / path_str).resolve()
                 abs_path.parent.mkdir(parents=True, exist_ok=True)
                 return f"{prefix}:///{abs_path}"
+        elif v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+asyncpg://", 1)
         return v
+
+    @property
+    def vector_database_url(self) -> str:
+        """Return PostgreSQL URL configured for psycopg driver for vector store operations."""
+        url = self.DATABASE_URL
+        if "postgresql+asyncpg://" in url:
+            return url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+        elif "postgresql://" in url:
+            return url.replace("postgresql://", "postgresql+psycopg://", 1)
+        elif "postgres://" in url:
+            return url.replace("postgres://", "postgresql+psycopg://", 1)
+        return url
 
     @property
     def allowed_origins_list(self) -> List[str]:
@@ -149,6 +198,25 @@ class Settings(BaseSettings):
             dist_bundle = self.BASE_DIR / "app" / "static" / "dist" / "bundle.min.js"
             return dist_bundle.exists()
         return False
+
+    @property
+    def is_llm_logging_enabled(self) -> bool:
+        """Determine whether LLM request/response logging is permitted.
+
+        STRICT SAFETY RULE:
+        Logging is strictly disabled on preprod and production instances
+        to eliminate security risks, secret leakage, and user data exposure.
+        """
+        env = (self.APP_ENV or "").strip().lower()
+        disallowed = {"production", "prod", "preprod", "pre-production", "pre_prod"}
+        if env in disallowed:
+            return False
+
+        if not self.ENABLE_LLM_LOGGING:
+            return False
+
+        allowed = {e.strip().lower() for e in self.LLM_LOG_ENVIRONMENTS.split(",") if e.strip()}
+        return env in allowed
 
     def ensure_directories(self) -> None:
         """Ensure all required local directories exist and have write permissions."""

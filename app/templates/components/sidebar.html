@@ -32,26 +32,42 @@
       <span class="tab-label">History</span>
       <span id="tab-history-badge" class="tab-badge">0</span>
     </button>
-    <button class="sidebar-tab" id="tab-btn-memory" data-tab="memory" title="Short & Long-Term Memory (Admin & Staff Only)" style="display: none;">
+    <button class="sidebar-tab" id="tab-btn-memory" data-tab="memory"
+      title="Short & Long-Term Memory (Admin & Staff Only)" style="display: none;">
       <span class="tab-icon">🧠</span>
       <span class="tab-label">Memory</span>
       <span id="tab-memory-badge" class="tab-badge">0</span>
     </button>
-    <button class="sidebar-tab" id="tab-btn-agents" data-tab="agents" title="Multi-Agent Workflows & MCP">
+    <button class="sidebar-tab" id="tab-btn-agents" data-tab="agents"
+      title="Multi-Agent Workflows & MCP (Super Admin Only)" style="display: none;">
       <span class="tab-icon">🤖</span>
       <span class="tab-label">Agents</span>
-      <span id="tab-agents-badge" class="tab-badge" style="background: rgba(99, 102, 241, 0.3); color: #818cf8;">6</span>
+      <span id="tab-agents-badge" class="tab-badge"
+        style="background: rgba(99, 102, 241, 0.3); color: #818cf8;">6</span>
     </button>
   </div>
 
-  <!-- Tab Panel 1: Room Workspaces (Multi-file grouping) -->
+  <!-- Tab Panel 1: Room Workspaces (Multi-file grouping, Projects & Chats) -->
   <div id="panel-rooms" class="tab-panel active">
-    <div class="docs-header" style="margin-bottom: 12px;">
+    <div class="docs-header" style="margin-bottom: 8px;">
       <span class="docs-title">Workspaces / Rooms</span>
-      <button id="create-room-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 8px;">
-        + New Room
-      </button>
+      <div style="display: flex; gap: 4px;">
+        <button id="create-room-btn" class="btn btn-outline" style="font-size: 0.7rem; padding: 3px 6px;" title="Create new Room workspace">
+          + Room
+        </button>
+        <button id="create-project-btn" class="btn btn-outline" style="font-size: 0.7rem; padding: 3px 6px; color: #818cf8; border-color: rgba(99, 102, 241, 0.4);" title="Create new Project inside active room">
+          + Project
+        </button>
+      </div>
     </div>
+
+    <!-- Hierarchy Filter: Room > Projects and/or Chats -->
+    <div class="room-filter-selector" style="display: flex; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 2px; margin-bottom: 10px;">
+      <button type="button" class="sidebar-room-filter-btn active" data-filter="all" style="flex: 1; text-align: center; border: none; background: var(--bg-secondary); color: var(--text-primary); font-size: 0.72rem; padding: 3px 0; border-radius: 4px; cursor: pointer; font-weight: 500;">All</button>
+      <button type="button" class="sidebar-room-filter-btn" data-filter="projects" style="flex: 1; text-align: center; border: none; background: transparent; color: var(--text-muted); font-size: 0.72rem; padding: 3px 0; border-radius: 4px; cursor: pointer;">Projects</button>
+      <button type="button" class="sidebar-room-filter-btn" data-filter="chats" style="flex: 1; text-align: center; border: none; background: transparent; color: var(--text-muted); font-size: 0.72rem; padding: 3px 0; border-radius: 4px; cursor: pointer;">Chats</button>
+    </div>
+
     <div id="rooms-list" class="docs-list">
       <!-- Rendered via JavaScript -->
       <div style="text-align: center; padding: 24px 10px; color: var(--text-muted); font-size: 0.82rem;">
@@ -107,12 +123,15 @@
 
   <!-- Tab Panel 3: Chat History Sessions -->
   <div id="panel-history" class="tab-panel">
-    <div class="docs-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+    <div class="docs-header"
+      style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
       <div>
         <span class="docs-title">Saved Conversations</span>
         <span id="history-count" class="docs-count">0 sessions</span>
       </div>
-      <button id="clear-all-data-btn" class="btn btn-outline" style="font-size: 0.7rem; padding: 3px 8px; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" title="Delete all conversation history and conversational memories">
+      <button id="clear-all-data-btn" class="btn btn-outline"
+        style="font-size: 0.7rem; padding: 3px 8px; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);"
+        title="Delete all conversation history and conversational memories">
         🗑️ Clear All
       </button>
     </div>
@@ -126,8 +145,11 @@
   <!-- Tab Panel 4: Two-Tier Memory & Document Revaluation (Admin & Staff Only) -->
   <div id="panel-memory" class="tab-panel">
     <div class="docs-header" style="margin-bottom: 8px;">
-      <span class="docs-title">Memory Context <span style="font-size: 0.65rem; background: rgba(99, 102, 241, 0.2); color: var(--accent-primary); padding: 2px 6px; border-radius: 4px; font-weight: 600; text-transform: uppercase;">Admin / Staff</span></span>
-      <button id="reval-mem-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 8px;" title="Revaluate stale document contexts">
+      <span class="docs-title">Memory Context <span
+          style="font-size: 0.65rem; background: rgba(99, 102, 241, 0.2); color: var(--accent-primary); padding: 2px 6px; border-radius: 4px; font-weight: 600; text-transform: uppercase;">Admin
+          / Staff</span></span>
+      <button id="reval-mem-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 8px;"
+        title="Revaluate stale document contexts">
         🔄 Reval
       </button>
     </div>
@@ -159,8 +181,10 @@
 
     <!-- Actions bar -->
     <div style="display: flex; gap: 6px; margin: 8px 0;">
-      <button id="add-memory-btn" class="btn btn-outline" style="flex: 1; font-size: 0.72rem; padding: 5px;">+ Add Fact</button>
-      <button id="prune-memory-btn" class="btn btn-outline" style="flex: 1; font-size: 0.72rem; padding: 5px;">🧹 Prune</button>
+      <button id="add-memory-btn" class="btn btn-outline" style="flex: 1; font-size: 0.72rem; padding: 5px;">+ Add
+        Fact</button>
+      <button id="prune-memory-btn" class="btn btn-outline" style="flex: 1; font-size: 0.72rem; padding: 5px;">🧹
+        Prune</button>
     </div>
 
     <div id="memory-list" class="memory-list">
@@ -174,16 +198,31 @@
   <div id="panel-agents" class="tab-panel">
     <div class="docs-header" style="margin-bottom: 8px;">
       <span class="docs-title">Agent Workflows</span>
-      <button id="sidebar-launch-agent-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 8px; color: #818cf8; border-color: rgba(99, 102, 241, 0.4);">
-        + New Run
-      </button>
+      <div style="display: flex; gap: 4px; align-items: center;">
+        <button id="sidebar-clear-workflows-btn" class="btn btn-outline"
+          style="font-size: 0.68rem; padding: 3px 6px; color: #ef4444; border-color: rgba(239, 68, 68, 0.35); display: none;"
+          title="Clear all agent workflows & optimize DB (Super Admin & Admin only)">
+          🗑️ Clear
+        </button>
+        <button id="sidebar-clear-logs-btn" class="btn btn-outline"
+          style="font-size: 0.68rem; padding: 3px 6px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.35); display: none;"
+          title="Clear system audit & execution logs (Super Admin & Admin only)">
+          🧹 Logs
+        </button>
+        <button id="sidebar-launch-agent-btn" class="btn btn-outline"
+          style="font-size: 0.72rem; padding: 4px 8px; color: #818cf8; border-color: rgba(99, 102, 241, 0.4);">
+          + New Run
+        </button>
+      </div>
     </div>
 
     <!-- 6 Roles Badge Summary -->
-    <div style="background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px;">
-      <div style="font-size: 0.72rem; font-weight: 700; color: #818cf8; margin-bottom: 4px;">6-Agent Collaborative Team</div>
+    <div
+      style="background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px;">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #818cf8; margin-bottom: 4px;">Agent Collaborative Team
+      </div>
       <div style="font-size: 0.65rem; color: var(--text-muted); line-height: 1.4;">
-        0. Decision Maker • 1. Researcher • 2. Task Generator • 3. Task Executor • 4. Validator • 5. Deployer
+        A collaborative AI team that works together to achieve goals.
       </div>
     </div>
 

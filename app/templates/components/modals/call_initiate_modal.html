@@ -1,0 +1,153 @@
+<!-- Call Initiation & Live Transcripts Consultation Modal -->
+<div id="call-initiate-modal" class="modal-overlay" style="z-index: 1050;">
+  <div class="modal-card" style="max-width: 960px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; background: var(--bg-primary, #0f172a); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); border-radius: 14px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+    
+    <!-- Modal Header -->
+    <div class="modal-header" style="padding: 16px 22px; background: var(--bg-secondary, #1e293b); border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.08)); display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span class="call-pulse-indicator" style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: rgba(16, 185, 129, 0.18); border: 1px solid #10b981; color: #10b981; font-size: 1.1rem;">
+          📞
+        </span>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h3 id="call-modal-project-title" style="margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-primary, #f8fafc);">
+              Consultation Call Workspace
+            </h3>
+            <span id="call-channel-badge" style="font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 9999px; background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4);">
+              Google Meet
+            </span>
+            <span id="call-live-timer" style="font-size: 0.72rem; font-family: monospace; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 2px 7px; border-radius: 4px;">
+              ⏱️ 00:00
+            </span>
+          </div>
+          <p style="margin: 2px 0 0; font-size: 0.74rem; color: var(--text-muted, #94a3b8);">
+            Application Request Consultation Bridge with full chronological conversation transcripts
+          </p>
+        </div>
+      </div>
+      <button id="close-call-modal-btn" class="modal-close" style="background: none; border: none; font-size: 1.5rem; color: var(--text-muted); cursor: pointer; line-height: 1;">&times;</button>
+    </div>
+
+    <!-- Modal Body: 2-Column Split Workspace -->
+    <div style="display: grid; grid-template-columns: 340px 1fr; flex: 1; overflow: hidden; min-height: 480px;">
+      
+      <!-- Left Column: Call Connection & Client Details -->
+      <div style="padding: 18px 20px; background: var(--bg-surface, #131d31); border-right: 1px solid var(--border-color, rgba(255,255,255,0.08)); display: flex; flex-direction: column; gap: 16px; overflow-y: auto;">
+        
+        <!-- Live Call Action Card -->
+        <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(16, 185, 129, 0.08)); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 10px; padding: 14px;">
+          <div style="font-size: 0.72rem; font-weight: 600; color: #818cf8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+            Connection Status
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+            <span style="display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981;"></span>
+            <span id="call-status-label" style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary, #f8fafc);">
+              Ready to Join Call
+            </span>
+          </div>
+
+          <a id="call-join-link-btn" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; text-decoration: none; padding: 9px 14px; font-weight: 600; font-size: 0.85rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);">
+            <span>🚀 Join Meeting Now</span>
+            <span style="font-size: 0.75rem;">↗</span>
+          </a>
+
+          <div style="margin-top: 10px; display: flex; gap: 6px;">
+            <input type="text" id="call-meeting-link-input" readonly value="" style="flex: 1; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color, rgba(255,255,255,0.1)); color: var(--text-secondary); font-family: monospace;">
+            <button type="button" id="copy-meeting-link-btn" class="btn btn-outline" style="padding: 4px 10px; font-size: 0.72rem;" title="Copy Meeting Link">
+              Copy
+            </button>
+          </div>
+        </div>
+
+        <!-- Requester / Client Information -->
+        <div style="background: var(--bg-secondary, #1e293b); border: 1px solid var(--border-color, rgba(255,255,255,0.08)); border-radius: 10px; padding: 14px;">
+          <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px;">
+            Client &amp; Contact Details
+          </div>
+          
+          <div style="display: flex; flex-direction: column; gap: 10px; font-size: 0.8rem;">
+            <div>
+              <span style="color: var(--text-muted); font-size: 0.72rem; display: block;">Requester Name</span>
+              <strong id="call-client-name" style="color: var(--text-primary);">—</strong>
+            </div>
+            <div>
+              <span style="color: var(--text-muted); font-size: 0.72rem; display: block;">Email Address</span>
+              <a id="call-client-email" href="#" style="color: var(--accent-primary, #818cf8); text-decoration: none; word-break: break-all;">—</a>
+            </div>
+            <div>
+              <span style="color: var(--text-muted); font-size: 0.72rem; display: block;">Phone Number</span>
+              <span id="call-client-phone" style="color: var(--text-primary); font-family: monospace;">—</span>
+            </div>
+            <div>
+              <span style="color: var(--text-muted); font-size: 0.72rem; display: block;">Preferred Channel</span>
+              <span id="call-client-channel" style="color: var(--text-primary); font-weight: 500;">Gmeet</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Consultation Notes Section -->
+        <div style="flex: 1; display: flex; flex-direction: column;">
+          <label for="call-notes-input" style="font-size: 0.72rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px;">
+            Consultation Notes &amp; Action Items
+          </label>
+          <textarea id="call-notes-input" rows="4" class="form-control" placeholder="Record key agreements, architecture decisions, and follow-ups during the call..." style="width: 100%; font-size: 0.78rem; resize: vertical; flex: 1; min-height: 80px;"></textarea>
+          <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+            <button type="button" id="save-call-notes-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 10px;">
+              💾 Save Notes
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Conversation Transcripts (From Conversation) -->
+      <div style="display: flex; flex-direction: column; background: var(--bg-primary, #0f172a); overflow: hidden;">
+        
+        <!-- Transcripts Toolbar -->
+        <div style="padding: 10px 18px; background: var(--bg-secondary, #1e293b); border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.08)); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 0.9rem;">📜</span>
+            <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">
+              Conversation Transcripts
+            </span>
+            <span id="transcripts-turn-count" style="font-size: 0.68rem; background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 4px; color: var(--text-muted);">
+              From Session
+            </span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="text" id="transcript-search-input" placeholder="🔍 Search transcript..." style="font-size: 0.75rem; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.15)); background: var(--bg-surface, #1e293b); color: var(--text-primary); width: 170px;">
+            <button type="button" id="copy-transcripts-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 10px;" title="Copy entire conversation transcript to clipboard">
+              📋 Copy
+            </button>
+            <button type="button" id="export-transcripts-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 10px;" title="Download transcript as .txt file">
+              ⬇️ Export
+            </button>
+          </div>
+        </div>
+
+        <!-- Transcripts Scrollable Content Area -->
+        <div id="transcripts-content-area" style="flex: 1; padding: 18px 22px; overflow-y: auto; font-family: inherit; font-size: 0.82rem; line-height: 1.6; color: var(--text-secondary);">
+          <div style="text-align: center; color: var(--text-muted); padding: 40px 20px;">
+            <span style="font-size: 1.5rem; display: block; margin-bottom: 8px;">⏳</span>
+            Loading conversation transcripts...
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Modal Footer -->
+    <div class="modal-footer" style="padding: 12px 22px; background: var(--bg-secondary, #1e293b); border-top: 1px solid var(--border-color, rgba(255,255,255,0.08)); display: flex; align-items: center; justify-content: space-between;">
+      <div style="font-size: 0.74rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+        <span>🔒</span>
+        <span>All conversation transcripts are synchronized directly with this project record in the projects table.</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button type="button" class="btn btn-outline" id="dismiss-call-modal-btn">Done / Close</button>
+      </div>
+    </div>
+
+  </div>
+</div>

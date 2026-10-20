@@ -133,6 +133,20 @@ class MCPClient:
                 await asyncio.sleep(0.5 * (2 ** attempt))
 
         self._record_failure()
+        try:
+            from app.services.audit_service import audit_service
+            asyncio.create_task(
+                audit_service.log_event(
+                    domain_category="third_party_failure",
+                    event_name="mcp_third_party_failure",
+                    execution_status="failed",
+                    error_type="MCPClientError",
+                    error_message=f"External MCP server '{self.config.provider_id}' failed: {last_exception}",
+                    metadata_payload={"provider": self.config.provider_id, "url": self.config.server_url, "method": method},
+                )
+            )
+        except Exception:
+            pass
         raise MCPClientError(f"MCP provider '{self.config.provider_id}' failed: {last_exception}")
 
     async def list_tools(self, force_refresh: bool = False) -> List[MCPTool]:
