@@ -16,10 +16,30 @@ from app.models.user import RefreshToken, User
 
 settings = get_settings()
 
-JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-ID_TOKEN_EXPIRE_MINUTES = 60
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+JWT_ALGORITHM = getattr(settings, "JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 60)
+ID_TOKEN_EXPIRE_MINUTES = getattr(settings, "ID_TOKEN_EXPIRE_MINUTES", 60)
+REFRESH_TOKEN_EXPIRE_DAYS = getattr(settings, "REFRESH_TOKEN_EXPIRE_DAYS", 7)
+
+
+def get_auth_config() -> Dict[str, Any]:
+    """Retrieve dynamic JWT algorithm and expiration windows from cache or settings."""
+    try:
+        from app.services.config_service import config_service
+        return {
+            "algorithm": config_service._settings_cache.get("jwt_algorithm", settings.JWT_ALGORITHM),
+            "access_token_expire_minutes": int(config_service._settings_cache.get("access_token_expire_minutes", settings.ACCESS_TOKEN_EXPIRE_MINUTES)),
+            "id_token_expire_minutes": int(config_service._settings_cache.get("id_token_expire_minutes", settings.ID_TOKEN_EXPIRE_MINUTES)),
+            "refresh_token_expire_days": int(config_service._settings_cache.get("refresh_token_expire_days", settings.REFRESH_TOKEN_EXPIRE_DAYS)),
+        }
+    except Exception:
+        return {
+            "algorithm": getattr(settings, "JWT_ALGORITHM", "HS256"),
+            "access_token_expire_minutes": getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 60),
+            "id_token_expire_minutes": getattr(settings, "ID_TOKEN_EXPIRE_MINUTES", 60),
+            "refresh_token_expire_days": getattr(settings, "REFRESH_TOKEN_EXPIRE_DAYS", 7),
+        }
+
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -46,7 +66,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(user: User, expires_delta: Optional[timedelta] = None) -> str:
     """Create a signed JWT access token for API authorization."""
-    delta = expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    auth_cfg = get_auth_config()
+    delta = expires_delta or timedelta(minutes=auth_cfg["access_token_expire_minutes"])
     expire = utc_now() + delta
     payload = {
         "sub": user.id,
@@ -57,12 +78,13 @@ def create_access_token(user: User, expires_delta: Optional[timedelta] = None) -
         "iat": utc_now(),
         "exp": expire,
     }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=auth_cfg["algorithm"])
 
 
 def create_id_token(user: User, expires_delta: Optional[timedelta] = None) -> str:
     """Create a signed OIDC-compliant ID token representing user identity claims."""
-    delta = expires_delta or timedelta(minutes=ID_TOKEN_EXPIRE_MINUTES)
+    auth_cfg = get_auth_config()
+    delta = expires_delta or timedelta(minutes=auth_cfg["id_token_expire_minutes"])
     expire = utc_now() + delta
     payload = {
         "sub": user.id,
@@ -76,13 +98,14 @@ def create_id_token(user: User, expires_delta: Optional[timedelta] = None) -> st
         "iat": utc_now(),
         "exp": expire,
     }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=auth_cfg["algorithm"])
 
 
 async def create_refresh_token(db: AsyncSession, user: User) -> Tuple[str, datetime]:
     """Generate a cryptographically secure refresh token, store in database, and return."""
+    auth_cfg = get_auth_config()
     raw_token = secrets.token_urlsafe(64)
-    expires_at = utc_now() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expires_at = utc_now() + timedelta(days=auth_cfg["refresh_token_expire_days"])
 
     token_record = RefreshToken(
         user_id=user.id,
@@ -98,8 +121,9 @@ async def create_refresh_token(db: AsyncSession, user: User) -> Tuple[str, datet
 
 def decode_token(token: str, expected_type: Optional[str] = "access") -> Dict[str, Any]:
     """Decode and validate a JWT token signature and expiration."""
+    auth_cfg = get_auth_config()
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[auth_cfg["algorithm"], "HS256"])
         if expected_type and payload.get("type") != expected_type:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -205,5 +229,17 @@ async def require_admin_or_staff(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access restricted. Short-term and long-term memory inspection requires admin or staff privileges.",
+        )
+    return user
+
+
+async def require_admin(
+    user: User = Depends(get_current_user),
+) -> User:
+    """FastAPI dependency requiring authenticated user to have admin role."""
+    if getattr(user, "role", "user") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted. Administrator privileges required.",
         )
     return user

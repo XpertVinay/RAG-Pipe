@@ -100,6 +100,9 @@
             }
           }
         });
+        if (RAG.utils?.scheduleScrollToBottom) {
+          RAG.utils.scheduleScrollToBottom(true);
+        }
       }
     } catch (e) {
       console.warn('Failed to load messages for conversation:', e);
@@ -136,14 +139,76 @@
           await API.deleteConversation(convId);
           RAG.utils.showToast('Conversation deleted successfully', 'info');
           if (RAG.state.currentConversationId === convId) {
-            if (RAG.chat?.startNewChat) RAG.chat.startNewChat();
-          } else {
-            await loadConversations();
+            RAG.state.currentConversationId = null;
+            localStorage.removeItem('rag_active_conv_id');
+            const messagesContainer = document.getElementById('messages-container');
+            if (messagesContainer) messagesContainer.innerHTML = '';
+            if (RAG.chat?.showWelcomeScreen) RAG.chat.showWelcomeScreen();
           }
+          await loadConversations();
         } catch (e) {
           RAG.utils.showToast(e.message, 'error');
         }
       },
+    });
+  }
+
+  async function clearAllData() {
+    RAG.utils.showConfirmModal({
+      title: 'Delete All Chat & Memory Data',
+      headerIcon: '⚠️',
+      itemIcon: '🗑️',
+      itemName: 'All Conversations & Memories',
+      itemMeta: 'Permanent Wipe',
+      prompt: 'Are you sure you want to permanently delete ALL conversation threads, messages, and saved conversational memory? Your workspace will be reset to a clean state.',
+      confirmText: 'Delete All Data',
+      onConfirm: async () => {
+        try {
+          let res;
+          try {
+            res = await API.clearAllData(RAG.state.currentRoomId || null);
+          } catch (err) {
+            // If room-scoped wipe had an authorization or not-found conflict, fallback to global user clear
+            res = await API.clearAllData(null);
+          }
+          RAG.state.currentConversationId = null;
+          localStorage.removeItem('rag_active_conv_id');
+          const messagesContainer = document.getElementById('messages-container');
+          if (messagesContainer) messagesContainer.innerHTML = '';
+          if (RAG.chat?.showWelcomeScreen) RAG.chat.showWelcomeScreen();
+          cachedConversations = [];
+          await loadConversations();
+          if (window.updateMemoryBadgeInitial) window.updateMemoryBadgeInitial();
+          if (RAG.memory?.loadMemories) RAG.memory.loadMemories();
+          RAG.utils.showToast(res?.message || 'All conversation and memory data deleted', 'success');
+        } catch (e) {
+          // Even on unexpected network failure, wipe client workspace state cleanly
+          RAG.state.currentConversationId = null;
+          localStorage.removeItem('rag_active_conv_id');
+          const messagesContainer = document.getElementById('messages-container');
+          if (messagesContainer) messagesContainer.innerHTML = '';
+          if (RAG.chat?.showWelcomeScreen) RAG.chat.showWelcomeScreen();
+          cachedConversations = [];
+          await loadConversations();
+          RAG.utils.showToast(e.message || 'Failed to delete all data', 'error');
+        }
+      },
+    });
+  }
+
+  function initHistoryListeners() {
+    const clearBtn = document.getElementById('clear-all-data-btn');
+    clearBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      clearAllData();
+    });
+
+    const settingsClearBtn = document.getElementById('settings-clear-all-data-btn');
+    settingsClearBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const settingsModal = document.getElementById('settings-modal');
+      if (settingsModal) settingsModal.classList.remove('active');
+      clearAllData();
     });
   }
 
@@ -152,9 +217,17 @@
     loadConversationMessages,
     selectConversation,
     deleteConversation,
+    clearAllData,
+    init: initHistoryListeners,
   };
+
+  // Expose on RAG.chat as well for convenience and backwards-compatibility
+  RAG.chat = RAG.chat || {};
+  RAG.chat.loadConversationMessages = loadConversationMessages;
 
   global.loadConversations = loadConversations;
   global.selectConversation = selectConversation;
   global.deleteConversation = deleteConversation;
+  global.clearAllData = clearAllData;
 })(window);
+

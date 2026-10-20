@@ -4,7 +4,7 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.graph import rag_agent_app
@@ -16,6 +16,7 @@ from app.core.logging import logger
 from app.core.rate_limit import RateLimiter
 from app.database import get_db
 from app.models.conversation import Conversation, Message
+from app.models.memory import MemoryItem
 from app.models.user import User
 from app.schemas.chat import (
     ChatRequest,
@@ -32,10 +33,10 @@ from app.services.conversation_service import (
     resolve_room_and_document_ids,
 )
 
-router = APIRouter(prefix="/api/chat", tags=["chat"])
+router = APIRouter(prefix="/chat", tags=["chat"])
 settings = get_settings()
 
-chat_rate_limiter = RateLimiter(max_requests=60, window_seconds=60)
+chat_rate_limiter = RateLimiter(max_requests=getattr(settings, "RATE_LIMIT_CHAT_MAX", 60), window_seconds=60)
 
 
 @router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
@@ -101,6 +102,98 @@ async def get_conversation(
 
     check_conversation_access(conv, current_user)
     return ConversationDetailResponse.model_validate(conv)
+
+
+@router.delete("/data/all", status_code=status.HTTP_200_OK)
+@router.delete("/conversations/all", status_code=status.HTTP_200_OK)
+async def delete_all_chat_and_memory_data(
+    room_id: Optional[str] = Query(None),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all conversations, messages, and associated conversational memories (STM/LTM)."""
+    # 1. Collect conversation IDs matching room/user
+    conv_query = select(Conversation)
+    has_room_filter = False
+    if room_id:
+        try:
+            await check_room_query_access(room_id, current_user, db)
+            has_room_filter = True
+        except HTTPException:
+            logger.warning(f"Room {room_id} access check failed during clear all; proceeding with user-scoped wipe.")
+            has_room_filter = False
+
+    if has_room_filter:
+        if current_user and getattr(current_user, "role", "user") == "admin":
+            conv_query = conv_query.where(Conversation.room_id == room_id)
+        elif current_user:
+            conv_query = conv_query.where(
+                or_(
+                    Conversation.room_id == room_id,
+                    Conversation.user_id == current_user.id,
+                )
+            )
+        else:
+            conv_query = conv_query.where(
+                or_(
+                    Conversation.room_id == room_id,
+                    Conversation.user_id.is_(None),
+                )
+            )
+    elif current_user:
+        if getattr(current_user, "role", "user") == "admin":
+            pass  # Admin can clear all
+        else:
+            conv_query = conv_query.where(
+                or_(Conversation.user_id == current_user.id, Conversation.user_id.is_(None))
+            )
+    else:
+        conv_query = conv_query.where(Conversation.user_id.is_(None))
+
+    conv_res = await db.execute(conv_query)
+    convs = conv_res.scalars().all()
+    conv_ids = [c.id for c in convs]
+
+    del_conv_count = len(conv_ids)
+    if conv_ids:
+        await db.execute(delete(Message).where(Message.conversation_id.in_(conv_ids)))
+        await db.execute(delete(Conversation).where(Conversation.id.in_(conv_ids)))
+
+    # 2. Delete associated memories
+    mem_stmt = delete(MemoryItem)
+    if has_room_filter:
+        if current_user and getattr(current_user, "role", "user") == "admin":
+            mem_stmt = mem_stmt.where(MemoryItem.room_id == room_id)
+        elif current_user:
+            mem_stmt = mem_stmt.where(
+                or_(MemoryItem.room_id == room_id, MemoryItem.user_id == current_user.id)
+            )
+        else:
+            mem_stmt = mem_stmt.where(
+                or_(MemoryItem.room_id == room_id, MemoryItem.user_id.is_(None))
+            )
+    elif current_user and getattr(current_user, "role", "user") != "admin":
+        mem_stmt = mem_stmt.where(MemoryItem.user_id == current_user.id)
+    elif not current_user:
+        mem_stmt = mem_stmt.where(MemoryItem.user_id.is_(None))
+
+    mem_res = await db.execute(mem_stmt)
+    del_mem_count = mem_res.rowcount or 0
+
+    await db.commit()
+
+    # Clear hot L1 cache
+    try:
+        from app.memory.manager import memory_manager
+        memory_manager.l1_cache.clear()
+    except Exception as e:
+        logger.warning(f"Error clearing L1 memory cache during data wipe: {e}")
+
+    return {
+        "message": "All conversations, messages, and conversational memory have been permanently deleted.",
+        "deleted_conversations": del_conv_count,
+        "deleted_memories": del_mem_count,
+    }
 
 
 @router.delete("/conversations/{conversation_id}", status_code=status.HTTP_200_OK)

@@ -258,26 +258,100 @@
       global.__citationsRegistry[regKey] = { citations, query: RAG.state.lastUserQuery || '' };
 
       citationsHtml = `
-        <div class="citations-section">
+        <div class="citations-section" aria-label="Verified evidence sources">
           <div class="citations-header">
-            <span class="citations-header-title">
-              <span class="citations-header-icon">📚</span>
-              <span>Verified Sources</span>
-            </span>
-            <span class="citations-count-pill">${citations.length} references</span>
+            <div class="citations-header-title">
+              <span class="citations-header-shield" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M8 1.5l5.5 2v4.5c0 3.5-2.5 6-5.5 7-3-1-5.5-3.5-5.5-7V3.5l5.5-2z" fill="rgba(16, 185, 129, 0.15)" stroke="#10b981"/>
+                  <path d="M5.5 8l2 2 3.5-3.5" stroke="#34d399" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+              <span class="citations-title-text">VERIFIED SOURCES</span>
+              <span class="citations-live-badge">GROUNDED PROOF</span>
+            </div>
+            <div class="citations-header-meta">
+              <span class="citations-count-pill">${citations.length} ${citations.length === 1 ? 'REFERENCE' : 'REFERENCES'}</span>
+            </div>
           </div>
           <div class="citation-pills-row">
             ${citations
               .map((c, i) => {
                 const matchPct = Math.round((c.relevance_score || 0) * 100);
                 const pageNum = c.page || 1;
+                const filename = c.filename || 'Source Document';
+                const escapedName = RAG.utils.escapeHtml(filename);
+                const fileExt = (filename.split('.').pop() || 'doc').toLowerCase();
+
+                let fileIconSvg = `
+                  <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" class="doc-icon-svg">
+                    <path d="M3 2.5a1 1 0 011-1h5.5l4 4V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1v-11z" fill="rgba(99, 102, 241, 0.12)" stroke="#818cf8"/>
+                    <path d="M9 1.5v4h4" stroke="#818cf8"/>
+                  </svg>
+                `;
+                if (fileExt === 'pdf') {
+                  fileIconSvg = `
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" class="doc-icon-svg icon-pdf">
+                      <path d="M3 2.5a1 1 0 011-1h5.5l4 4V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1v-11z" fill="rgba(244, 63, 94, 0.15)" stroke="#fb7185"/>
+                      <path d="M9 1.5v4h4" stroke="#fb7185"/>
+                    </svg>
+                  `;
+                } else if (fileExt === 'csv' || fileExt === 'xlsx' || fileExt === 'xls') {
+                  fileIconSvg = `
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" class="doc-icon-svg icon-data">
+                      <path d="M3 2.5a1 1 0 011-1h5.5l4 4V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1v-11z" fill="rgba(16, 185, 129, 0.15)" stroke="#34d399"/>
+                      <path d="M9 1.5v4h4" stroke="#34d399"/>
+                    </svg>
+                  `;
+                }
+
+                let scoreClass = 'score-high';
+                if (matchPct < 50) scoreClass = 'score-low';
+                else if (matchPct < 70) scoreClass = 'score-mid';
+
+                let excerptSnippet = '';
+                if (c.excerpt && c.excerpt.trim()) {
+                  let cleaned = c.excerpt.replace(/\s+/g, ' ').trim();
+                  if (cleaned.length > 135) cleaned = cleaned.substring(0, 132) + '...';
+                  excerptSnippet = `
+                    <div class="citation-card-excerpt" title="${RAG.utils.escapeHtml(c.excerpt)}">
+                      <span class="excerpt-quote" aria-hidden="true">“</span>
+                      <span class="excerpt-text">${RAG.utils.escapeHtml(cleaned)}</span>
+                    </div>
+                  `;
+                }
+
                 return `
-                  <div class="citation-pill" onclick="window.openEvidenceModal('${regKey}', ${i})" role="button" tabindex="0" title="Click to inspect realtime document evidence on page ${pageNum}">
-                    <span class="citation-pill-index">[${i + 1}]</span>
-                    <span class="citation-pill-name">${RAG.utils.escapeHtml(c.filename)}</span>
-                    <span class="citation-pill-page">p.${pageNum}</span>
-                    ${matchPct > 0 ? `<span class="citation-pill-score">${matchPct}%</span>` : ''}
-                    <span class="citation-pill-arrow">↗</span>
+                  <div class="citation-pill" onclick="window.openEvidenceModal('${regKey}', ${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.openEvidenceModal('${regKey}', ${i});}" role="button" tabindex="0" title="Click to inspect realtime document evidence on page ${pageNum} (${escapedName})">
+                    <div class="citation-pill-main">
+                      <div class="citation-pill-left">
+                        <span class="citation-pill-index">[${i + 1}]</span>
+                        <span class="citation-pill-icon">${fileIconSvg}</span>
+                        <span class="citation-pill-name" title="${escapedName}">${escapedName}</span>
+                      </div>
+                      <div class="citation-pill-right">
+                        <span class="citation-pill-page" title="Source document page ${pageNum}">
+                          <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.8" class="page-mini-icon">
+                            <rect x="3" y="2" width="10" height="12" rx="1.5"/>
+                            <line x1="6" y1="5" x2="10" y2="5"/>
+                            <line x1="6" y1="8" x2="10" y2="8"/>
+                          </svg>
+                          <span>p.${pageNum}</span>
+                        </span>
+                        ${matchPct > 0 ? `
+                          <span class="citation-pill-score ${scoreClass}" title="Semantic relevance match score">
+                            <span class="score-pulse-dot"></span>
+                            <span>${matchPct}%</span>
+                          </span>
+                        ` : ''}
+                        <span class="citation-pill-arrow" aria-hidden="true">
+                          <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4.5 11.5L11.5 4.5M11.5 4.5H6.5M11.5 4.5V9.5" stroke-linecap="round" stroke-linejoin="round"/>
+                          </svg>
+                        </span>
+                      </div>
+                    </div>
+                    ${excerptSnippet}
                   </div>
                 `;
               })

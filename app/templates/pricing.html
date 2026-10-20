@@ -1,0 +1,1237 @@
+{% extends "base.html" %}
+
+{% block title %}Plans & Pricing — RAG Agent Multi-Tenant Intelligence{% endblock %}
+
+{% block body_class %}pricing-page-body{% endblock %}
+
+{% block extra_head %}
+<style>
+  :root {
+    --pricing-card-bg: rgba(18, 24, 38, 0.7);
+    --pricing-card-border: rgba(255, 255, 255, 0.08);
+    --pricing-highlight-border: rgba(99, 102, 241, 0.6);
+    --pricing-glow: 0 0 35px rgba(99, 102, 241, 0.25);
+  }
+
+  html {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    height: auto !important;
+    scroll-behavior: smooth;
+  }
+
+  body,
+  body.pricing-page-body {
+    background-color: var(--bg-primary, #0b0f19);
+    color: var(--text-primary, #f1f5f9);
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    position: relative !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pricing-page-wrapper {
+    min-height: 100vh;
+    height: auto;
+    overflow-y: visible;
+    display: flex;
+    flex-direction: column;
+    background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.12) 0%, transparent 60%),
+                radial-gradient(circle at 90% 20%, rgba(168, 85, 247, 0.08) 0%, transparent 40%),
+                var(--bg-primary, #0b0f19);
+    position: relative;
+    width: 100%;
+  }
+
+  /* Pricing Navbar */
+  .pricing-navbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--pricing-card-border);
+    backdrop-filter: blur(12px);
+    background: rgba(11, 15, 25, 0.8);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .pricing-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.15rem;
+  }
+
+  .pricing-nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* Hero Section */
+  .pricing-hero {
+    text-align: center;
+    padding: 60px 20px 30px;
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  .pricing-hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    color: #a5b4fc;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 20px;
+  }
+
+  .pricing-hero h1 {
+    font-size: 2.75rem;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+    margin: 0 0 16px;
+    background: linear-gradient(135deg, #ffffff 40%, #a5b4fc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .pricing-hero p {
+    font-size: 1.1rem;
+    color: #94a3b8;
+    line-height: 1.6;
+    margin: 0 0 32px;
+  }
+
+  /* Billing Toggle */
+  .billing-toggle-container {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 6px 10px;
+    border-radius: 9999px;
+    border: 1px solid var(--pricing-card-border);
+    margin-bottom: 40px;
+  }
+
+  .billing-toggle-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    padding: 8px 18px;
+    border-radius: 9999px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .billing-toggle-btn.active {
+    background: var(--accent-primary, #6366f1);
+    color: #ffffff;
+    box-shadow: 0 2px 10px rgba(99, 102, 241, 0.4);
+  }
+
+  .discount-pill {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-weight: 700;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  /* Pricing Cards Grid */
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px 60px;
+    width: 100%;
+  }
+
+  @media (max-width: 992px) {
+    .pricing-grid {
+      grid-template-columns: 1fr;
+      max-width: 520px;
+    }
+  }
+
+  .pricing-card {
+    background: var(--pricing-card-bg);
+    border: 1px solid var(--pricing-card-border);
+    border-radius: 16px;
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    backdrop-filter: blur(16px);
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  .pricing-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  }
+
+  .pricing-card.featured {
+    border-color: var(--pricing-highlight-border);
+    box-shadow: var(--pricing-glow);
+    background: linear-gradient(180deg, rgba(30, 36, 60, 0.8) 0%, rgba(18, 24, 38, 0.85) 100%);
+  }
+
+  .pricing-badge {
+    position: absolute;
+    top: -12px;
+    right: 28px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #ffffff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .card-header-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin: 0 0 6px;
+    color: #ffffff;
+  }
+
+  .card-header-desc {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    line-height: 1.5;
+    margin: 0 0 24px;
+    min-height: 42px;
+  }
+
+  .card-price-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-bottom: 24px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .card-price-currency {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #cbd5e1;
+  }
+
+  .card-price-amount {
+    font-size: 3rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #ffffff;
+  }
+
+  .card-price-period {
+    font-size: 0.9rem;
+    color: #94a3b8;
+  }
+
+  .card-features-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    flex: 1;
+  }
+
+  .card-features-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.88rem;
+    color: #cbd5e1;
+    line-height: 1.4;
+  }
+
+  .card-features-list li .check-icon {
+    color: #10b981;
+    font-weight: 700;
+    font-size: 0.95rem;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .card-cta-btn {
+    width: 100%;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .card-cta-primary {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+  }
+
+  .card-cta-primary:hover {
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+    transform: translateY(-1px);
+  }
+
+  .card-cta-outline {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+  }
+
+  .card-cta-outline:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+
+  /* Comparison Section */
+  .comparison-section {
+    max-width: 1200px;
+    margin: 40px auto 80px;
+    padding: 0 24px;
+    width: 100%;
+  }
+
+  .comparison-table-wrapper {
+    background: var(--pricing-card-bg);
+    border: 1px solid var(--pricing-card-border);
+    border-radius: 16px;
+    overflow-x: auto;
+    backdrop-filter: blur(12px);
+  }
+
+  .comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    text-align: left;
+  }
+
+  .comparison-table th, .comparison-table td {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .comparison-table th {
+    background: rgba(255, 255, 255, 0.02);
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .comparison-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* FAQ Section */
+  .faq-section {
+    max-width: 860px;
+    margin: 0 auto 100px;
+    padding: 0 24px;
+    width: 100%;
+  }
+
+  .faq-section h2 {
+    text-align: center;
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 32px;
+  }
+
+  .faq-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--pricing-card-border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 14px;
+  }
+
+  .faq-item h4 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #f8fafc;
+  }
+
+  .faq-item p {
+    margin: 0;
+    font-size: 0.88rem;
+    color: #94a3b8;
+    line-height: 1.5;
+  }
+
+  /* ==========================================================================
+     Checkout Payment Modal Overlay & Card
+     ========================================================================== */
+  #checkout-modal {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    background: rgba(4, 7, 14, 0.82) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    z-index: 10000 !important;
+    display: none;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 20px !important;
+    overflow-y: auto !important;
+    box-sizing: border-box !important;
+  }
+
+  .checkout-modal-card {
+    position: relative !important;
+    max-width: 520px !important;
+    width: 100% !important;
+    margin: auto !important;
+    background: #111827 !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(99, 102, 241, 0.2) !important;
+    overflow: hidden !important;
+    animation: checkoutModalScale 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    max-height: 94vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  @keyframes checkoutModalScale {
+    from {
+      opacity: 0;
+      transform: scale(0.95) translateY(14px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  .checkout-modal-card .modal-header {
+    padding: 16px 22px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    background: rgba(255, 255, 255, 0.02) !important;
+    flex-shrink: 0 !important;
+  }
+
+  .checkout-modal-card .modal-close-btn {
+    background: transparent !important;
+    border: none !important;
+    color: #94a3b8 !important;
+    font-size: 1.4rem !important;
+    line-height: 1 !important;
+    width: 32px !important;
+    height: 32px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    transition: all 0.15s ease !important;
+  }
+
+  .checkout-modal-card .modal-close-btn:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: #ffffff !important;
+  }
+
+  .checkout-modal-card .modal-body {
+    padding: 18px 22px !important;
+    background: #111827 !important;
+    overflow-y: auto !important;
+    max-height: calc(94vh - 65px) !important;
+  }
+
+  .checkout-summary-box {
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .checkout-modal-card .form-group {
+    margin-bottom: 16px;
+  }
+
+  .checkout-modal-card .form-group label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    margin-bottom: 6px;
+  }
+
+  .checkout-modal-card .form-control {
+    width: 100% !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+    color: #f1f5f9 !important;
+    font-size: 0.9rem !important;
+    font-family: inherit !important;
+    outline: none !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+    box-sizing: border-box !important;
+  }
+
+  .checkout-modal-card .form-control:focus {
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25) !important;
+  }
+
+  .checkout-modal-card .form-control.is-invalid {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25) !important;
+  }
+
+  /* Mandate Option Selector in Checkout */
+  .payment-type-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+
+  .payment-type-card {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+  }
+
+  .payment-type-card:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+    background: rgba(99, 102, 241, 0.05);
+  }
+
+  .payment-type-card.active {
+    border-color: #6366f1;
+    background: rgba(99, 102, 241, 0.12);
+    box-shadow: 0 0 16px rgba(99, 102, 241, 0.2);
+  }
+
+  .payment-type-card .card-radio-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .payment-type-card .card-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .payment-type-card .card-subtext {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    line-height: 1.35;
+  }
+
+  .mandate-pill {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 9999px;
+  }
+
+  /* ==========================================================================
+     Invoices & Mandate Transparency Modal
+     ========================================================================== */
+  #invoices-modal,
+  #invoice-detail-modal {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    background: rgba(4, 7, 14, 0.85) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    z-index: 10000 !important;
+    display: none;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 24px 16px !important;
+    overflow-y: auto !important;
+    box-sizing: border-box !important;
+  }
+
+  #invoice-detail-modal {
+    z-index: 10050 !important;
+    background: rgba(4, 7, 14, 0.9) !important;
+  }
+
+  .invoices-modal-card {
+    position: relative !important;
+    max-width: 860px !important;
+    width: 100% !important;
+    margin: auto !important;
+    background: #111827 !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(99, 102, 241, 0.18) !important;
+    overflow: hidden !important;
+    animation: checkoutModalScale 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+  }
+
+  .mandate-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 768px) {
+    .mandate-stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .payment-type-selector {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .mandate-stat-box {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+
+  .mandate-stat-box .stat-label {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .mandate-stat-box .stat-value {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .status-badge-active,
+  .status-badge-paid {
+    background: rgba(16, 185, 129, 0.18);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+  }
+
+  .status-badge-pending,
+  .status-badge-created {
+    background: rgba(245, 158, 11, 0.18);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+  }
+
+  .status-badge-none {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+  }
+
+  .invoices-table-container {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 380px;
+  }
+
+  .invoices-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    text-align: left;
+  }
+
+  .invoices-table th {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 10px 14px;
+    font-weight: 700;
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .invoices-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    color: #e2e8f0;
+    vertical-align: middle;
+  }
+
+  .invoices-table tr:hover td {
+    background: rgba(99, 102, 241, 0.04);
+  }
+
+  .receipt-btn {
+    background: rgba(99, 102, 241, 0.12);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    color: #a5b4fc;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .receipt-btn:hover {
+    background: rgba(99, 102, 241, 0.25);
+    color: #ffffff;
+    border-color: #6366f1;
+  }
+
+  .sync-spin {
+    animation: spinRotate 0.8s linear infinite;
+  }
+
+  @keyframes spinRotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pricing-page-wrapper">
+  <!-- Pricing Header / Navbar -->
+  <header class="pricing-navbar">
+    <a href="/" class="pricing-brand">
+      <div class="logo-icon">⚡</div>
+      <span>RAG Agent</span>
+    </a>
+    <div class="pricing-nav-actions">
+      <button id="view-invoices-btn" class="btn btn-outline" onclick="window.openInvoicesModal()" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none; border-color: rgba(99, 102, 241, 0.4); color: #a5b4fc; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 8px;">
+        <span>📜</span>
+        <span>Invoices &amp; Mandates</span>
+      </button>
+      <a href="/" class="btn btn-outline" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
+        ← Back to Workspace
+      </a>
+      <button id="pricing-auth-btn" class="auth-user-pill" style="padding: 5px 12px;">
+        <span class="auth-avatar" id="pricing-avatar">👤</span>
+        <span id="pricing-user-label">Sign In</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="pricing-hero">
+    <div class="pricing-hero-badge">
+      <span>💎</span> Simple, Predictable Multi-Tenant Pricing
+    </div>
+    <h1>Supercharge Your Workspace Intelligence</h1>
+    <p>
+      Equip your organization with grounded multi-file reasoning, dual-tier memory context (L1 RAM + L2 Vector), and granular admin invite management.
+    </p>
+
+    <!-- Monthly / Annual Toggle -->
+    <div class="billing-toggle-container">
+      <button class="billing-toggle-btn active" id="toggle-monthly" data-cycle="monthly">
+        Monthly Billing
+      </button>
+      <button class="billing-toggle-btn" id="toggle-annual" data-cycle="annual">
+        Annual Billing <span class="discount-pill">Save 20%</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Plans Grid -->
+  <div class="pricing-grid">
+    <!-- Starter Tier -->
+    <div class="pricing-card" id="card-starter">
+      <div class="card-header-title">Starter</div>
+      <div class="card-header-desc">
+        For individual builders exploring grounded document Q&amp;A and semantic search.
+      </div>
+      <div class="card-price-wrap">
+        <span class="card-price-currency">$</span>
+        <span class="card-price-amount" id="price-starter">0</span>
+        <span class="card-price-period">/ month</span>
+      </div>
+      <ul class="card-features-list">
+        <li><span class="check-icon">✓</span> <span>Up to <strong>5</strong> Workspace Documents</span></li>
+        <li><span class="check-icon">✓</span> <span>Single User Seat (Standard Privileges)</span></li>
+        <li><span class="check-icon">✓</span> <span>Basic Semantic Chunking &amp; Citations</span></li>
+        <li><span class="check-icon">✓</span> <span>Standard Local &amp; Ollama Chat</span></li>
+        <li><span class="check-icon">✓</span> <span>Community Support</span></li>
+      </ul>
+      <button class="card-cta-btn card-cta-outline" onclick="window.selectPlan('starter')">
+        <span>Get Started Free</span>
+      </button>
+    </div>
+
+    <!-- Professional Tier (Featured) -->
+    <div class="pricing-card featured" id="card-pro">
+      <div class="pricing-badge">Most Popular</div>
+      <div class="card-header-title">Professional</div>
+      <div class="card-header-desc">
+        High-throughput intelligence with shared team memory and multi-seat delegation.
+      </div>
+      <div class="card-price-wrap">
+        <span class="card-price-currency">$</span>
+        <span class="card-price-amount" id="price-pro">49</span>
+        <span class="card-price-period" id="period-pro">/ month</span>
+      </div>
+      <ul class="card-features-list">
+        <li><span class="check-icon">✓</span> <span>Up to <strong>100</strong> Workspace Documents</span></li>
+        <li><span class="check-icon">✓</span> <span><strong>Up to 15 Team Seats</strong> with Role Invites</span></li>
+        <li><span class="check-icon">✓</span> <span><strong>Admin Invitation Dashboard</strong> (Staff, Admin, User)</span></li>
+        <li><span class="check-icon">✓</span> <span><strong>Dual-Tier Memory Context</strong> (L1 RAM + L2 Vector)</span></li>
+        <li><span class="check-icon">✓</span> <span>Multi-File Agent Reasoning &amp; Citations</span></li>
+        <li><span class="check-icon">✓</span> <span>Priority Document Revaluation &amp; Processing</span></li>
+        <li><span class="check-icon">✓</span> <span>Priority Email &amp; Chat Support</span></li>
+      </ul>
+      <button class="card-cta-btn card-cta-primary" onclick="window.selectPlan('pro')">
+        <span>Upgrade to Professional</span>
+      </button>
+    </div>
+
+    <!-- Enterprise Tier -->
+    <div class="pricing-card" id="card-enterprise">
+      <div class="pricing-badge" style="background: linear-gradient(135deg, #059669, #10b981);">Scale &amp; Security</div>
+      <div class="card-header-title">Enterprise</div>
+      <div class="card-header-desc">
+        Dedicated infrastructure, unlimited seats, custom LLM models, and strict RBAC governance.
+      </div>
+      <div class="card-price-wrap">
+        <span class="card-price-currency">$</span>
+        <span class="card-price-amount" id="price-enterprise">249</span>
+        <span class="card-price-period" id="period-enterprise">/ month</span>
+      </div>
+      <ul class="card-features-list">
+        <li><span class="check-icon">✓</span> <span><strong>Unlimited</strong> Documents &amp; Custom Workspaces</span></li>
+        <li><span class="check-icon">✓</span> <span><strong>Unlimited Team Seats</strong> &amp; Fine-Grained RBAC</span></li>
+        <li><span class="check-icon">✓</span> <span>Private Cloud &amp; Custom LLM Endpoints</span></li>
+        <li><span class="check-icon">✓</span> <span>Enterprise Audit Logging &amp; Compliance</span></li>
+        <li><span class="check-icon">✓</span> <span>Dedicated Vector Infrastructure</span></li>
+        <li><span class="check-icon">✓</span> <span>24/7 Dedicated Support &amp; 99.9% Uptime SLA</span></li>
+      </ul>
+      <button class="card-cta-btn card-cta-outline" onclick="window.selectPlan('enterprise')">
+        <span>Upgrade to Enterprise</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Detailed Feature Comparison Table -->
+  <section class="comparison-section">
+    <h2 style="text-align: center; margin-bottom: 24px; font-size: 1.8rem; font-weight: 700;">
+      Detailed Plan Capabilities Comparison
+    </h2>
+    <div class="comparison-table-wrapper">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th style="width: 40%;">Capability / Feature</th>
+            <th style="width: 20%;">Starter</th>
+            <th style="width: 20%; color: #a5b4fc;">Professional</th>
+            <th style="width: 20%; color: #34d399;">Enterprise</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Workspace Documents</strong></td>
+            <td>5 files</td>
+            <td>100 files</td>
+            <td>Unlimited</td>
+          </tr>
+          <tr>
+            <td><strong>Organization Member Seats</strong></td>
+            <td>1 Seat</td>
+            <td>Up to 15 Seats</td>
+            <td>Unlimited Seats</td>
+          </tr>
+          <tr>
+            <td><strong>Admin Role Delegation &amp; Shared Invites</strong></td>
+            <td>—</td>
+            <td>✓ Full Admin Dashboard</td>
+            <td>✓ Custom Roles &amp; SSO</td>
+          </tr>
+          <tr>
+            <td><strong>Dual-Tier Memory (L1 RAM + L2 Vector)</strong></td>
+            <td>—</td>
+            <td>✓ Active L1 RAM + L2</td>
+            <td>✓ Dedicated Vector Sharding</td>
+          </tr>
+          <tr>
+            <td><strong>Grounding Citations &amp; Verification</strong></td>
+            <td>✓ Standard</td>
+            <td>✓ Deep Citation Trace</td>
+            <td>✓ Real-Time Audit Trace</td>
+          </tr>
+          <tr>
+            <td><strong>Max Document Upload Size</strong></td>
+            <td>10 MB</td>
+            <td>50 MB</td>
+            <td>200 MB+</td>
+          </tr>
+          <tr>
+            <td><strong>Support SLA</strong></td>
+            <td>Community</td>
+            <td>Priority (24h)</td>
+            <td>24/7 Dedicated Manager</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- FAQ Section -->
+  <section class="faq-section">
+    <h2>Frequently Asked Questions</h2>
+    <div class="faq-item">
+      <h4>How does Admin User Invitation work?</h4>
+      <p>
+        Standard self-registration creates accounts with common user privileges. As an administrator, you can open the Team Invites dashboard and generate secure, time-limited invite links specifying elevated roles (such as Staff or Admin) and optionally bound to a specific colleague's email address.
+      </p>
+    </div>
+    <div class="faq-item">
+      <h4>Can I upgrade or switch billing cycles anytime?</h4>
+      <p>
+        Yes! When you upgrade, your organization's maximum seats and privileges are unlocked immediately. Annual billing provides an automatic 20% discount.
+      </p>
+    </div>
+    <div class="faq-item">
+      <h4>Is payment processing secure?</h4>
+      <p>
+        All transactions use encrypted SSL connections. In demo environments, payments are safely processed through our simulated checkout pipeline without charging your real credit card.
+      </p>
+    </div>
+    <div class="faq-item">
+      <h4>How is document privacy protected?</h4>
+      <p>
+        Workspaces are isolated with strict RBAC permission checks. Private rooms are only accessible to authorized members configured by the room owner or organization admin.
+      </p>
+    </div>
+  </section>
+</div>
+
+<!-- Checkout Payment Modal -->
+<div id="checkout-modal" class="modal-overlay checkout-modal-overlay" style="display: none;" aria-hidden="true" role="dialog" aria-labelledby="checkout-modal-title">
+  <div class="checkout-modal-card">
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.3rem;">💳</span>
+        <div>
+          <h3 id="checkout-modal-title" style="margin: 0; font-size: 1.1rem; font-weight: 700;">Complete Plan Subscription</h3>
+          <p style="margin: 2px 0 0 0; font-size: 0.78rem; color: var(--text-muted);">
+            Secure payment checkout &amp; recurring mandate for your organization.
+          </p>
+        </div>
+      </div>
+      <button class="modal-close-btn" id="close-checkout-modal-btn" onclick="window.closeCheckoutModal()" aria-label="Close modal">&times;</button>
+    </div>
+
+    <div class="modal-body" style="padding: 20px;">
+      <!-- Order Summary Box -->
+      <div class="checkout-summary-box">
+        <div>
+          <div style="font-weight: 700; font-size: 1rem; color: #ffffff;" id="summary-plan-name">Professional Plan</div>
+          <div style="font-size: 0.78rem; color: #a5b4fc; margin-top: 2px;" id="summary-billing-cycle">Monthly Billing &bull; 15 Seats</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-weight: 800; font-size: 1.4rem; color: #ffffff;" id="summary-amount-due">₹3,999.00</div>
+          <div style="font-size: 0.72rem; color: #94a3b8;" id="summary-currency-label">INR / period</div>
+        </div>
+      </div>
+
+      <!-- Payment Type Selector (Auto-Debit Mandate vs One-Time) -->
+      <div class="payment-type-selector">
+        <div class="payment-type-card active" id="type-card-mandate" onclick="window.selectPaymentType('mandate')">
+          <div class="card-radio-header">
+            <span class="card-title">Monthly Auto-Debit Mandate</span>
+            <span class="mandate-pill">Recommended</span>
+          </div>
+          <div class="card-subtext">
+            Recurring monthly auto-renewal via Razorpay e-mandate. Automated invoice generated every 30 days.
+          </div>
+        </div>
+        <div class="payment-type-card" id="type-card-onetime" onclick="window.selectPaymentType('onetime')">
+          <div class="card-radio-header">
+            <span class="card-title">One-Time Payment</span>
+          </div>
+          <div class="card-subtext">
+            Single cycle invoice. Manual renewal required at end of subscription term.
+          </div>
+        </div>
+      </div>
+
+      <!-- Razorpay PCI-DSS Security Guarantee Badge -->
+      <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; padding: 12px 14px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.4rem; flex-shrink: 0;">🛡️</span>
+        <div style="font-size: 0.75rem; color: #a7f3d0; line-height: 1.45;">
+          <strong>Secure Razorpay Payment Gateway:</strong> Transactions &amp; auto-debit mandates are authenticated by Razorpay's PCI-DSS Level 1 gateway. <strong>Zero payment credentials</strong> (cards, CVVs, or bank secrets) are ever stored in our database.
+        </div>
+      </div>
+
+      <!-- Checkout Form (Billing Invoice Info Only) -->
+      <form id="checkout-form" onsubmit="event.preventDefault(); return false;" novalidate>
+        <div class="form-group">
+          <label for="pay-name" style="font-size: 0.78rem; font-weight: 600; color: #cbd5e1;">Subscriber / Company Name</label>
+          <input type="text" id="pay-name" class="form-control" placeholder="Alex Morgan" autocomplete="name" required>
+        </div>
+
+        <div class="form-group">
+          <label for="pay-email" style="font-size: 0.78rem; font-weight: 600; color: #cbd5e1;">Invoice &amp; Receipt Email</label>
+          <input type="email" id="pay-email" class="form-control" placeholder="alex@company.com" autocomplete="email" required>
+        </div>
+
+        <div style="margin-top: 24px;">
+          <button type="button" class="card-cta-btn card-cta-primary" id="submit-payment-btn" onclick="window.handleCheckoutClick(event)" style="padding: 13px; font-weight: 700;">
+            <span id="pay-btn-spinner" style="display: none;">⏳</span>
+            <span id="pay-btn-icon">⚡</span>
+            <span id="pay-btn-label">Set Up Mandate with Razorpay</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Success Receipt Screen (hidden by default) -->
+      <div id="checkout-success-view" style="display: none; text-align: center; padding: 20px 10px;">
+        <div style="font-size: 3rem; margin-bottom: 12px;">🎉</div>
+        <h3 style="font-size: 1.3rem; font-weight: 700; margin: 0 0 8px; color: #ffffff;" id="receipt-title">Subscription Mandate Confirmed!</h3>
+        <p style="font-size: 0.85rem; color: #94a3b8; margin: 0 0 16px;" id="checkout-success-msg">
+          Your payment mandate has been verified by Razorpay and your organization is fully upgraded.
+        </p>
+
+        <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 14px; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #a5b4fc; margin-bottom: 24px; word-break: break-all; text-align: left; line-height: 1.6;" id="checkout-txn-id">
+          <div><strong style="color: #cbd5e1;">Gateway:</strong> Razorpay PCI-DSS</div>
+          <div><strong style="color: #cbd5e1;">Payment ID:</strong> <span id="receipt-pay-id">...</span></div>
+          <div><strong style="color: #cbd5e1;">Mandate / Order ID:</strong> <span id="receipt-order-id">...</span></div>
+          <div><strong style="color: #cbd5e1;">Status:</strong> <span style="color: #34d399;" id="receipt-status-label">Active &bull; Verified</span></div>
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: center;">
+          <button type="button" class="btn btn-outline" id="receipt-view-invoices-btn" onclick="window.closeCheckoutModal(); window.openInvoicesModal();" style="padding: 10px 18px; border-radius: 8px; border-color: rgba(99, 102, 241, 0.5); color: #a5b4fc; font-weight: 600; cursor: pointer;">
+            📜 View Invoices &amp; Mandate
+          </button>
+          <a href="/" class="card-cta-btn card-cta-primary" style="text-decoration: none; padding: 10px 18px; width: auto;">
+            Go to Workspace →
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Invoices & Mandate Transparency Modal -->
+<div id="invoices-modal" class="modal-overlay" style="display: none;" aria-hidden="true" role="dialog" aria-labelledby="invoices-modal-title">
+  <div class="invoices-modal-card">
+    <div class="modal-header" style="padding: 18px 24px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.4rem;">📜</span>
+        <div>
+          <h3 id="invoices-modal-title" style="margin: 0; font-size: 1.15rem; font-weight: 700;">Invoices &amp; Mandate Transparency</h3>
+          <p style="margin: 2px 0 0 0; font-size: 0.78rem; color: #94a3b8;">
+            Live Razorpay recurring mandate details and transparent transaction billing records.
+          </p>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button id="sync-mandate-btn" class="btn btn-outline" onclick="window.syncMandateTransactions()" style="font-size: 0.78rem; padding: 6px 12px; border-color: rgba(99, 102, 241, 0.4); color: #a5b4fc; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 8px;">
+          <span id="sync-icon">🔄</span>
+          <span id="sync-label">Sync from Razorpay</span>
+        </button>
+        <button class="modal-close-btn" id="close-invoices-modal-btn" onclick="window.closeInvoicesModal()" aria-label="Close modal">&times;</button>
+      </div>
+    </div>
+
+    <div class="modal-body" style="padding: 24px; overflow-y: auto;">
+      <!-- Mandate Status Stats Grid -->
+      <div class="mandate-stats-grid">
+        <div class="mandate-stat-box">
+          <div class="stat-label">Active Plan Tier</div>
+          <div class="stat-value" id="inv-stat-plan">Starter</div>
+        </div>
+        <div class="mandate-stat-box">
+          <div class="stat-label">Mandate Status</div>
+          <div class="stat-value">
+            <span class="status-badge status-badge-none" id="inv-stat-mandate-status">None</span>
+          </div>
+        </div>
+        <div class="mandate-stat-box">
+          <div class="stat-label">Mandate Reference</div>
+          <div class="stat-value" id="inv-stat-mandate-id" style="font-family: monospace; font-size: 0.8rem;">—</div>
+        </div>
+        <div class="mandate-stat-box">
+          <div class="stat-label">Next Auto-Charge</div>
+          <div class="stat-value" id="inv-stat-next-charge" style="font-size: 0.85rem;">—</div>
+        </div>
+      </div>
+
+      <!-- Scheduler Status Banner -->
+      <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 1.2rem;">⏱️</span>
+          <div style="font-size: 0.78rem; color: #cbd5e1; line-height: 1.45;">
+            <strong>Background Sync Scheduler:</strong> Active (polls every 30m). All transactions debited by Razorpay are automatically imported as verifiable invoices.
+          </div>
+        </div>
+        <div style="font-size: 0.72rem; color: #a5b4fc; white-space: nowrap;" id="last-sync-time">
+          Polled recently
+        </div>
+      </div>
+
+      <!-- Invoices Section Header -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: #ffffff;">Generated Invoices (<span id="invoices-count">0</span>)</h4>
+        <span style="font-size: 0.75rem; color: #94a3b8;">Zero payment credentials logged</span>
+      </div>
+
+      <!-- Invoices Table -->
+      <div class="invoices-table-container">
+        <table class="invoices-table">
+          <thead>
+            <tr>
+              <th>Invoice #</th>
+              <th>Date</th>
+              <th>Plan &amp; Cycle</th>
+              <th>Amount</th>
+              <th>Razorpay Reference</th>
+              <th>Status</th>
+              <th style="text-align: right;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="invoices-table-body">
+            <tr>
+              <td colspan="7" style="text-align: center; padding: 30px; color: #94a3b8;">
+                Loading invoice records...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Invoice Receipt Detail Modal -->
+<div id="invoice-detail-modal" class="modal-overlay" style="display: none;" aria-hidden="true" role="dialog" aria-labelledby="invoice-detail-title">
+  <div class="checkout-modal-card" style="max-width: 560px;">
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.3rem;">🧾</span>
+        <div>
+          <h3 id="invoice-detail-title" style="margin: 0; font-size: 1.1rem; font-weight: 700;">Tax Invoice &amp; Receipt</h3>
+          <p style="margin: 2px 0 0 0; font-size: 0.78rem; color: var(--text-muted);" id="invoice-detail-num">
+            INV-XXXX-XXXXX
+          </p>
+        </div>
+      </div>
+      <button class="modal-close-btn" id="close-invoice-detail-btn" onclick="window.closeInvoiceDetail()" aria-label="Close modal">&times;</button>
+    </div>
+
+    <div class="modal-body" style="padding: 24px;" id="invoice-detail-content">
+      <!-- Populated dynamically -->
+    </div>
+  </div>
+</div>
+
+<!-- Authentication & JWT Tokens Modal for Seamless Sign-in on Pricing Page -->
+{% include "components/modals/auth_modal.html" %}
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Razorpay Secure Checkout SDK -->
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+{% if (use_optimized_assets is defined and use_optimized_assets()) %}
+<script src="/static/dist/pricing.min.js?v={{ get_asset_manifest().files.get('pricing.min.js', {}).get('hash', '1.0.0') if get_asset_manifest is defined else '1.0.0' }}"></script>
+{% else %}
+<script src="/static/js/modules/pricing/pricing_state.js"></script>
+<script src="/static/js/modules/pricing/pricing_api.js"></script>
+<script src="/static/js/modules/pricing/pricing_ui.js"></script>
+<script src="/static/js/modules/pricing/pricing_checkout.js"></script>
+<script src="/static/js/modules/pricing/pricing_invoices.js"></script>
+<script src="/static/js/modules/pricing.js"></script>
+{% endif %}
+{% endblock %}

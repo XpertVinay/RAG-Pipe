@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -22,13 +22,17 @@ from app.core.exceptions import (
 from app.core.logging import logger
 from app.core.tracing import configure_langsmith_tracing
 from app.database import init_db
+from app.services.mandate_scheduler import (
+    start_mandate_sync_scheduler,
+    stop_mandate_sync_scheduler,
+)
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan: initialize local directories, SQLite DB, and tracing."""
+    """Application lifespan: initialize local directories, SQLite DB, mandate scheduler, and tracing."""
     logger.info("Initializing Production RAG Agent...")
     if settings.APP_ENV.lower() == "production" and "dev-secret-key" in settings.SECRET_KEY:
         logger.critical(
@@ -37,10 +41,18 @@ async def lifespan(app: FastAPI):
         )
     settings.ensure_directories()
     await init_db()
+    from app.services.config_service import config_service
+    await config_service.seed_initial_config()
     configure_langsmith_tracing()
-    logger.info("Database and storage directories ready.")
+    logger.info("Database, dynamic cache, and storage directories ready.")
+
+    # Start Razorpay Mandate recurring sync scheduler
+    start_mandate_sync_scheduler()
+
     yield
+
     logger.info("Shutting down RAG Agent...")
+    await stop_mandate_sync_scheduler()
 
 
 app = FastAPI(
@@ -77,12 +89,15 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://checkout.razorpay.com https://cdn.razorpay.com https://api.razorpay.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
-        "img-src 'self' data: https:; "
-        "connect-src 'self' http: https: ws: wss:;"
+        "img-src 'self' data: https: https://fastapi.tiangolo.com https://cdn.jsdelivr.net https://cdn.razorpay.com; "
+        "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://cdn.razorpay.com; "
+        "worker-src 'self' blob:; "
+        "connect-src 'self' http: https: ws: wss: https://api.razorpay.com https://lumberjack.razorpay.com https://lumberjack-cx.razorpay.com https://cdn.razorpay.com https://checkout.razorpay.com;"
     )
+    response.headers["X-API-Version"] = "1.0.0"
     return response
 
 # Exception handlers
@@ -93,9 +108,42 @@ app.add_exception_handler(Exception, global_exception_handler)
 # Mount static files and templates
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# Mount API routes
+# Select templates directory: use optimized templates if enabled and available
+templates_dir = (
+    str(BASE_DIR / "templates_dist")
+    if settings.should_use_optimized_assets and (BASE_DIR / "templates_dist").exists()
+    else str(BASE_DIR / "templates")
+)
+def get_asset_manifest() -> dict:
+    """Load asset optimization manifest with fallback defaults."""
+    manifest_file = BASE_DIR / "static" / "dist" / "manifest.json"
+    if manifest_file.exists():
+        try:
+            import json
+            return json.loads(manifest_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"files": {}, "version": "1.0.0"}
+
+
+def asset_context_processor(request: Request) -> dict:
+    return {
+        "use_optimized_assets": lambda: settings.should_use_optimized_assets,
+        "get_asset_manifest": get_asset_manifest,
+    }
+
+
+templates = Jinja2Templates(
+    directory=templates_dir,
+    context_processors=[asset_context_processor],
+)
+
+# Register Jinja2 global helpers for template asset selection
+templates.env.globals["use_optimized_assets"] = lambda: settings.should_use_optimized_assets
+templates.env.globals["get_asset_manifest"] = get_asset_manifest
+
+# Mount API routes (includes official /api/v1/* and legacy /api/* compatibility)
 app.include_router(api_router)
 
 
@@ -111,6 +159,44 @@ async def render_dashboard(request: Request):
             "default_model": settings.DEFAULT_CHAT_MODEL,
         },
     )
+
+
+@app.get("/pricing", response_class=HTMLResponse, tags=["ui"])
+async def render_pricing_page(request: Request):
+    """Render the dedicated Plan and Pricing page with checkout payment."""
+    return templates.TemplateResponse(
+        request=request,
+        name="pricing.html",
+        context={
+            "app_name": settings.APP_NAME,
+        },
+    )
+
+
+@app.get("/racing-game", response_class=HTMLResponse, tags=["ui"])
+@app.get("/demo/racing", response_class=HTMLResponse, tags=["ui"])
+async def render_racing_game_page(request: Request):
+    """Render the interactive retro arcade Car Racing Game project demonstrating multi-agent orchestration."""
+    return templates.TemplateResponse(
+        request=request,
+        name="racing_game.html",
+        context={
+            "app_name": settings.APP_NAME,
+        },
+    )
+
+
+@app.get("/api/docs", include_in_schema=False)
+async def api_docs_redirect():
+    """Redirect /api/docs to OpenAPI Swagger documentation."""
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/api/redoc", include_in_schema=False)
+async def api_redoc_redirect():
+    """Redirect /api/redoc to OpenAPI ReDoc documentation."""
+    return RedirectResponse(url="/redoc")
+
 
 
 if __name__ == "__main__":

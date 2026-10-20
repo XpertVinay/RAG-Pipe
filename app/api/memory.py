@@ -19,7 +19,7 @@ from app.memory.schemas import (
 from app.models.memory import MemoryItem, MemoryScope, MemoryType
 from app.models.user import User
 
-router = APIRouter(prefix="/api/memory", tags=["memory"])
+router = APIRouter(prefix="/memory", tags=["memory"])
 
 
 @router.get("", response_model=List[MemoryResponse])

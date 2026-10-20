@@ -25,6 +25,30 @@ class Settings(BaseSettings):
     PORT: int = 8000
     SECRET_KEY: str = "dev-secret-key-change-in-production-rag-agent-key-32"
     ALLOWED_ORIGINS: str = "http://localhost:8000,http://127.0.0.1:8000"
+    USE_OPTIMIZED_ASSETS: bool = False
+
+    # JWT & Auth Settings
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    ID_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Rate Limiting Settings
+    RATE_LIMIT_LOGIN_MAX: int = 100
+    RATE_LIMIT_REGISTER_MAX: int = 100
+    RATE_LIMIT_REFRESH_MAX: int = 200
+    RATE_LIMIT_UPLOAD_MAX: int = 15
+    RATE_LIMIT_CHAT_MAX: int = 60
+
+    # Memory Cache & Expiration Settings
+    MEMORY_L1_MAX_ITEMS: int = 512
+    MEMORY_L1_MAX_BYTES: int = 2097152
+    MEMORY_STM_TTL_HOURS: int = 2
+    MEMORY_LTM_TTL_DAYS: int = 90
+    MEMORY_REVALUATION_INTERVAL_SECONDS: int = 86400
+
+    # Mandate Scheduler Settings
+    MANDATE_SYNC_INTERVAL_SECONDS: int = 3600
 
     # Directory Paths
     BASE_DIR: Path = Path(__file__).resolve().parent.parent
@@ -51,6 +75,11 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
+
+    # Razorpay Payment Gateway Settings
+    RAZORPAY_KEY_ID: str = Field(default="rzp_test_placeholder_key")
+    RAZORPAY_KEY_SECRET: Optional[str] = Field(default="placeholder_secret")
+    RAZORPAY_CURRENCY: str = Field(default="INR")
 
     # Ingestion & Chunking
     CHUNK_SIZE: int = 800
@@ -110,6 +139,16 @@ class Settings(BaseSettings):
     def max_upload_bytes(self) -> int:
         """Return maximum upload size in bytes."""
         return self.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+    @property
+    def should_use_optimized_assets(self) -> bool:
+        """Determine whether to serve bundled/minified static assets."""
+        if self.USE_OPTIMIZED_ASSETS:
+            return True
+        if self.APP_ENV.lower() == "production":
+            dist_bundle = self.BASE_DIR / "app" / "static" / "dist" / "bundle.min.js"
+            return dist_bundle.exists()
+        return False
 
     def ensure_directories(self) -> None:
         """Ensure all required local directories exist and have write permissions."""

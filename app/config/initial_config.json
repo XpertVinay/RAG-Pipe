@@ -1,0 +1,112 @@
+{
+  "system_settings": {
+    "default_chat_provider": "ollama",
+    "default_chat_model": "llama3.2",
+    "default_embedding_provider": "ollama",
+    "default_embedding_model": "nomic-embed-text",
+    "chunk_size": 800,
+    "chunk_overlap": 150,
+    "max_upload_size_mb": 25,
+    "retrieval_top_k": 4,
+    "similarity_threshold": 0.3,
+    "max_retrieval_retries": 2,
+    "enable_query_rewriting": true,
+    "enable_answer_grading": true,
+    "jwt_algorithm": "HS256",
+    "access_token_expire_minutes": 60,
+    "id_token_expire_minutes": 60,
+    "refresh_token_expire_days": 7,
+    "mandate_sync_interval_seconds": 3600,
+    "rate_limit_login_max": 100,
+    "rate_limit_register_max": 100,
+    "rate_limit_refresh_max": 200,
+    "rate_limit_upload_max": 15,
+    "rate_limit_chat_max": 60,
+    "memory_l1_max_items": 512,
+    "memory_l1_max_bytes": 2097152,
+    "memory_stm_ttl_hours": 2,
+    "memory_ltm_ttl_days": 90
+  },
+  "pricing_plans": [
+    {
+      "id": "starter",
+      "name": "Starter",
+      "monthly_price": 0.0,
+      "annual_price_per_month": 0.0,
+      "inr_monthly_price": 0.0,
+      "inr_annual_monthly_price": 0.0,
+      "description": "For individuals and builders exploring grounded RAG intelligence.",
+      "badge": "Free Forever",
+      "features": [
+        "Up to 5 Workspace Documents",
+        "Single Agent Chat (Standard LLMs)",
+        "1 Team Seat",
+        "Basic Semantic Chunking",
+        "Standard In-Memory Search",
+        "Community Discord Support"
+      ],
+      "limits": {
+        "seats": 1,
+        "docs": 5,
+        "max_upload_mb": 10,
+        "support": "Community"
+      },
+      "is_active": true,
+      "sort_order": 1
+    },
+    {
+      "id": "pro",
+      "name": "Professional",
+      "monthly_price": 49.0,
+      "annual_price_per_month": 39.0,
+      "inr_monthly_price": 3999.0,
+      "inr_annual_monthly_price": 3199.0,
+      "description": "High-throughput workspace intelligence with shared memory & multi-user teams.",
+      "badge": "Most Popular",
+      "features": [
+        "Up to 100 Workspace Documents",
+        "Multi-Seat Collaboration (Up to 15 Seats)",
+        "Admin Role Delegation & Shareable Invite Links",
+        "Advanced Dual-Memory (Short & Long Term) Context Engine",
+        "Multi-File Workspace Reasoning & Citations",
+        "Fast Background Indexing & Document Reprocessing",
+        "Priority Email & Chat Support"
+      ],
+      "limits": {
+        "seats": 15,
+        "docs": 100,
+        "max_upload_mb": 50,
+        "support": "Priority"
+      },
+      "is_active": true,
+      "sort_order": 2
+    },
+    {
+      "id": "enterprise",
+      "name": "Enterprise",
+      "monthly_price": 249.0,
+      "annual_price_per_month": 199.0,
+      "inr_monthly_price": 19999.0,
+      "inr_annual_monthly_price": 15999.0,
+      "description": "Dedicated infrastructure, unlimited seats, custom LLMs, and strict RBAC governance.",
+      "badge": "Scale & Security",
+      "features": [
+        "Unlimited Workspace Documents & Rooms",
+        "Unlimited Team Seats with Granular RBAC Permissions",
+        "Bring-Your-Own-Key & Custom Private LLM Endpoints",
+        "Enterprise Audit Logging & Access Governance",
+        "Dedicated Vector Pipeline & High-Concurrency Workers",
+        "24/7 Dedicated Support & 99.9% Uptime SLA",
+        "Custom Security & SSO Integration Assistance"
+      ],
+      "limits": {
+        "seats": 999,
+        "docs": 99999,
+        "max_upload_mb": 200,
+        "support": "24/7 Dedicated"
+      },
+      "is_active": true,
+      "sort_order": 3
+    }
+  ]
+}

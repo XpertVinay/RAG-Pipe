@@ -74,28 +74,45 @@ class MemoryDistiller:
         answer: str,
         db: Optional[AsyncSession] = None,
     ) -> None:
-        """Automatically distill and persist Short-Term and Long-Term memory for the user's chat."""
-        if not user_id:
+        """Automatically distill and persist Short-Term and Long-Term memory for the chat."""
+        if not conversation_id and not room_id and not user_id:
             return
 
         now = utc_now()
-        # 1. Short-Term Memory (STM): recent interaction context (TTL: 2 hours)
-        clean_query = query.strip()[:140]
-        clean_ans = answer.strip()[:200]
-        stm_content = f"Recent query: {clean_query} -> Context: {clean_ans}"
-        stm_key = f"chat_stm_{conversation_id[:8]}"
+        clean_query = query.strip()[:160]
+        clean_ans = answer.strip()[:240]
+        conv_prefix = (conversation_id or "session")[:8]
+        scope_val = MemoryScope.USER_SPECIFIC.value if user_id else MemoryScope.GLOBAL.value
+
+        # 1. Short-Term Memory (STM): recent interaction turn context (TTL: 2 hours)
+        stm_content = f"User asked: {clean_query} -> Context: {clean_ans}"
+        stm_turn_key = f"chat_stm_{conv_prefix}_{int(now.timestamp())}"
 
         try:
             await manager.store_memory(
-                scope=MemoryScope.USER_SPECIFIC.value,
+                scope=scope_val,
                 memory_type=MemoryType.SHORT_TERM.value,
-                key=stm_key,
+                key=stm_turn_key,
                 content=stm_content,
                 user_id=user_id,
                 room_id=room_id,
                 ttl_seconds=7200,  # 2 hours
-                importance=0.6,
+                importance=0.65,
                 metadata_payload={"conversation_id": conversation_id, "recorded_at": now.isoformat()},
+                db=db,
+            )
+            # Also update rolling conversation active summary
+            summary_key = f"chat_summary_{conv_prefix}"
+            await manager.store_memory(
+                scope=scope_val,
+                memory_type=MemoryType.SHORT_TERM.value,
+                key=summary_key,
+                content=f"Active discussion topic: {clean_query}",
+                user_id=user_id,
+                room_id=room_id,
+                ttl_seconds=7200,
+                importance=0.7,
+                metadata_payload={"conversation_id": conversation_id, "updated_at": now.isoformat()},
                 db=db,
             )
         except Exception as stm_err:
@@ -103,7 +120,11 @@ class MemoryDistiller:
 
         # 2. Extract potential Long-Term Memory (LTM) user preferences/facts (TTL: 90 days)
         lower_q = query.lower()
-        pref_triggers = ["i prefer", "my name is", "i am a", "i work on", "remember that", "always format", "my project is"]
+        pref_triggers = [
+            "i prefer", "my name is", "i am a", "i work on", "remember that",
+            "always format", "my project is", "i like", "i need", "my goal is",
+            "we are building", "in this chat"
+        ]
         matched_trigger = next((t for t in pref_triggers if t in lower_q), None)
 
         if matched_trigger:
@@ -111,7 +132,7 @@ class MemoryDistiller:
             pref_key = f"pref_{matched_trigger.replace(' ', '_')}"
             try:
                 await manager.store_memory(
-                    scope=MemoryScope.USER_SPECIFIC.value,
+                    scope=scope_val,
                     memory_type=MemoryType.LONG_TERM.value,
                     key=pref_key,
                     content=pref_content,
@@ -127,3 +148,4 @@ class MemoryDistiller:
 
 
 memory_distiller = MemoryDistiller()
+

@@ -32,10 +32,12 @@ from app.services.document_service import (
     verify_document_access,
     verify_document_deletion_access,
 )
+from app.config import get_settings
 from app.services.evidence_service import evidence_extractor
 
-router = APIRouter(prefix="/api/documents", tags=["documents"])
-document_upload_rate_limiter = RateLimiter(max_requests=15, window_seconds=60)
+settings = get_settings()
+router = APIRouter(prefix="/documents", tags=["documents"])
+document_upload_rate_limiter = RateLimiter(max_requests=getattr(settings, "RATE_LIMIT_UPLOAD_MAX", 15), window_seconds=60)
 
 
 @router.post(

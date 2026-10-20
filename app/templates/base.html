@@ -9,40 +9,72 @@
   <meta name="description" content="Production-ready AI-powered document ingestion and real-time RAG Agent system.">
   <title>{% block title %}Production RAG Agent{% endblock %}</title>
 
+  <script>
+    // Canonicalize 0.0.0.0 to localhost to preserve identical origin, localStorage & cookie session
+    if (window.location.hostname === '0.0.0.0') {
+      window.location.hostname = 'localhost';
+    }
+  </script>
+
   <!-- Google Fonts: Inter & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="/static/css/variables.css?v=v2">
-  <link rel="stylesheet" href="/static/css/sidebar.css?v=v2">
-  <link rel="stylesheet" href="/static/css/chat.css?v=v2">
-  <link rel="stylesheet" href="/static/css/modals.css?v=v2">
-  <link rel="stylesheet" href="/static/css/responsive.css?v=v2">
-  <link rel="stylesheet" href="/static/css/app.css?v=v2">
+  {% if (use_optimized_assets is defined and use_optimized_assets()) %}
+    <link rel="stylesheet" href="/static/dist/bundle.min.css?v={{ get_asset_manifest().files.get('bundle.min.css', {}).get('hash', '1.0.0') if get_asset_manifest is defined else '1.0.0' }}">
+  {% else %}
+    <link rel="stylesheet" href="/static/css/variables.css?v=v2">
+    <link rel="stylesheet" href="/static/css/sidebar.css?v=v2">
+    <link rel="stylesheet" href="/static/css/chat.css?v=v2">
+    <link rel="stylesheet" href="/static/css/modals.css?v=v2">
+    <link rel="stylesheet" href="/static/css/responsive.css?v=v2">
+    <link rel="stylesheet" href="/static/css/app.css?v=v2">
+  {% endif %}
   {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   {% block content %}{% endblock %}
 
   <!-- Notification Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
   <!-- JavaScript Modules -->
-  <script src="/static/js/api.js?v=v6_validation"></script>
-  <script src="/static/js/sse.js?v=v6_validation"></script>
-  <script src="/static/js/modules/utils.js?v=v6_validation"></script>
-  <script src="/static/js/modules/validator.js?v=v6_validation"></script>
-  <script src="/static/js/modules/markdown.js?v=v6_validation"></script>
-  <script src="/static/js/modules/auth.js?v=v6_validation"></script>
-  <script src="/static/js/modules/rooms.js?v=v6_validation"></script>
-  <script src="/static/js/modules/documents.js?v=v6_validation"></script>
-  <script src="/static/js/modules/memory.js?v=v6_validation"></script>
-  <script src="/static/js/modules/history.js?v=v6_validation"></script>
-  <script src="/static/js/modules/evidence.js?v=v6_validation"></script>
-  <script src="/static/js/modules/settings.js?v=v6_validation"></script>
-  <script src="/static/js/modules/chat.js?v=v6_validation"></script>
-  <script src="/static/js/app.js?v=v6_validation"></script>
+  {% if (use_optimized_assets is defined and use_optimized_assets()) %}
+    <script src="/static/dist/bundle.min.js?v={{ get_asset_manifest().files.get('bundle.min.js', {}).get('hash', '1.0.0') if get_asset_manifest is defined else '1.0.0' }}"></script>
+  {% else %}
+    <script src="/static/js/api/tokens.js?v=v7"></script>
+    <script src="/static/js/api/client.js?v=v7"></script>
+    <script src="/static/js/api/endpoints.js?v=v7"></script>
+    <script src="/static/js/api.js?v=v7"></script>
+    <script src="/static/js/sse.js?v=v7"></script>
+    <script src="/static/js/modules/utils.js?v=v7"></script>
+    <script src="/static/js/modules/validator/validator_rules.js?v=v7"></script>
+    <script src="/static/js/modules/validator/validator_files.js?v=v7"></script>
+    <script src="/static/js/modules/validator/validator_ui.js?v=v7"></script>
+    <script src="/static/js/modules/validator.js?v=v7"></script>
+    <script src="/static/js/modules/markdown.js?v=v7"></script>
+    <script src="/static/js/modules/auth/auth_ui.js?v=v7"></script>
+    <script src="/static/js/modules/auth/auth_actions.js?v=v7"></script>
+    <script src="/static/js/modules/auth/auth_events.js?v=v7"></script>
+    <script src="/static/js/modules/auth.js?v=v7"></script>
+    <script src="/static/js/modules/rooms/rooms_list.js?v=v7"></script>
+    <script src="/static/js/modules/rooms/rooms_members.js?v=v7"></script>
+    <script src="/static/js/modules/rooms/rooms_crud.js?v=v7"></script>
+    <script src="/static/js/modules/rooms.js?v=v7"></script>
+    <script src="/static/js/modules/documents/documents_list.js?v=v7"></script>
+    <script src="/static/js/modules/documents/documents_upload.js?v=v7"></script>
+    <script src="/static/js/modules/documents/documents_actions.js?v=v7"></script>
+    <script src="/static/js/modules/documents.js?v=v7"></script>
+    <script src="/static/js/modules/memory.js?v=v7"></script>
+    <script src="/static/js/modules/history.js?v=v7"></script>
+    <script src="/static/js/modules/evidence.js?v=v7"></script>
+    <script src="/static/js/modules/settings.js?v=v7"></script>
+    <script src="/static/js/modules/organizations.js?v=v7"></script>
+    <script src="/static/js/modules/chat.js?v=v7"></script>
+    <script src="/static/js/modules/agents.js?v=v8"></script>
+    <script src="/static/js/app.js?v=v7"></script>
+  {% endif %}
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

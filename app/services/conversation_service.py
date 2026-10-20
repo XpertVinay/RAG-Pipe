@@ -124,8 +124,9 @@ async def get_recent_chat_history(
     hist_res = await db.execute(
         select(Message)
         .where(Message.conversation_id == conversation_id)
-        .order_by(Message.created_at.asc())
+        .order_by(Message.created_at.desc())
         .limit(limit)
     )
-    messages = hist_res.scalars().all()
+    messages = list(reversed(hist_res.scalars().all()))
     return [{"role": m.role, "content": m.content} for m in messages]
+

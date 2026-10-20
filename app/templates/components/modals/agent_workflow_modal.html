@@ -1,0 +1,179 @@
+<!-- Multi-Agent Collaborative System Modal -->
+<div id="agent-modal" class="modal-overlay" style="display: none;" aria-hidden="true" role="dialog">
+  <div class="modal-card modal-card-lg" style="max-width: 960px; width: 95%;">
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.5rem;">🤖</span>
+        <div>
+          <h3 class="modal-title" style="margin: 0; font-size: 1.15rem;">Multi-Agent Collaborative System</h3>
+          <p style="margin: 2px 0 0; font-size: 0.76rem; color: var(--text-muted);">
+            6 Specialized Autonomous Agents • MCP Client/Server • Anonymous Proxy • Context Compaction • LTM/STM
+          </p>
+        </div>
+      </div>
+      <button id="agent-modal-close" class="modal-close" aria-label="Close dialog">✕</button>
+    </div>
+
+    <div class="modal-body" style="padding: 16px 20px; max-height: calc(85vh - 120px); overflow-y: auto;">
+      <!-- Agent Pipeline Visual Ribbon -->
+      <div class="agent-pipeline-ribbon" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 20px;">
+        <div id="agent-stage-0" class="agent-stage-card" style="padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; text-align: center;">
+          <div style="font-size: 1.1rem; margin-bottom: 2px;">🧠</div>
+          <div style="font-size: 0.72rem; font-weight: 700; color: var(--text-main);">0. Decision</div>
+          <div class="stage-status" style="font-size: 0.62rem; color: var(--text-muted);">Strategy</div>
+        </div>
+        <div id="agent-stage-1" class="agent-stage-card" style="padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; text-align: center;">
+          <div style="font-size: 1.1rem; margin-bottom: 2px;">🔍</div>
+          <div style="font-size: 0.72rem; font-weight: 700; color: var(--text-main);">1. Research</div>
+          <div class="stage-status" style="font-size: 0.62rem; color: var(--text-muted);">RAG &amp; Web</div>
+        </div>
+        <div id="agent-stage-2" class="agent-stage-card" style="padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; text-align: center;">
+          <div style="font-size: 1.1rem; margin-bottom: 2px;">📋</div>
+          <div style="font-size: 0.72rem; font-weight: 700; color: var(--text-main);">2. Generator</div>
+          <div class="stage-status" style="font-size: 0.62rem; color: var(--text-muted);">Atomic Tasks</div>
+        </div>
+        <div id="agent-stage-3" class="agent-stage-card" style="padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; text-align: center;">
+          <div style="font-size: 1.1rem; margin-bottom: 2px;">⚡</div>
+          <div style="font-size: 0.72rem; font-weight: 700; color: var(--text-main);">3. Executor</div>
+          <div class="stage-status" style="font-size: 0.62rem; color: var(--text-muted);">MCP Tools</div>
+        </div>
+        <div id="agent-stage-4" class="agent-stage-card" style="padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; text-align: center;">
+          <div style="font-size: 1.1rem; margin-bottom: 2px;">🛡️</div>
+          <div style="font-size: 0.72rem; font-weight: 700; color: var(--text-main);">4. Validator</div>
+          <div class="stage-status" style="font-size: 0.62rem; color: var(--text-muted);">Criteria &amp; Gate</div>
+        </div>
+        <div id="agent-stage-5" class="agent-stage-card" style="padding: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; text-align: center;">
+          <div style="font-size: 1.1rem; margin-bottom: 2px;">🚀</div>
+          <div style="font-size: 0.72rem; font-weight: 700; color: var(--text-main);">5. Deployer</div>
+          <div class="stage-status" style="font-size: 0.62rem; color: var(--text-muted);">Monitor &amp; Alert</div>
+        </div>
+      </div>
+
+      <!-- Input Form Section (Visible when idle) -->
+      <div id="agent-input-section">
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; color: var(--text-main);">
+            High-Level Goal / Objective
+          </label>
+          <textarea id="agent-goal-input" class="chat-textarea" rows="3" style="width: 100%; border-radius: 8px; padding: 10px; font-size: 0.86rem;" placeholder="e.g. Build an end-to-end token verification workflow with rate limiting and automated smoke testing..."></textarea>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+          <div class="form-group">
+            <label style="display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 4px; color: var(--text-muted);">
+              Anonymous Proxy Mode (Zero PII to 3rd-party providers)
+            </label>
+            <div style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px;">
+              <input type="checkbox" id="agent-anonymous-toggle" checked style="cursor: pointer;">
+              <label for="agent-anonymous-toggle" style="font-size: 0.78rem; cursor: pointer; color: var(--text-main);">
+                Scrub emails, tokens, internal paths &amp; IPs
+              </label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label style="display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 4px; color: var(--text-muted);">
+              Max Atomic Subtasks
+            </label>
+            <select id="agent-max-tasks" class="form-select" style="width: 100%; padding: 8px; font-size: 0.82rem; border-radius: 6px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-main);">
+              <option value="3">3 Tasks (Fast)</option>
+              <option value="4" selected>4 Tasks (Balanced)</option>
+              <option value="6">6 Tasks (Deep Decomp)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Presets quick buttons -->
+        <div style="margin-bottom: 16px;">
+          <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Quick Presets:</span>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <button type="button" class="btn btn-outline agent-preset-btn" data-goal="Research, validate, and simulate deployment of zero-trust API authentication with JWT rotation and rate-limiting" style="font-size: 0.72rem; padding: 4px 8px;">
+              🔒 Auth &amp; Rate-Limit Architecture
+            </button>
+            <button type="button" class="btn btn-outline agent-preset-btn" data-goal="Analyze system health telemetry, run code sandbox benchmark, and stage canary rollout with operational alerting" style="font-size: 0.72rem; padding: 4px 8px;">
+              📊 Health Benchmark &amp; Rollout
+            </button>
+            <button type="button" class="btn btn-outline agent-preset-btn" data-goal="Extract grounded requirements from workspace documents, synthesize implementation micro-tasks, and verify quality" style="font-size: 0.72rem; padding: 4px 8px;">
+              📚 Workspace Doc Synthesis
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button id="agent-launch-btn" class="btn btn-primary" style="padding: 8px 18px; font-size: 0.85rem; font-weight: 600;">
+            🚀 Launch Multi-Agent Team
+          </button>
+        </div>
+      </div>
+
+      <!-- Execution Live Dashboard (Visible during or after execution) -->
+      <div id="agent-live-dashboard" style="display: none;">
+        <!-- Live Progress Bar -->
+        <div style="margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.76rem; margin-bottom: 4px;">
+            <span id="agent-live-status-text" style="font-weight: 600; color: var(--accent-primary);">Initializing workflow...</span>
+            <span id="agent-live-progress-pct" style="font-weight: 700; color: var(--text-main);">0%</span>
+          </div>
+          <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden;">
+            <div id="agent-live-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #6366f1, #a855f7); transition: width 0.3s ease;"></div>
+          </div>
+        </div>
+
+        <!-- Telemetry Counters: Context Compaction & Memory Badges -->
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px;">
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Context Compaction</div>
+            <div id="telemetry-tokens-saved" style="font-size: 0.88rem; font-weight: 700; color: #10b981; margin-top: 2px;">0 Saved</div>
+            <div id="telemetry-ratio" style="font-size: 0.65rem; color: var(--text-muted);">0% reduction</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Memory Integration</div>
+            <div style="font-size: 0.88rem; font-weight: 700; color: #6366f1; margin-top: 2px;">LTM &amp; STM</div>
+            <div style="font-size: 0.65rem; color: var(--text-muted);">Dual-scoped storage</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px;">
+            <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">MCP Security</div>
+            <div style="font-size: 0.88rem; font-weight: 700; color: #3b82f6; margin-top: 2px;">Anonymous</div>
+            <div style="font-size: 0.65rem; color: var(--text-muted);">Zero PII Leaked</div>
+          </div>
+        </div>
+
+        <!-- Subtasks Live Checklist -->
+        <div style="margin-bottom: 14px;">
+          <div style="font-size: 0.78rem; font-weight: 600; margin-bottom: 6px; color: var(--text-main);">
+            Atomic Micro-Tasks (Task Generator &amp; Executor)
+          </div>
+          <div id="agent-subtasks-container" style="display: flex; flex-direction: column; gap: 6px;">
+            <!-- Injected dynamically -->
+          </div>
+        </div>
+
+        <!-- Real-Time Activity Log Console -->
+        <div style="margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Execution Activity &amp; MCP Traces</span>
+            <span style="font-size: 0.68rem; color: var(--text-muted);" id="agent-elapsed-timer">Elapsed: 0s</span>
+          </div>
+          <div id="agent-logs-console" style="background: #090d16; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; max-height: 140px; overflow-y: auto; color: #94a3b8; line-height: 1.4;">
+            <div>[System] Multi-agent collaborative session initialized.</div>
+          </div>
+        </div>
+
+        <!-- Final Report Section (Shows on completion) -->
+        <div id="agent-final-report-wrapper" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 12px; margin-top: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 0.82rem; font-weight: 700; color: #10b981;">✅ Executive Synthesis &amp; Verified Deliverables</span>
+            <button id="copy-report-btn" class="btn btn-outline" style="font-size: 0.7rem; padding: 3px 8px;">📋 Copy Report</button>
+          </div>
+          <div id="agent-final-report-content" style="font-size: 0.8rem; line-height: 1.5; color: var(--text-main); max-height: 200px; overflow-y: auto; white-space: pre-wrap;"></div>
+        </div>
+
+        <!-- Action footer during/after run -->
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;">
+          <button id="agent-new-run-btn" class="btn btn-outline" style="font-size: 0.8rem; padding: 6px 14px;">
+            + New Workflow
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

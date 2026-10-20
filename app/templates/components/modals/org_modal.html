@@ -1,0 +1,113 @@
+<!-- Admin Organization & Team Invites Modal -->
+<div id="org-modal" class="modal-overlay" aria-hidden="true" role="dialog" aria-labelledby="org-modal-title">
+  <div class="modal-card" style="max-width: 680px; width: 95%;">
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.3rem;">🏢</span>
+        <div>
+          <h3 id="org-modal-title" style="margin: 0; font-size: 1.1rem; font-weight: 600;">Organization &amp; Team Invites</h3>
+          <p style="margin: 2px 0 0 0; font-size: 0.78rem; color: var(--text-muted);" id="org-modal-subtitle">
+            Configure member access, generate role-specific registration links, and manage seats.
+          </p>
+        </div>
+      </div>
+      <button class="modal-close-btn" id="close-org-modal-btn" aria-label="Close modal">&times;</button>
+    </div>
+
+    <div class="modal-body" style="padding: 16px 20px; max-height: 75vh; overflow-y: auto;">
+      <!-- Organization Info Card -->
+      <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <div style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary);" id="org-name-display">My Organization</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+            Plan: <span id="org-plan-badge" class="badge-pill" style="font-size: 0.68rem; text-transform: uppercase; background: rgba(99, 102, 241, 0.2); color: var(--accent-primary);">STARTER</span>
+            &bull; Seats: <span id="org-seats-count" style="font-weight: 600; color: var(--text-primary);">1 / 5</span>
+          </div>
+        </div>
+        <div>
+          <a href="/pricing" class="btn btn-outline" style="font-size: 0.75rem; padding: 4px 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+            <span>💎 Upgrade Plan</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Invite Generation Card -->
+      <div style="background: rgba(99, 102, 241, 0.04); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+        <h4 style="margin: 0 0 12px 0; font-size: 0.9rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+          <span>🔗</span> Create New Role-Specific Invite Link
+        </h4>
+        
+        <form id="create-invite-form" novalidate>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="invite-role-select" style="font-size: 0.76rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">
+                Designated Role
+              </label>
+              <select id="invite-role-select" class="form-control" style="font-size: 0.82rem; padding: 7px 10px;">
+                <option value="user">Standard User (Least Privileges, Document Q&amp;A)</option>
+                <option value="staff" selected>Staff Member (Memory &amp; Fact Management)</option>
+                <option value="admin">Administrator (Full Admin &amp; Billing Access)</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="invite-expiry-select" style="font-size: 0.76rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">
+                Link Expiration
+              </label>
+              <select id="invite-expiry-select" class="form-control" style="font-size: 0.82rem; padding: 7px 10px;">
+                <option value="1">1 Day</option>
+                <option value="7" selected>7 Days (Standard)</option>
+                <option value="14">14 Days</option>
+                <option value="30">30 Days</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label for="invite-email-input" style="font-size: 0.76rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; display: block;">
+              Restrict to Specific Email (Optional)
+            </label>
+            <input type="email" id="invite-email-input" class="form-control" placeholder="colleague@company.com (leave blank for any email)" style="font-size: 0.82rem; padding: 7px 10px;">
+          </div>
+
+          <div style="display: flex; justify-content: flex-end;">
+            <button type="submit" class="btn btn-primary" id="generate-invite-btn" style="font-size: 0.82rem; padding: 7px 16px;">
+              <span>⚡ Generate Shareable Link</span>
+            </button>
+          </div>
+        </form>
+
+        <!-- Freshly Generated Link Box -->
+        <div id="new-invite-result-box" style="display: none; margin-top: 14px; background: rgba(0, 0, 0, 0.4); border: 1px dashed var(--accent-primary); border-radius: 6px; padding: 12px;">
+          <div style="font-size: 0.75rem; color: var(--status-completed); font-weight: 600; margin-bottom: 6px;">
+            ✓ Invite Link Generated Successfully:
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="text" id="new-invite-url-input" readonly class="form-control" style="font-size: 0.78rem; font-family: 'JetBrains Mono', monospace; background: rgba(0, 0, 0, 0.6); color: #a5b4fc;">
+            <button type="button" class="btn btn-outline" id="copy-new-invite-btn" style="white-space: nowrap; font-size: 0.75rem; padding: 7px 12px;">
+              📋 Copy Link
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Invites Management Section -->
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <h4 style="margin: 0; font-size: 0.88rem; font-weight: 600; color: var(--text-primary);">
+            Active &amp; Historical Invitation Links
+          </h4>
+          <button type="button" class="btn btn-outline" id="refresh-invites-btn" style="font-size: 0.7rem; padding: 3px 8px;">
+            🔄 Refresh
+          </button>
+        </div>
+
+        <div id="invites-list-container" style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.8rem;">
+            Loading invitation links...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

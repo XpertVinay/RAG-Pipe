@@ -10,7 +10,7 @@ from app.ingestion.vector_store import vector_store
 from app.providers.factory import ModelFactory
 from app.schemas.health import ServiceHealth, SystemHealthResponse
 
-router = APIRouter(prefix="/api/health", tags=["health"])
+router = APIRouter(prefix="/health", tags=["health"])
 settings = get_settings()
 
 

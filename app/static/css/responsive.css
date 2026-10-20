@@ -308,16 +308,16 @@ body {
   /* Citations Pills */
   .citation-pills-row {
     grid-template-columns: 1fr;
-    gap: 6px;
+    gap: 7px;
   }
 
   .citation-pill {
-    padding: 7px 10px;
+    padding: 8px 10px;
     width: 100%;
   }
 
   .citation-pill-name {
-    max-width: calc(100vw - 190px);
+    max-width: calc(100vw - 240px);
     font-size: 0.74rem;
   }
 

@@ -6,6 +6,23 @@ from app.models.user import User, RefreshToken
 from app.models.room import Room, RoomDocument
 from app.models.memory import MemoryItem, MemoryScope, MemoryType
 
+from app.models.organization import (
+    Organization,
+    OrganizationMember,
+    OrganizationInvite,
+    SubscriptionOrder,
+    Invoice,
+)
+from app.models.system_setting import SystemSetting
+from app.models.pricing_plan import PricingPlan
+from app.models.multi_agent import (
+    AgentWorkflow,
+    AgentSubTask,
+    WorkflowStatus,
+    SubTaskStatus,
+    AgentRole,
+)
+
 __all__ = [
     "Document",
     "DocumentChunk",
@@ -19,5 +36,18 @@ __all__ = [
     "MemoryItem",
     "MemoryScope",
     "MemoryType",
+    "Organization",
+    "OrganizationMember",
+    "OrganizationInvite",
+    "SubscriptionOrder",
+    "Invoice",
+    "SystemSetting",
+    "PricingPlan",
+    "AgentWorkflow",
+    "AgentSubTask",
+    "WorkflowStatus",
+    "SubTaskStatus",
+    "AgentRole",
 ]
+
 

@@ -37,6 +37,11 @@
       <span class="tab-label">Memory</span>
       <span id="tab-memory-badge" class="tab-badge">0</span>
     </button>
+    <button class="sidebar-tab" id="tab-btn-agents" data-tab="agents" title="Multi-Agent Workflows & MCP">
+      <span class="tab-icon">🤖</span>
+      <span class="tab-label">Agents</span>
+      <span id="tab-agents-badge" class="tab-badge" style="background: rgba(99, 102, 241, 0.3); color: #818cf8;">6</span>
+    </button>
   </div>
 
   <!-- Tab Panel 1: Room Workspaces (Multi-file grouping) -->
@@ -102,9 +107,14 @@
 
   <!-- Tab Panel 3: Chat History Sessions -->
   <div id="panel-history" class="tab-panel">
-    <div class="docs-header">
-      <span class="docs-title">Saved Conversations</span>
-      <span id="history-count" class="docs-count">0 sessions</span>
+    <div class="docs-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+      <div>
+        <span class="docs-title">Saved Conversations</span>
+        <span id="history-count" class="docs-count">0 sessions</span>
+      </div>
+      <button id="clear-all-data-btn" class="btn btn-outline" style="font-size: 0.7rem; padding: 3px 8px; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" title="Delete all conversation history and conversational memories">
+        🗑️ Clear All
+      </button>
     </div>
     <div id="history-list" class="history-list">
       <div class="history-empty">
@@ -156,6 +166,30 @@
     <div id="memory-list" class="memory-list">
       <div style="text-align: center; padding: 20px 10px; color: var(--text-muted); font-size: 0.8rem;">
         Loading memory items...
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab Panel 5: Multi-Agent Workflows & MCP Tools -->
+  <div id="panel-agents" class="tab-panel">
+    <div class="docs-header" style="margin-bottom: 8px;">
+      <span class="docs-title">Agent Workflows</span>
+      <button id="sidebar-launch-agent-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 8px; color: #818cf8; border-color: rgba(99, 102, 241, 0.4);">
+        + New Run
+      </button>
+    </div>
+
+    <!-- 6 Roles Badge Summary -->
+    <div style="background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px;">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #818cf8; margin-bottom: 4px;">6-Agent Collaborative Team</div>
+      <div style="font-size: 0.65rem; color: var(--text-muted); line-height: 1.4;">
+        0. Decision Maker • 1. Researcher • 2. Task Generator • 3. Task Executor • 4. Validator • 5. Deployer
+      </div>
+    </div>
+
+    <div id="agents-workflow-list" class="docs-list">
+      <div style="text-align: center; padding: 24px 10px; color: var(--text-muted); font-size: 0.8rem;">
+        Click <strong>+ New Run</strong> or <strong>Multi-Agent</strong> in navbar to start.
       </div>
     </div>
   </div>

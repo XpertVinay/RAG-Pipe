@@ -32,10 +32,11 @@ from app.services.room_service import (
     extract_room_references,
     fetch_room_summary_counts,
     get_or_create_room_conversation,
+    get_room_active_conversation,
     process_room_file_upload,
 )
 
-router = APIRouter(prefix="/api/rooms", tags=["rooms"])
+router = APIRouter(prefix="/rooms", tags=["rooms"])
 room_upload_rate_limiter = RateLimiter(max_requests=15, window_seconds=60)
 
 
@@ -57,7 +58,7 @@ async def create_room(
     await db.commit()
     await db.refresh(room)
 
-    conv = await get_or_create_room_conversation(db, room)
+    conv = await get_room_active_conversation(db, room, create_if_absent=False)
 
     return RoomDetailResponse(
         id=room.id,
@@ -70,7 +71,7 @@ async def create_room(
         documents=[],
         references=[],
         members=[],
-        active_conversation_id=conv.id,
+        active_conversation_id=conv.id if conv else None,
         message_count=0,
     )
 
@@ -172,12 +173,17 @@ async def get_room_details(
         docs_res = await db.execute(select(Document).where(Document.id.in_(doc_ids)))
         docs = docs_res.scalars().all()
 
-    conv = await get_or_create_room_conversation(db, room)
+    conv = await get_room_active_conversation(db, room, create_if_absent=False)
+    if conv:
+        msg_count_res = await db.execute(
+            select(func.count(Message.id)).where(Message.conversation_id == conv.id)
+        )
+        message_count = msg_count_res.scalar_one()
+        active_conversation_id = conv.id
+    else:
+        message_count = 0
+        active_conversation_id = None
 
-    msg_count_res = await db.execute(
-        select(func.count(Message.id)).where(Message.conversation_id == conv.id)
-    )
-    message_count = msg_count_res.scalar_one()
     references = await extract_room_references(db, doc_ids)
 
     # Fetch room members
@@ -213,7 +219,7 @@ async def get_room_details(
         documents=[DocumentResponse.model_validate(d) for d in docs],
         references=references,
         members=members_resp,
-        active_conversation_id=conv.id,
+        active_conversation_id=active_conversation_id,
         message_count=message_count,
     )
 

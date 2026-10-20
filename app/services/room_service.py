@@ -99,8 +99,8 @@ async def check_room_access(
     )
 
 
-async def get_or_create_room_conversation(db: AsyncSession, room: Room) -> Conversation:
-    """Find the primary active conversation thread for a room or create one."""
+async def get_room_active_conversation(db: AsyncSession, room: Room, create_if_absent: bool = False) -> Optional[Conversation]:
+    """Find the primary active conversation thread for a room."""
     res = await db.execute(
         select(Conversation)
         .where(Conversation.room_id == room.id)
@@ -108,7 +108,7 @@ async def get_or_create_room_conversation(db: AsyncSession, room: Room) -> Conve
         .limit(1)
     )
     conv = res.scalar_one_or_none()
-    if not conv:
+    if not conv and create_if_absent:
         conv = Conversation(
             id=str(uuid.uuid4()),
             room_id=room.id,
@@ -119,6 +119,12 @@ async def get_or_create_room_conversation(db: AsyncSession, room: Room) -> Conve
         await db.commit()
         await db.refresh(conv)
     return conv
+
+
+async def get_or_create_room_conversation(db: AsyncSession, room: Room) -> Conversation:
+    """Find the primary active conversation thread for a room or create one."""
+    return await get_room_active_conversation(db, room, create_if_absent=True)
+
 
 
 async def extract_room_references(db: AsyncSession, document_ids: List[str]) -> List[RoomReferenceItem]:

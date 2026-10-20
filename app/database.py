@@ -48,6 +48,9 @@ AsyncSessionLocal = async_sessionmaker(
     class_=AsyncSession,
 )
 
+# Alias for background services and workers
+async_session_factory = AsyncSessionLocal
+
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy ORM models."""
@@ -139,7 +142,100 @@ async def init_db() -> None:
                 )
             """)
 
+            # Migrate organizations table for Mandate support
+            cursor.execute("PRAGMA table_info(organizations)")
+            org_cols = [row[1] for row in cursor.fetchall()]
+            if org_cols:
+                if "mandate_id" not in org_cols:
+                    cursor.execute("ALTER TABLE organizations ADD COLUMN mandate_id VARCHAR(100)")
+                if "mandate_status" not in org_cols:
+                    cursor.execute("ALTER TABLE organizations ADD COLUMN mandate_status VARCHAR(50) DEFAULT 'none'")
+                if "mandate_next_charge_at" not in org_cols:
+                    cursor.execute("ALTER TABLE organizations ADD COLUMN mandate_next_charge_at DATETIME")
+
+            # Migrate subscription_orders table for Razorpay & Mandate
+            cursor.execute("PRAGMA table_info(subscription_orders)")
+            order_cols = [row[1] for row in cursor.fetchall()]
+            if order_cols:
+                if "currency" not in order_cols:
+                    cursor.execute("ALTER TABLE subscription_orders ADD COLUMN currency VARCHAR(10) DEFAULT 'INR'")
+                if "razorpay_order_id" not in order_cols:
+                    cursor.execute("ALTER TABLE subscription_orders ADD COLUMN razorpay_order_id VARCHAR(100)")
+                if "razorpay_payment_id" not in order_cols:
+                    cursor.execute("ALTER TABLE subscription_orders ADD COLUMN razorpay_payment_id VARCHAR(100)")
+                if "razorpay_subscription_id" not in order_cols:
+                    cursor.execute("ALTER TABLE subscription_orders ADD COLUMN razorpay_subscription_id VARCHAR(100)")
+                if "razorpay_signature" not in order_cols:
+                    cursor.execute("ALTER TABLE subscription_orders ADD COLUMN razorpay_signature VARCHAR(255)")
+
+            # Create invoices table if not exists for transparent mandate records
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS invoices (
+                    id VARCHAR(36) PRIMARY KEY,
+                    invoice_number VARCHAR(50) NOT NULL UNIQUE,
+                    organization_id VARCHAR(36),
+                    user_id VARCHAR(36) NOT NULL,
+                    subscription_order_id VARCHAR(36),
+                    razorpay_invoice_id VARCHAR(100) UNIQUE,
+                    razorpay_payment_id VARCHAR(100),
+                    razorpay_subscription_id VARCHAR(100),
+                    plan_id VARCHAR(50) NOT NULL,
+                    plan_name VARCHAR(100) NOT NULL,
+                    billing_cycle VARCHAR(20) DEFAULT 'monthly',
+                    amount FLOAT NOT NULL,
+                    currency VARCHAR(10) DEFAULT 'INR',
+                    status VARCHAR(50) DEFAULT 'paid',
+                    billing_name VARCHAR(150) NOT NULL,
+                    billing_email VARCHAR(255) NOT NULL,
+                    paid_at DATETIME,
+                    invoice_pdf_url VARCHAR(500),
+                    notes TEXT,
+                    created_at DATETIME NOT NULL
+                )
+            """)
+
+            # Create system_settings table if not exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    key VARCHAR(100) PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    category VARCHAR(50) DEFAULT 'general',
+                    description TEXT,
+                    updated_at DATETIME NOT NULL
+                )
+            """)
+
+            # Create pricing_plans table if not exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS pricing_plans (
+                    id VARCHAR(50) PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL,
+                    monthly_price FLOAT NOT NULL DEFAULT 0.0,
+                    annual_price_per_month FLOAT NOT NULL DEFAULT 0.0,
+                    inr_monthly_price FLOAT DEFAULT 0.0,
+                    inr_annual_monthly_price FLOAT DEFAULT 0.0,
+                    description TEXT NOT NULL,
+                    badge VARCHAR(50) DEFAULT '',
+                    features JSON DEFAULT '[]',
+                    limits JSON DEFAULT '{}',
+                    is_active BOOLEAN DEFAULT 1,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+            """)
+
             # Create performance indexes for joins and rapid lookups
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_orders_rzp_order ON subscription_orders(razorpay_order_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_orders_rzp_pay ON subscription_orders(razorpay_payment_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_orders_rzp_sub ON subscription_orders(razorpay_subscription_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoices_org_id ON invoices(organization_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoice_number);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoices_rzp_payment ON invoices(razorpay_payment_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoices_rzp_sub ON invoices(razorpay_subscription_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_settings_category ON system_settings(category);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pricing_plans_active ON pricing_plans(is_active);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_uploader_email ON documents(uploader_email);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_is_shared ON documents(is_shared);")
@@ -162,6 +258,12 @@ async def init_db() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_user_id ON memories(user_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_doc_id ON memories(document_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_memories_expires_at ON memories(expires_at);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_workflows_user_id ON agent_workflows(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_workflows_room_id ON agent_workflows(room_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_workflows_status ON agent_workflows(status);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_subtasks_wf_idx ON agent_subtasks(workflow_id, task_number);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_subtasks_status ON agent_subtasks(status);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent_subtasks_role ON agent_subtasks(agent_role);")
         except Exception as e:
             import logging
             logging.getLogger("rag_agent").warning(f"Schema migration/indexing note: {e}")

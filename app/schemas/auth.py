@@ -13,6 +13,7 @@ class UserRegisterRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=100)
     full_name: Optional[str] = Field(None, max_length=100)
     role: Optional[str] = Field("user", description="Account role: 'user', 'staff', 'admin'")
+    invite_token: Optional[str] = Field(None, description="Optional organization invite token")
 
     @field_validator("email")
     @classmethod

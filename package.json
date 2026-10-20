@@ -1,0 +1,16 @@
+{
+  "name": "rag-agent-frontend",
+  "version": "1.0.0",
+  "description": "Production RAG Agent Asset Optimization & Build Pipeline",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build_assets.mjs",
+    "build:prod": "node scripts/build_assets.mjs --prod",
+    "watch": "node scripts/build_assets.mjs --watch",
+    "clean": "node -e \"import('fs').then(fs => fs.rmSync('app/static/dist', {recursive: true, force: true}))\""
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
