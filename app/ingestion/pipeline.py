@@ -84,8 +84,10 @@ class IngestionPipeline:
                     )
                     db.add(db_chunk)
 
-                # 5. Persist to Chroma vector store
-                vector_store.add_chunks(lc_chunks)
+                # 5. Persist to vector store using configured batch size optimized for local LLM
+                from app.config import get_settings
+                current_settings = get_settings()
+                vector_store.add_chunks(lc_chunks, batch_size=current_settings.EMBEDDING_BATCH_SIZE)
 
                 # 6. Update document status to completed
                 doc.status = "completed"

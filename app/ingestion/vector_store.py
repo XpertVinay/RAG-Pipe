@@ -94,23 +94,24 @@ class PostgresVectorStore:
 
         return self._store
 
-    def add_chunks(self, chunks: List[LCDocument], batch_size: int = 32, max_retries: int = 2) -> int:
+    def add_chunks(self, chunks: List[LCDocument], batch_size: Optional[int] = None, max_retries: int = 3) -> int:
         """Add document chunks to vector database in batches with auto-reconnect resilience."""
         if not chunks:
             return 0
 
+        effective_batch_size = batch_size or getattr(settings, "EMBEDDING_BATCH_SIZE", 8)
         attempt = 0
         while attempt < max_retries:
             attempt += 1
             try:
                 store = self._get_store()
                 total = len(chunks)
-                total_batches = (total + batch_size - 1) // batch_size
-                for idx in range(0, total, batch_size):
-                    batch = chunks[idx : idx + batch_size]
+                total_batches = (total + effective_batch_size - 1) // effective_batch_size
+                for idx in range(0, total, effective_batch_size):
+                    batch = chunks[idx : idx + effective_batch_size]
                     ids = [chunk.metadata.get("chunk_id") for chunk in batch]
                     store.add_documents(documents=batch, ids=ids)
-                    current_batch = (idx // batch_size) + 1
+                    current_batch = (idx // effective_batch_size) + 1
                     logger.info(f"Indexed batch {current_batch}/{total_batches} ({len(batch)} chunks)")
                 logger.info(f"Successfully indexed all {total} chunks into collection '{self.get_collection_name()}'")
                 return total

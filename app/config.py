@@ -83,9 +83,13 @@ class Settings(BaseSettings):
     DEFAULT_EMBEDDING_PROVIDER: Literal["ollama", "openai", "huggingface", "gemini", "google"] = "ollama"
     DEFAULT_EMBEDDING_MODEL: str = "nomic-embed-text"
 
-    # Ollama Settings
+    # Ollama Settings & Local LLM Optimization Flags
+    USE_LOCAL_LLM: bool = True
     OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
-    OLLAMA_TIMEOUT: float = 120.0
+    OLLAMA_TIMEOUT: float = 300.0
+    OLLAMA_KEEP_ALIVE: str = "60m"
+    OLLAMA_NUM_THREADS: Optional[int] = None
+    EMBEDDING_BATCH_SIZE: int = 8
 
     # External Provider Keys
     OPENAI_API_KEY: Optional[str] = None

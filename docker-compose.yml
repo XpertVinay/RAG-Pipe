@@ -23,7 +23,12 @@ services:
       - DEFAULT_CHAT_MODEL=${DEFAULT_CHAT_MODEL:-qwen2.5:3b}
       - DEFAULT_EMBEDDING_PROVIDER=${DEFAULT_EMBEDDING_PROVIDER:-ollama}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-nomic-embed-text}
+      - USE_LOCAL_LLM=${USE_LOCAL_LLM:-true}
+      - EMBEDDING_BATCH_SIZE=${EMBEDDING_BATCH_SIZE:-8}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-300.0}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-60m}
+      - OLLAMA_NUM_THREADS=${OLLAMA_NUM_THREADS:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -70,7 +75,12 @@ services:
       - DEFAULT_CHAT_PROVIDER=${DEFAULT_CHAT_PROVIDER:-ollama}
       - DEFAULT_EMBEDDING_PROVIDER=${DEFAULT_EMBEDDING_PROVIDER:-ollama}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-nomic-embed-text}
+      - USE_LOCAL_LLM=${USE_LOCAL_LLM:-true}
+      - EMBEDDING_BATCH_SIZE=${EMBEDDING_BATCH_SIZE:-8}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-300.0}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-60m}
+      - OLLAMA_NUM_THREADS=${OLLAMA_NUM_THREADS:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
@@ -155,6 +165,24 @@ services:
         limits:
           memory: 1024M
 
+  # Dedicated Local Ollama LLM & Embedding Server (Self-Contained Production Option)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-60m}
+      - OLLAMA_HOST=0.0.0.0:11434
+    networks:
+      rag_network:
+        aliases:
+          - ollama
+          - rag-ollama
+
 volumes:
   rag_data:
     name: rag_agent_data
@@ -162,6 +190,8 @@ volumes:
     name: rag_postgres_data
   rabbitmq_data:
     name: rag_rabbitmq_data
+  ollama_models:
+    name: rag_ollama_models
 
 networks:
   rag_network:
