@@ -55,7 +55,8 @@ class OpenAIChatProvider(BaseChatProvider):
             }
         try:
             headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-            async with httpx.AsyncClient(timeout=4.0) as client:
+            timeout = httpx.Timeout(connect=1.5, read=2.5, write=2.5, pool=1.5)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.get(f"{self.base_url.rstrip('/')}/models", headers=headers)
                 if resp.status_code == 200:
                     return {"status": "healthy", "available": True, "base_url": self.base_url}

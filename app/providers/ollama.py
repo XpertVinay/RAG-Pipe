@@ -30,6 +30,7 @@ class OllamaChatProvider(BaseChatProvider):
     def __init__(self, base_url: Optional[str] = None):
         self.base_url = get_effective_ollama_url(base_url)
         self.timeout = settings.OLLAMA_TIMEOUT
+        self._cached_models: Optional[List[str]] = None
 
     def get_chat_model(
         self,
@@ -55,11 +56,13 @@ class OllamaChatProvider(BaseChatProvider):
     async def check_health(self) -> Dict[str, Any]:
         url = f"{self.base_url.rstrip('/')}/api/tags"
         try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
+            timeout = httpx.Timeout(connect=1.0, read=2.0, write=2.0, pool=1.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(url)
                 if response.status_code == 200:
                     data = response.json()
                     models = [m.get("name") for m in data.get("models", [])]
+                    self._cached_models = models
                     return {
                         "status": "healthy",
                         "available": True,
@@ -79,6 +82,8 @@ class OllamaChatProvider(BaseChatProvider):
             }
 
     async def list_available_models(self) -> List[str]:
+        if self._cached_models:
+            return self._cached_models
         health = await self.check_health()
         return health.get("models", [settings.DEFAULT_CHAT_MODEL])
 
@@ -108,7 +113,8 @@ class OllamaEmbeddingProvider(BaseEmbeddingProvider):
     async def check_health(self) -> Dict[str, Any]:
         url = f"{self.base_url.rstrip('/')}/api/tags"
         try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
+            timeout = httpx.Timeout(connect=1.0, read=2.0, write=2.0, pool=1.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(url)
                 if response.status_code == 200:
                     return {"status": "healthy", "available": True}

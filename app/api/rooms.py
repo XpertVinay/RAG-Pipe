@@ -11,6 +11,7 @@ from app.core.logging import logger
 from app.core.rate_limit import RateLimiter
 from app.database import get_db
 from app.ingestion.pipeline import ingestion_pipeline
+from app.services.queue_service import queue_service
 from app.models.conversation import Conversation, Message
 from app.models.document import Document
 from app.models.project import Project
@@ -321,7 +322,7 @@ async def upload_files_to_room(
                 user_agent=user_agent,
                 db=db,
             )
-            background_tasks.add_task(ingestion_pipeline.process_document, doc.id)
+            await queue_service.enqueue_document_job(doc.id, background_tasks=background_tasks)
             uploaded_docs.append(DocumentResponse.model_validate(doc))
         except Exception as e:
             logger.warning(f"Upload to room {room_id} failed for file '{file.filename}': {e}")

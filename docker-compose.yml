@@ -78,6 +78,11 @@ services:
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:-rag_admin}:${RABBITMQ_PASSWORD:-rag_secret_pass}@rabbitmq:5672/
       - RABBITMQ_QUEUE_NAME=document_processing_queue
       - RABBITMQ_PREFETCH_COUNT=2
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on:
       postgres:
         condition: service_healthy
