@@ -146,6 +146,16 @@ class Settings(BaseSettings):
             return v.strip().lower()
         return v
 
+    @field_validator("OLLAMA_NUM_THREADS", mode="before")
+    @classmethod
+    def parse_optional_threads(cls, v: Any) -> Optional[int]:
+        if v is None or v == "" or (isinstance(v, str) and not v.strip()):
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
+
     @field_validator("DATABASE_URL", mode="after")
     @classmethod
     def normalize_database_url(cls, v: str) -> str:
