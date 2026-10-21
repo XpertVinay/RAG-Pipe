@@ -1,6 +1,7 @@
 """API endpoints for document upload, listing, details, deletion, and reprocessing."""
 
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
@@ -79,7 +80,7 @@ async def upload_documents(
             await queue_service.enqueue_document_job(doc.id, background_tasks=background_tasks)
             uploaded_docs.append(DocumentResponse.model_validate(doc))
         except Exception as e:
-            logger.warning(f"Upload failed for file '{file.filename}': {e}")
+            logger.warning(f"Upload failed for file '{file.filename}': {e}", exc_info=True)
             failed_files.append({"filename": file.filename or "unknown", "error": str(e)})
 
     await db.commit()
@@ -354,6 +355,32 @@ async def check_documents_readiness(
     results = await db.execute(stmt)
     docs = results.scalars().all()
 
+    # Automatically identify and recover stale / orphaned processing documents
+    timeout_sec = getattr(settings, "DOCUMENT_PROCESSING_TIMEOUT_SECONDS", 600)
+    now = datetime.now(timezone.utc)
+    has_stale = False
+
+    for d in docs:
+        if d.status in ("queued", "processing"):
+            last_activity = d.updated_at or d.created_at
+            if last_activity:
+                if last_activity.tzinfo is None:
+                    last_activity = last_activity.replace(tzinfo=timezone.utc)
+                elapsed = (now - last_activity).total_seconds()
+                if elapsed > timeout_sec:
+                    d.status = "failed"
+                    d.error_message = (
+                        f"Document processing timed out after {int(elapsed // 60)}m (exceeded {timeout_sec // 60}m limit) "
+                        "or worker was interrupted. Please click reprocess to retry."
+                    )
+                    has_stale = True
+                    logger.warning(
+                        f"Auto-recovered stale document {d.id} ({d.filename}): marked as failed after {int(elapsed)}s."
+                    )
+
+    if has_stale:
+        await db.commit()
+
     total = len(docs)
     ready = [d for d in docs if d.status == "completed"]
     pending = [d for d in docs if d.status in ("queued", "processing")]
@@ -376,6 +403,7 @@ async def check_documents_readiness(
                 "status": d.status,
                 "is_ready": d.status == "completed",
                 "chunk_count": d.chunk_count,
+                "error_message": d.error_message,
             }
             for d in docs
         ],
@@ -385,7 +413,11 @@ async def check_documents_readiness(
             else (
                 f"{len(pending)} document(s) currently being processed in RabbitMQ queue. LLM ready when completed."
                 if pending
-                else "Some documents encountered indexing errors."
+                else (
+                    f"{len(failed)} document(s) encountered indexing errors or timed out."
+                    if failed
+                    else "Ready."
+                )
             )
         ),
     }

@@ -120,6 +120,34 @@ async def run_document_consumer() -> None:
     logger.info("[RabbitMQ Worker] Document consumer loop stopped.")
 
 
+async def recover_orphaned_processing_jobs() -> int:
+    """Reset any documents left stuck in 'processing' status across server restarts."""
+    from app import database
+    from app.models.document import Document
+    from sqlalchemy import select
+
+    recovered = 0
+    try:
+        async with database.AsyncSessionLocal() as db:
+            result = await db.execute(select(Document).where(Document.status == "processing"))
+            stuck_docs = result.scalars().all()
+            for doc in stuck_docs:
+                doc.status = "failed"
+                doc.error_message = (
+                    "Ingestion was interrupted due to server reboot or unexpected worker crash. "
+                    "Please click reprocess to retry."
+                )
+                recovered += 1
+            if recovered > 0:
+                await db.commit()
+                logger.warning(
+                    f"Recovered {recovered} orphaned document(s) stuck in 'processing'. Marked as failed for safe retry."
+                )
+    except Exception as e:
+        logger.warning(f"Error during orphaned job recovery: {e}")
+    return recovered
+
+
 def start_embedded_worker() -> Optional[asyncio.Task]:
     """Start worker consumer as a background task within the FastAPI event loop if enabled."""
     global _consumer_task

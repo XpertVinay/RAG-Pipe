@@ -109,6 +109,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 25
     ALLOWED_EXTENSIONS: str = "pdf,docx,txt,md,csv,html"
     MAX_INGESTION_CONCURRENCY: int = 3
+    DOCUMENT_PROCESSING_TIMEOUT_SECONDS: int = 600  # 10 minutes max before timing out stale processing jobs
 
     # RabbitMQ Queue Settings for High-Traffic Document Ingestion
     RABBITMQ_ENABLED: bool = True

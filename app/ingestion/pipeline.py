@@ -1,5 +1,6 @@
 """Document ingestion pipeline coordinating parsing, chunking, and vector persistence."""
 
+import asyncio
 import os
 from pathlib import Path
 from typing import Optional
@@ -46,62 +47,83 @@ class IngestionPipeline:
                 await db.commit()
                 return
 
+            from app.config import get_settings
+            current_settings = get_settings()
+            timeout_sec = getattr(current_settings, "DOCUMENT_PROCESSING_TIMEOUT_SECONDS", 600)
+
             try:
-                # 1. Parse document into pages
-                pages = DocumentParser.parse(file_path=file_path, extension=doc.file_type)
+                async with asyncio.timeout(timeout_sec):
+                    # 1. Parse document into pages
+                    pages = DocumentParser.parse(file_path=file_path, extension=doc.file_type)
 
-                # 2. Chunk pages into LangChain documents with provenance
-                lc_chunks = self.chunker.chunk_document(
-                    document_id=doc.id,
-                    filename=doc.filename,
-                    file_type=doc.file_type,
-                    pages=pages,
-                    user_id=doc.user_id,
-                    uploader_username=doc.uploader_username,
-                    is_persistent=doc.is_persistent_vector if doc.is_persistent_vector is not None else True,
-                    is_shared=doc.is_shared if doc.is_shared is not None else False,
-                )
+                    # 2. Chunk pages into LangChain documents with provenance
+                    lc_chunks = self.chunker.chunk_document(
+                        document_id=doc.id,
+                        filename=doc.filename,
+                        file_type=doc.file_type,
+                        pages=pages,
+                        user_id=doc.user_id,
+                        uploader_username=doc.uploader_username,
+                        is_persistent=doc.is_persistent_vector if doc.is_persistent_vector is not None else True,
+                        is_shared=doc.is_shared if doc.is_shared is not None else False,
+                    )
 
-                if not lc_chunks:
-                    raise DocumentParsingError("Document produced no valid text chunks after splitting.")
+                    if not lc_chunks:
+                        raise DocumentParsingError("Document produced no valid text chunks after splitting.")
 
-                # 3. Clean up any existing vectors and DB chunks for idempotency
+                    # 3. Clean up any existing vectors and DB chunks for idempotency
+                    try:
+                        vector_store.delete_document(document_id=doc.id)
+                    except Exception as ve:
+                        logger.warning(f"Note during vector cleanup for {doc.id}: {ve}")
+
+                    await db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == doc.id))
+
+                    # 4. Save chunk records to database
+                    for chunk in lc_chunks:
+                        db_chunk = DocumentChunk(
+                            id=chunk.metadata.get("chunk_id"),
+                            document_id=doc.id,
+                            chunk_index=chunk.metadata.get("chunk_index", 0),
+                            content=chunk.page_content,
+                            chunk_metadata=chunk.metadata,
+                        )
+                        db.add(db_chunk)
+
+                    # 5. Persist to vector store using configured batch size optimized for local LLM
+                    vector_store.add_chunks(lc_chunks, batch_size=current_settings.EMBEDDING_BATCH_SIZE)
+
+                    # 6. Update document status to completed
+                    doc.status = "completed"
+                    doc.chunk_count = len(lc_chunks)
+                    doc.error_message = None
+                    await db.commit()
+                    logger.info(f"Successfully completed ingestion for {doc.filename} ({len(lc_chunks)} chunks)")
+
+                    # 7. Revaluate any existing memories linked to this document
+                    try:
+                        from app.memory.revaluation import revaluation_engine
+                        await revaluation_engine.revaluate_for_document(doc.id, db)
+                    except Exception as reval_err:
+                        logger.warning(f"Post-ingestion memory revaluation note: {reval_err}")
+
+            except TimeoutError:
+                err_msg = f"Document ingestion timed out after {timeout_sec}s. Please click reprocess to retry."
+                logger.error(f"Ingestion timed out for {doc.filename} ({doc.id}) after {timeout_sec}s")
+                await db.rollback()
+
                 try:
                     vector_store.delete_document(document_id=doc.id)
-                except Exception as ve:
-                    logger.warning(f"Note during vector cleanup for {doc.id}: {ve}")
+                except Exception:
+                    pass
 
-                await db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == doc.id))
-
-                # 4. Save chunk records to database
-                for chunk in lc_chunks:
-                    db_chunk = DocumentChunk(
-                        id=chunk.metadata.get("chunk_id"),
-                        document_id=doc.id,
-                        chunk_index=chunk.metadata.get("chunk_index", 0),
-                        content=chunk.page_content,
-                        chunk_metadata=chunk.metadata,
-                    )
-                    db.add(db_chunk)
-
-                # 5. Persist to vector store using configured batch size optimized for local LLM
-                from app.config import get_settings
-                current_settings = get_settings()
-                vector_store.add_chunks(lc_chunks, batch_size=current_settings.EMBEDDING_BATCH_SIZE)
-
-                # 6. Update document status to completed
-                doc.status = "completed"
-                doc.chunk_count = len(lc_chunks)
-                doc.error_message = None
-                await db.commit()
-                logger.info(f"Successfully completed ingestion for {doc.filename} ({len(lc_chunks)} chunks)")
-
-                # 7. Revaluate any existing memories linked to this document
-                try:
-                    from app.memory.revaluation import revaluation_engine
-                    await revaluation_engine.revaluate_for_document(doc.id, db)
-                except Exception as reval_err:
-                    logger.warning(f"Post-ingestion memory revaluation note: {reval_err}")
+                async with database.AsyncSessionLocal() as err_db:
+                    err_res = await err_db.execute(select(Document).where(Document.id == document_id))
+                    err_doc = err_res.scalar_one_or_none()
+                    if err_doc:
+                        err_doc.status = "failed"
+                        err_doc.error_message = err_msg
+                        await err_db.commit()
 
             except Exception as e:
                 logger.error(f"Ingestion failed for {doc.filename}: {e}", exc_info=True)

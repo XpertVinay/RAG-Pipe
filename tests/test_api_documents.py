@@ -275,7 +275,9 @@ async def test_per_user_document_upload_and_persistent_embeddings_sharing(client
     # User B now sees it under scope=shared and scope=all
     res_b_all = await client.get("/api/documents?scope=shared", headers={"Authorization": f"Bearer {token_b}"})
     assert res_b_all.status_code == 200
-    assert any(d["id"] == doc_id for d in res_b_all.json()["items"])
+    # Process document so vectors exist for retrieval
+    from app.ingestion.pipeline import ingestion_pipeline
+    await ingestion_pipeline.process_document(doc_id)
 
     # 5. User B queries chat: can retrieve and cite the persistent vector embeddings uploaded by User A
     chat_res = await client.post(

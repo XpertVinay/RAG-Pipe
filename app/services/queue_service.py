@@ -27,23 +27,49 @@ class QueueService:
         self._connection: Optional[AbstractConnection] = None
         self._channel: Optional[AbstractChannel] = None
         self._queue: Optional[AbstractQueue] = None
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None
+        self._lock_loop: Optional[asyncio.AbstractEventLoop] = None
         self._is_connecting = False
         self._failed_connection_attempts = 0
         self._last_connect_attempt = 0.0
+
+    def _get_lock(self) -> asyncio.Lock:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if self._lock is None or getattr(self, "_lock_loop", None) is not loop:
+            self._lock = asyncio.Lock()
+            self._lock_loop = loop
+        return self._lock
 
     async def get_connection(self) -> Optional[AbstractConnection]:
         """Obtain or establish a persistent async RabbitMQ connection."""
         if not HAS_AIO_PIKA or not getattr(settings, "RABBITMQ_ENABLED", True):
             return None
 
-        if self._connection and not self._connection.is_closed:
-            return self._connection
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
 
-        async with self._lock:
+        if self._connection and not self._connection.is_closed:
+            if getattr(self, "_connection_loop", None) is current_loop:
+                return self._connection
+            else:
+                self._connection = None
+                self._channel = None
+                self._queue = None
+
+        async with self._get_lock():
             # Double-check inside lock
             if self._connection and not self._connection.is_closed:
-                return self._connection
+                if getattr(self, "_connection_loop", None) is current_loop:
+                    return self._connection
+                else:
+                    self._connection = None
+                    self._channel = None
+                    self._queue = None
 
             try:
                 rabbitmq_url = getattr(settings, "RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
@@ -52,6 +78,7 @@ class QueueService:
                     rabbitmq_url,
                     timeout=5.0,
                 )
+                self._connection_loop = current_loop
                 self._channel = await self._connection.channel()
                 prefetch = getattr(settings, "RABBITMQ_PREFETCH_COUNT", 2)
                 await self._channel.set_qos(prefetch_count=prefetch)
@@ -189,7 +216,7 @@ class QueueService:
 
     async def close(self) -> None:
         """Gracefully close channels and connection."""
-        async with self._lock:
+        async with self._get_lock():
             try:
                 if self._channel and not self._channel.is_closed:
                     await self._channel.close()
@@ -201,6 +228,8 @@ class QueueService:
             finally:
                 self._channel = None
                 self._connection = None
+                self._queue = None
+                self._connection_loop = None
                 self._queue = None
 
 

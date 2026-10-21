@@ -265,3 +265,37 @@ async def test_chat_query_informs_user_when_documents_in_queue(client: AsyncClie
     assert "queue" in chat_data["content"].lower()
     assert chat_data["metadata_info"]["response_type"] == "queue_pending"
     assert chat_data["metadata_info"]["queue_pending"] is True
+
+
+@pytest.mark.asyncio
+async def test_stale_processing_document_auto_recovered(client: AsyncClient, test_db: AsyncSession):
+    """Verify that a document stuck in 'processing' status beyond timeout is auto-recovered as 'failed'."""
+    from datetime import datetime, timedelta, timezone
+
+    headers = await _get_auth_header(client, "stale_test_user", "stu@test.local")
+
+    stale_time = datetime.now(timezone.utc) - timedelta(minutes=25)
+    stale_doc = Document(
+        id=str(uuid.uuid4()),
+        filename="javascript.pdf",
+        file_type="pdf",
+        file_size=1024,
+        storage_path="/tmp/javascript.pdf",
+        status="processing",
+        created_at=stale_time,
+        updated_at=stale_time,
+        is_shared=True,
+    )
+    test_db.add(stale_doc)
+    await test_db.commit()
+
+    # Query readiness check
+    res = await client.get(f"/api/documents/readiness/check?document_ids={stale_doc.id}", headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+
+    # The document should no longer be pending; it must be marked failed
+    assert data["pending_count"] == 0
+    assert data["failed_count"] == 1
+    assert data["documents"][0]["status"] == "failed"
+    assert "timed out" in data["documents"][0]["error_message"].lower()

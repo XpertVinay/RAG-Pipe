@@ -61,8 +61,13 @@ async def lifespan(app: FastAPI):
     # Start Razorpay Mandate recurring sync scheduler
     start_mandate_sync_scheduler()
 
-    # Start embedded RabbitMQ document worker consumer if enabled
-    from app.services.document_worker import start_embedded_worker, stop_embedded_worker
+    # Start embedded RabbitMQ document worker consumer if enabled & recover any orphaned processing jobs
+    from app.services.document_worker import (
+        recover_orphaned_processing_jobs,
+        start_embedded_worker,
+        stop_embedded_worker,
+    )
+    await recover_orphaned_processing_jobs()
     start_embedded_worker()
 
     yield

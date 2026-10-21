@@ -565,6 +565,8 @@
 
   let readinessPollTimer = null;
   let wasPreviouslyPending = false;
+  let readinessPollCount = 0;
+  const MAX_POLL_ATTEMPTS = 60; // Max 60 polls (approx 3 minutes) before stopping automatic polling
 
   async function checkDocumentQueueReadiness(forceToast = false) {
     const queueBanner = document.getElementById('doc-queue-banner');
@@ -587,6 +589,33 @@
 
       if (res && res.pending_count > 0) {
         wasPreviouslyPending = true;
+        readinessPollCount++;
+
+        // Circuit breaker: prevent infinite polling loop if background worker is stuck or offline
+        if (readinessPollCount > MAX_POLL_ATTEMPTS) {
+          if (readinessPollTimer) {
+            clearInterval(readinessPollTimer);
+            readinessPollTimer = null;
+          }
+          queueBanner.style.display = 'block';
+          queueBanner.classList.remove('ready');
+          if (titleText) {
+            titleText.textContent = '⚠️ Document indexing is taking longer than expected';
+          }
+          if (detailText) {
+            detailText.innerHTML = `${res.pending_count} file(s) still processing. Worker may be busy or job timed out. <button id="retry-poll-now-btn" style="background:none;border:none;color:var(--color-primary-light, #6366f1);cursor:pointer;text-decoration:underline;padding:0;font-size:inherit;">Check again</button> or view Documents to reprocess.`;
+            const retryNowBtn = document.getElementById('retry-poll-now-btn');
+            if (retryNowBtn) {
+              retryNowBtn.onclick = (e) => {
+                e.preventDefault();
+                readinessPollCount = 0;
+                checkDocumentQueueReadiness(true);
+              };
+            }
+          }
+          return;
+        }
+
         queueBanner.style.display = 'block';
         queueBanner.classList.remove('ready');
         if (titleText) {
@@ -604,6 +633,7 @@
         }
       } else if (res && res.total > 0 && res.all_ready && wasPreviouslyPending) {
         wasPreviouslyPending = false;
+        readinessPollCount = 0;
         if (readinessPollTimer) {
           clearInterval(readinessPollTimer);
           readinessPollTimer = null;
@@ -614,7 +644,7 @@
           titleText.textContent = `✨ All ${res.total} document(s) are ready for LLM prompts!`;
         }
         if (detailText) {
-          detailText.textContent = 'Document chunks & vectors are persistent in Chroma. You can now prompt the LLM.';
+          detailText.textContent = 'Document chunks & vectors are persistent in vector store. You can now prompt the LLM.';
         }
         if (RAG.utils?.showToast) {
           RAG.utils.showToast(`✨ Documents ready! You can now ask questions about your documents.`, 'success');
@@ -631,6 +661,27 @@
             queueBanner.style.display = 'none';
           }
         }, 6000);
+      } else if (res && res.failed_count > 0 && wasPreviouslyPending) {
+        wasPreviouslyPending = false;
+        readinessPollCount = 0;
+        if (readinessPollTimer) {
+          clearInterval(readinessPollTimer);
+          readinessPollTimer = null;
+        }
+        queueBanner.style.display = 'block';
+        queueBanner.classList.remove('ready');
+        if (titleText) {
+          titleText.textContent = `⚠️ ${res.failed_count} document(s) failed indexing`;
+        }
+        if (detailText) {
+          detailText.textContent = 'Some documents encountered processing errors or timed out. Please check Document Manager to reprocess.';
+        }
+        if (RAG.utils?.showToast) {
+          RAG.utils.showToast(`${res.failed_count} document(s) failed indexing.`, 'error');
+        }
+        if (RAG.documents?.loadDocuments) {
+          RAG.documents.loadDocuments();
+        }
       } else {
         if (readinessPollTimer) {
           clearInterval(readinessPollTimer);
@@ -638,9 +689,15 @@
         }
         queueBanner.style.display = 'none';
         wasPreviouslyPending = false;
+        readinessPollCount = 0;
       }
     } catch (err) {
       console.warn('Error checking document readiness:', err);
+      readinessPollCount++;
+      if (readinessPollCount > 20 && readinessPollTimer) {
+        clearInterval(readinessPollTimer);
+        readinessPollTimer = null;
+      }
     }
   }
 
