@@ -254,7 +254,7 @@ async def stream_rag_agent(
 
         needs_vis = final_state.get("needs_visualization", False) or detect_visualization_need(query)
 
-        if not is_app_create and not documents and not needs_vis:
+        if not is_app_create and intent != "greeting" and not documents and not needs_vis:
             if requires_doc:
                 msg = "The provided documents do not contain sufficient information to answer this question. Please upload relevant files or check your query."
                 accumulated_answer = msg
@@ -280,7 +280,7 @@ async def stream_rag_agent(
                     accumulated_answer += token
                     yield format_sse("token", {"token": token})
 
-        elif not documents and needs_vis:
+        elif not is_app_create and intent != "greeting" and not documents and needs_vis:
             sample_messages = [
                 SystemMessage(
                     content=(
@@ -299,7 +299,7 @@ async def stream_rag_agent(
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
 
-        else:
+        elif not is_app_create and intent != "greeting":
             # Format context with explicit separation and sanitization
             formatted_contexts = []
             for i, doc in enumerate(documents):
@@ -392,6 +392,9 @@ async def stream_rag_agent(
 
     except Exception as e:
         logger.error(f"Error during RAG streaming: {e}", exc_info=True)
+        if (provider or "").lower() == "ollama":
+            from app.providers.ollama import invalidate_effective_ollama_url
+            invalidate_effective_ollama_url()
         user_safe_error = "An error occurred while generating the answer. Please verify your model settings or try again."
         yield format_sse("error", {"message": user_safe_error})
         yield format_sse("done", {

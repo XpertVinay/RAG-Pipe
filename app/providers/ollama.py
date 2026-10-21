@@ -29,6 +29,12 @@ def _probe_socket(url: str, timeout: float = 2.0) -> bool:
         return False
 
 
+def invalidate_effective_ollama_url() -> None:
+    """Clear cached Ollama URL to force re-probing on connection failures."""
+    global _cached_effective_url
+    _cached_effective_url = None
+
+
 def get_effective_ollama_url(base_url: Optional[str] = None) -> str:
     """Resolve reachable Ollama URL whether running in Docker, on host, or container network."""
     global _cached_effective_url
@@ -206,11 +212,11 @@ class OllamaEmbeddingProvider(BaseEmbeddingProvider):
         try:
             client_kwargs = dict(kwargs.pop("client_kwargs", {}))
             if "timeout" not in client_kwargs:
-                client_kwargs["timeout"] = self.timeout
+                client_kwargs["timeout"] = httpx.Timeout(self.timeout, connect=10.0)
 
             sync_client_kwargs = dict(kwargs.pop("sync_client_kwargs", client_kwargs))
             if "timeout" not in sync_client_kwargs:
-                sync_client_kwargs["timeout"] = self.timeout
+                sync_client_kwargs["timeout"] = httpx.Timeout(self.timeout, connect=10.0)
 
             raw_keep_alive = kwargs.pop("keep_alive", self.keep_alive)
             keep_alive_sec = _parse_keep_alive_seconds(raw_keep_alive)
