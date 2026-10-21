@@ -17,7 +17,7 @@ settings = get_settings()
 _cached_effective_url: Optional[str] = None
 
 
-def _probe_socket(url: str, timeout: float = 0.6) -> bool:
+def _probe_socket(url: str, timeout: float = 2.0) -> bool:
     """Fast non-blocking check if target host:port is reachable."""
     try:
         parsed = urlparse(url)
@@ -47,12 +47,15 @@ def get_effective_ollama_url(base_url: Optional[str] = None) -> str:
 
     # If normalized configured URL is directly reachable, use it
     if _probe_socket(normalized_url):
+        logger.info(f"Ollama connected directly via configured URL: '{normalized_url}'")
         if not base_url:
             _cached_effective_url = normalized_url
         return normalized_url
 
     # Check candidates for resilient local LLM resolution
-    candidates: List[str] = []
+    candidates: List[str] = [
+        "http://1acer.com:11434",
+    ]
     if is_docker:
         candidates.extend([
             "http://ollama:11434",               # Docker network service name
@@ -75,6 +78,7 @@ def get_effective_ollama_url(base_url: Optional[str] = None) -> str:
             return cand
 
     # Default to normalized URL if probing candidates failed
+    logger.warning(f"Ollama socket probe failed for all candidates. Falling back to: '{normalized_url}'")
     return normalized_url
 
 
