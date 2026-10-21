@@ -312,10 +312,12 @@ async def fetch_external_data():
     import httpx
     from fastapi import HTTPException
 
-    EXTERNAL_API_URL = "http://host.docker.internal:11434/api/tags"
+    EXTERNAL_API_URL = "http://72.62.226.107:11434/api/tags"
     # Initialize the async HTTP client
     async with httpx.AsyncClient() as client:
         try:
+            print("response=======", str(EXTERNAL_API_URL))
+
             # Make the GET request to the external API
             response = await client.get(EXTERNAL_API_URL)
 
