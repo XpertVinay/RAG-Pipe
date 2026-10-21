@@ -103,13 +103,13 @@ class OllamaChatProvider(BaseChatProvider):
             extra_params["num_thread"] = num_thread
         client_kwargs = dict(kwargs.pop("client_kwargs", {}))
         if "timeout" not in client_kwargs:
-            client_kwargs["timeout"] = self.timeout
+            client_kwargs["timeout"] = httpx.Timeout(self.timeout, connect=10.0)
         sync_client_kwargs = dict(kwargs.pop("sync_client_kwargs", client_kwargs))
         if "timeout" not in sync_client_kwargs:
-            sync_client_kwargs["timeout"] = self.timeout
+            sync_client_kwargs["timeout"] = httpx.Timeout(self.timeout, connect=10.0)
         async_client_kwargs = dict(kwargs.pop("async_client_kwargs", client_kwargs))
         if "timeout" not in async_client_kwargs:
-            async_client_kwargs["timeout"] = self.timeout
+            async_client_kwargs["timeout"] = httpx.Timeout(self.timeout, connect=10.0)
 
         try:
             return ChatOllama(
