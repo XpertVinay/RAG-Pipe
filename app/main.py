@@ -34,6 +34,7 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Application lifespan: initialize local directories, SQLite DB, mandate scheduler, and tracing."""
     logger.info("Initializing Production RAG Agent...")
+    logger.info(f"fetch_external_data:{await fetch_external_data()}")
     if settings.APP_ENV.lower() == "production" and "dev-secret-key" in settings.SECRET_KEY:
         logger.critical(
             "SECURITY WARNING: Running in production with default insecure SECRET_KEY! "
@@ -307,6 +308,35 @@ async def api_redoc_redirect():
     return RedirectResponse(url="/redoc")
 
 
+async def fetch_external_data():
+    import httpx
+    from fastapi import HTTPException
+
+    EXTERNAL_API_URL = "http://host.docker.internal:11434/api/tags"
+    # Initialize the async HTTP client
+    async with httpx.AsyncClient() as client:
+        try:
+            # Make the GET request to the external API
+            response = await client.get(EXTERNAL_API_URL)
+
+            print("response=======", str(response.text))
+
+            # Raise an exception if the request returned an error status code
+            response.raise_for_status()
+
+            # Return the JSON payload received from the external API
+            return response.json()
+
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=exc.response.status_code, 
+                detail=f"External API error: {exc}"
+            )
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=503, 
+                detail=f"Could not connect to external server: {exc}"
+            )
 
 if __name__ == "__main__":
     import uvicorn
