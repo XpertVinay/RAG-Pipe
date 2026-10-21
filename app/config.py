@@ -136,6 +136,7 @@ class Settings(BaseSettings):
 
     # LLM Request/Response Logging (Non-Prod / Non-Preprod Only)
     ENABLE_LLM_LOGGING: bool = True
+    FORCE_LLM_LOGGING: bool = False  # Allows overriding production ban for debugging
     LLM_LOG_ENVIRONMENTS: str = "local,development,dev,stage,staging,test"
     LLM_LOG_MAX_CHARS: int = 10000
     LLM_LOG_FORMAT: Literal["text", "json"] = "text"
@@ -222,6 +223,9 @@ class Settings(BaseSettings):
         Logging is strictly disabled on preprod and production instances
         to eliminate security risks, secret leakage, and user data exposure.
         """
+        if getattr(self, "FORCE_LLM_LOGGING", False):
+            return bool(self.ENABLE_LLM_LOGGING)
+
         env = (self.APP_ENV or "").strip().lower()
         disallowed = {"production", "prod", "preprod", "pre-production", "pre_prod"}
         if env in disallowed:

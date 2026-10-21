@@ -59,9 +59,12 @@ def is_llm_logging_enabled(environment: Optional[str] = None) -> bool:
     Returns False for any production or pre-production environment.
     """
     settings = get_settings()
+    if getattr(settings, "FORCE_LLM_LOGGING", False) or os.environ.get("FORCE_LLM_LOGGING", "").lower() in ("true", "1"):
+        return bool(getattr(settings, "ENABLE_LLM_LOGGING", True))
+
     env = (environment or getattr(settings, "APP_ENV", "") or os.environ.get("APP_ENV", "development")).strip().lower()
 
-    # Absolute blocker: Preprod and Production are NEVER allowed to log LLM payloads
+    # Absolute blocker: Preprod and Production are NEVER allowed to log LLM payloads unless FORCE_LLM_LOGGING is set
     if env in DISALLOWED_ENVIRONMENTS:
         return False
 

@@ -25,7 +25,7 @@ services:
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-nomic-embed-text}
       - USE_LOCAL_LLM=${USE_LOCAL_LLM:-true}
       - EMBEDDING_BATCH_SIZE=${EMBEDDING_BATCH_SIZE:-8}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://1acer.com:11434}
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-300.0}
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-60m}
       - OLLAMA_NUM_THREADS=${OLLAMA_NUM_THREADS:-}
@@ -37,6 +37,7 @@ services:
       - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
       - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT:-rag-agent-production}
       - ENABLE_LLM_LOGGING=${ENABLE_LLM_LOGGING:-true}
+      - FORCE_LLM_LOGGING=${FORCE_LLM_LOGGING:-false}
       - LLM_LOG_ENVIRONMENTS=${LLM_LOG_ENVIRONMENTS:-local,development,dev,stage,staging,test}
       - LLM_LOG_MAX_CHARS=${LLM_LOG_MAX_CHARS:-10000}
       - LLM_LOG_FORMAT=${LLM_LOG_FORMAT:-text}
@@ -77,7 +78,7 @@ services:
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-nomic-embed-text}
       - USE_LOCAL_LLM=${USE_LOCAL_LLM:-true}
       - EMBEDDING_BATCH_SIZE=${EMBEDDING_BATCH_SIZE:-8}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://1acer.com:11434}
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-300.0}
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-60m}
       - OLLAMA_NUM_THREADS=${OLLAMA_NUM_THREADS:-}
@@ -89,7 +90,7 @@ services:
       - RABBITMQ_QUEUE_NAME=document_processing_queue
       - RABBITMQ_PREFETCH_COUNT=2
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)'"]
+      test: [ "CMD-SHELL", "python -c 'import sys; sys.exit(0)'" ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -126,7 +127,7 @@ services:
           - postgres
           - db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-rag_agent} || exit 1"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-rag_agent} || exit 1" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -155,7 +156,7 @@ services:
           - rabbitmq
           - rag-rabbitmq
     healthcheck:
-      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping || exit 1"]
+      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q ping || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -164,24 +165,23 @@ services:
       resources:
         limits:
           memory: 1024M
-
   # Dedicated Local Ollama LLM & Embedding Server (Self-Contained Production Option)
-  ollama:
-    image: ollama/ollama:latest
-    container_name: rag-ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_models:/root/.ollama
-    environment:
-      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-60m}
-      - OLLAMA_HOST=0.0.0.0:11434
-    networks:
-      rag_network:
-        aliases:
-          - ollama
-          - rag-ollama
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: rag-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_models:/root/.ollama
+  #   environment:
+  #     - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-60m}
+  #     - OLLAMA_HOST=0.0.0.0:11434
+  #   networks:
+  #     rag_network:
+  #       aliases:
+  #         - ollama
+  #         - rag-ollama
 
 volumes:
   rag_data:
@@ -190,8 +190,8 @@ volumes:
     name: rag_postgres_data
   rabbitmq_data:
     name: rag_rabbitmq_data
-  ollama_models:
-    name: rag_ollama_models
+  # ollama_models:
+  #   name: rag_ollama_models
 
 networks:
   rag_network:

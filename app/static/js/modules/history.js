@@ -106,6 +106,8 @@
       }
     } catch (e) {
       console.warn('Failed to load messages for conversation:', e);
+      RAG.state.currentConversationId = null;
+      localStorage.removeItem('rag_active_conv_id');
       if (RAG.chat?.showWelcomeScreen) RAG.chat.showWelcomeScreen();
     }
   }

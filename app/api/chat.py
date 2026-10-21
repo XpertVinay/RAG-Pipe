@@ -238,14 +238,17 @@ async def ask_query(
     if effective_room_id:
         await check_room_query_access(effective_room_id, current_user, db)
 
+    conv_obj = None
     if conv_id:
         c_check = await db.execute(select(Conversation).where(Conversation.id == conv_id))
         conv_obj = c_check.scalar_one_or_none()
         if conv_obj:
             check_conversation_access(conv_obj, current_user)
-    else:
+
+    if not conv_obj:
+        conv_id = conv_id if (conv_id and len(conv_id) <= 36) else str(uuid.uuid4())
         conv = Conversation(
-            id=str(uuid.uuid4()),
+            id=conv_id,
             room_id=effective_room_id,
             user_id=current_user.id if current_user else None,
             title=request.message[:40] + "...",
@@ -520,16 +523,19 @@ async def stream_query(
     if effective_room_id:
         await check_room_query_access(effective_room_id, current_user, db)
 
+    conv_obj = None
     if conv_id:
         c_check = await db.execute(select(Conversation).where(Conversation.id == conv_id))
         conv_obj = c_check.scalar_one_or_none()
         if conv_obj:
             check_conversation_access(conv_obj, current_user)
-    else:
+
+    if not conv_obj:
+        conv_id = conv_id if (conv_id and len(conv_id) <= 36) else str(uuid.uuid4())
         conv = Conversation(
-            id=str(uuid.uuid4()),
+            id=conv_id,
             room_id=effective_room_id,
-            user_id=current_user.id,
+            user_id=current_user.id if current_user else None,
             title=request.message[:40] + "...",
         )
         db.add(conv)
