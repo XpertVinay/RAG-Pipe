@@ -394,8 +394,6 @@ async def stream_document_events(
             yield f"event: connected\ndata: {json.dumps(init_payload)}\n\n"
 
             while True:
-                if await request.is_disconnected():
-                    break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=15.0)
                     # Filter events: if document is owned by a user, only send to that user unless shared

@@ -111,28 +111,29 @@ class EventBroadcaster:
         # 1. Immediately deliver to any local SSE clients attached to this process
         self._deliver_to_local_subscribers(payload)
 
-        # 2. Publish to RabbitMQ fanout exchange if available
+        # 2. Publish to RabbitMQ fanout exchange if available and connected
         if HAS_AIO_PIKA and getattr(settings, "RABBITMQ_ENABLED", True):
             try:
                 from app.services.queue_service import queue_service
 
-                channel = await queue_service.get_channel()
-                if channel and not channel.is_closed:
-                    exchange = await channel.declare_exchange(
-                        self._exchange_name,
-                        aio_pika.ExchangeType.FANOUT,
-                        durable=True,
-                    )
-                    body = json.dumps(payload).encode("utf-8")
-                    message = aio_pika.Message(
-                        body=body,
-                        content_type="application/json",
-                        delivery_mode=aio_pika.DeliveryMode.NOT_PERSISTENT,
-                    )
-                    await exchange.publish(message, routing_key="")
-                    logger.debug(
-                        f"Published status '{status}' for document {document_id} to RabbitMQ exchange '{self._exchange_name}'"
-                    )
+                if queue_service._connection and not queue_service._connection.is_closed:
+                    channel = await queue_service.get_channel()
+                    if channel and not channel.is_closed:
+                        exchange = await channel.declare_exchange(
+                            self._exchange_name,
+                            aio_pika.ExchangeType.FANOUT,
+                            durable=True,
+                        )
+                        body = json.dumps(payload).encode("utf-8")
+                        message = aio_pika.Message(
+                            body=body,
+                            content_type="application/json",
+                            delivery_mode=aio_pika.DeliveryMode.NOT_PERSISTENT,
+                        )
+                        await exchange.publish(message, routing_key="")
+                        logger.debug(
+                            f"Published status '{status}' for document {document_id} to RabbitMQ exchange '{self._exchange_name}'"
+                        )
             except Exception as e:
                 logger.debug(f"Note during RabbitMQ status event publish: {e}")
 

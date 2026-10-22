@@ -74,9 +74,11 @@ class QueueService:
             try:
                 rabbitmq_url = getattr(settings, "RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
                 logger.info(f"Connecting to RabbitMQ broker at {rabbitmq_url.split('@')[-1] if '@' in rabbitmq_url else rabbitmq_url}...")
+                heartbeat = getattr(settings, "RABBITMQ_HEARTBEAT", 120)
                 self._connection = await aio_pika.connect_robust(
                     rabbitmq_url,
-                    timeout=5.0,
+                    timeout=getattr(settings, "RABBITMQ_CONNECT_TIMEOUT", 10.0),
+                    heartbeat=heartbeat,
                 )
                 self._connection_loop = current_loop
                 self._channel = await self._connection.channel()

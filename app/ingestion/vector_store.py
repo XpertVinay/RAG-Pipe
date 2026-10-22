@@ -1,11 +1,12 @@
 """PostgreSQL pgvector persistence and retrieval management with model-aware collections and auto-sync."""
 
+import asyncio
 import json
 import re
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from sqlalchemy import create_engine, text
 from langchain_core.documents import Document as LCDocument
 
@@ -158,6 +159,97 @@ class PostgresVectorStore:
                 logger.error(f"Failed to index batch {current_batch}/{total_batches} in vector store after {batch_attempt} attempts: {last_err}", exc_info=True)
                 self.reset_connection()
                 raise VectorStoreError(f"Failed to index chunks: {str(last_err)}")
+
+        logger.info(f"Successfully indexed all {total} chunks into collection '{self.get_collection_name()}'")
+        return total
+
+    async def add_chunks_async(
+        self,
+        chunks: List[LCDocument],
+        batch_size: Optional[int] = None,
+        max_retries: int = 3,
+        on_batch_complete: Optional[Callable[[int, int], Any]] = None,
+    ) -> int:
+        """Asynchronously index document chunks in batches without blocking the asyncio event loop.
+
+        Executes each batch's embedding & database insertion inside a worker thread via asyncio.to_thread,
+        yielding event loop control between batches so RabbitMQ heartbeats, SSE progress, and DB pings
+        stay uninterrupted.
+        """
+        if not chunks:
+            return 0
+
+        effective_batch_size = batch_size or getattr(settings, "EMBEDDING_BATCH_SIZE", 8)
+        store = self._get_store()
+        total = len(chunks)
+        total_batches = (total + effective_batch_size - 1) // effective_batch_size
+
+        for idx in range(0, total, effective_batch_size):
+            batch = chunks[idx : idx + effective_batch_size]
+            ids = [chunk.metadata.get("chunk_id") for chunk in batch]
+            current_batch = (idx // effective_batch_size) + 1
+
+            batch_attempt = 0
+            batch_success = False
+            last_err = None
+
+            while batch_attempt < max_retries and not batch_success:
+                batch_attempt += 1
+                try:
+                    await asyncio.to_thread(store.add_documents, documents=batch, ids=ids)
+                    batch_success = True
+                    logger.info(f"Indexed batch {current_batch}/{total_batches} ({len(batch)} chunks)")
+                except Exception as e:
+                    last_err = e
+                    err_str = str(e).lower()
+                    is_transient = any(
+                        k in err_str
+                        for k in (
+                            "timed out",
+                            "timeout",
+                            "connecttimeout",
+                            "readtimeout",
+                            "closed the connection",
+                            "operationalerror",
+                            "broken pipe",
+                            "connection refused",
+                            "terminat",
+                            "server closed",
+                            "connection lost",
+                            "disconnected",
+                            "remote disconnected",
+                        )
+                    )
+                    if is_transient and batch_attempt < max_retries:
+                        wait_sec = 2.0 * batch_attempt
+                        logger.warning(
+                            f"Transient indexing error on batch {current_batch}/{total_batches} (attempt {batch_attempt}/{max_retries}): {e}. "
+                            f"Retrying in {wait_sec:.1f}s..."
+                        )
+                        await asyncio.sleep(wait_sec)
+                        self.reset_connection()
+                        store = self._get_store()
+                    else:
+                        break
+
+            if not batch_success:
+                logger.error(
+                    f"Failed to index batch {current_batch}/{total_batches} in vector store after {batch_attempt} attempts: {last_err}",
+                    exc_info=True,
+                )
+                self.reset_connection()
+                raise VectorStoreError(f"Failed to index chunks: {str(last_err)}")
+
+            if on_batch_complete:
+                try:
+                    res = on_batch_complete(current_batch, total_batches)
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception as cb_err:
+                    logger.debug(f"on_batch_complete callback note: {cb_err}")
+
+            # Yield control to allow RabbitMQ heartbeats, web requests, and DB ping
+            await asyncio.sleep(0.01)
 
         logger.info(f"Successfully indexed all {total} chunks into collection '{self.get_collection_name()}'")
         return total

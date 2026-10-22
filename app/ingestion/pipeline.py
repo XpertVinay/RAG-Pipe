@@ -115,7 +115,7 @@ class IngestionPipeline:
                                 f"Reusing {len(source_chunks)} cached chunks & embeddings for {doc.filename} to avoid CPU/RAM overhead."
                             )
                             # Purge any existing chunks for this doc
-                            vector_store.delete_document(document_id=doc.id)
+                            await asyncio.to_thread(vector_store.delete_document, document_id=doc.id)
                             await db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == doc.id))
 
                             for sc in source_chunks:
@@ -137,7 +137,8 @@ class IngestionPipeline:
                                 db.add(db_chunk)
 
                             # Copy vector embeddings in vector database without re-invoking LLM embedding provider
-                            vector_store.copy_document_vectors(
+                            await asyncio.to_thread(
+                                vector_store.copy_document_vectors,
                                 source_doc_id=source_doc.id,
                                 target_doc_id=doc.id,
                                 new_filename=doc.filename,
@@ -173,11 +174,12 @@ class IngestionPipeline:
 
             try:
                 async with asyncio.timeout(timeout_sec):
-                    # 1. Parse document into pages
-                    pages = DocumentParser.parse(file_path=file_path, extension=doc.file_type)
+                    # 1. Parse document into pages off the event loop
+                    pages = await asyncio.to_thread(DocumentParser.parse, file_path=file_path, extension=doc.file_type)
 
-                    # 2. Chunk pages into LangChain documents with provenance
-                    lc_chunks = self.chunker.chunk_document(
+                    # 2. Chunk pages into LangChain documents with provenance off the event loop
+                    lc_chunks = await asyncio.to_thread(
+                        self.chunker.chunk_document,
                         document_id=doc.id,
                         filename=doc.filename,
                         file_type=doc.file_type,
@@ -193,7 +195,7 @@ class IngestionPipeline:
 
                     # 3. Clean up any existing vectors and DB chunks for idempotency
                     try:
-                        vector_store.delete_document(document_id=doc.id)
+                        await asyncio.to_thread(vector_store.delete_document, document_id=doc.id)
                     except Exception as ve:
                         logger.warning(f"Note during vector cleanup for {doc.id}: {ve}")
 
@@ -214,8 +216,26 @@ class IngestionPipeline:
                     doc.updated_at = utc_now()
                     await db.commit()
 
-                    # 5. Persist to vector store using configured batch size optimized for local LLM
-                    vector_store.add_chunks(lc_chunks, batch_size=current_settings.EMBEDDING_BATCH_SIZE)
+                    # Periodic DB heartbeat during heavy batch embedding jobs to prevent stale job recovery
+                    async def on_batch_progress(cur_batch: int, tot_batches: int):
+                        if cur_batch % 5 == 0 or cur_batch == tot_batches:
+                            try:
+                                async with database.AsyncSessionLocal() as hb_db:
+                                    await hb_db.execute(
+                                        update(Document)
+                                        .where(Document.id == doc.id)
+                                        .values(updated_at=utc_now())
+                                    )
+                                    await hb_db.commit()
+                            except Exception as hb_err:
+                                logger.debug(f"Heartbeat DB update notice: {hb_err}")
+
+                    # 5. Persist to vector store asynchronously without blocking the event loop
+                    await vector_store.add_chunks_async(
+                        lc_chunks,
+                        batch_size=current_settings.EMBEDDING_BATCH_SIZE,
+                        on_batch_complete=on_batch_progress,
+                    )
 
                     # 6. Update document status to completed
                     doc.status = "completed"

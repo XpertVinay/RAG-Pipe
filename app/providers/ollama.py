@@ -60,7 +60,7 @@ def get_effective_ollama_url(base_url: Optional[str] = None) -> str:
 
     # Check candidates for resilient local LLM resolution
     candidates: List[str] = [
-        "http://1acer.com:11434",
+        "http://host.docker.internal:11434",
     ]
     if is_docker:
         candidates.extend([

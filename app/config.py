@@ -119,6 +119,7 @@ class Settings(BaseSettings):
     RABBITMQ_MAX_RETRIES: int = 3
     RABBITMQ_RETRY_DELAY_SECONDS: int = 5
     RABBITMQ_EMBEDDED_WORKER: bool = True
+    RABBITMQ_HEARTBEAT: int = 120
 
     # RAG Retrieval & LangGraph Workflow
     RETRIEVAL_TOP_K: int = 4

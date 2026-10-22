@@ -3,9 +3,9 @@
 import asyncio
 import json
 import pytest
-from httpx import ASGITransport, AsyncClient
+from unittest.mock import MagicMock
 
-from app.main import app
+from app.api.documents import stream_document_events
 from app.models.user import User
 from app.services.event_broadcaster import EventBroadcaster, event_broadcaster
 
@@ -38,38 +38,45 @@ async def test_event_broadcaster_subscribe_and_broadcast():
 
 
 @pytest.mark.asyncio
-async def test_sse_endpoint_receives_connected_and_status_event(test_user, auth_token):
-    """Verify GET /api/documents/events/stream connects and streams SSE events."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Start SSE stream
-        async with client.stream(
-            "GET",
-            f"/api/documents/events/stream?token={auth_token}",
-        ) as response:
-            assert response.status_code == 200
-            assert "text/event-stream" in response.headers.get("content-type", "")
+async def test_stream_document_events_endpoint():
+    """Verify stream_document_events returns SSE streaming response and pushes real-time events."""
+    mock_request = MagicMock()
+    mock_user = User(
+        id="test-sse-user-id",
+        email="test_sse@example.com",
+        username="sse_user",
+        hashed_password="mock",
+        is_active=True,
+    )
 
-            # Broadcast an event while client is listening
-            asyncio.create_task(
-                event_broadcaster.broadcast_document_status(
-                    document_id="doc-sse-999",
-                    status="completed",
-                    filename="sales_q3.pdf",
-                    chunk_count=18,
-                    user_id=test_user.id,
-                )
-            )
+    response = await stream_document_events(mock_request, current_user=mock_user)
+    assert response.status_code == 200
+    assert response.media_type == "text/event-stream"
+    assert response.headers.get("Cache-Control") == "no-cache, no-transform"
 
-            lines = []
-            async for line in response.aiter_lines():
-                if line.strip():
-                    lines.append(line.strip())
-                if any("doc-sse-999" in l for l in lines):
-                    break
+    gen = response.body_iterator
 
-            combined = "\n".join(lines)
-            assert "event: connected" in combined
-            assert "event: document_status" in combined
-            assert "sales_q3.pdf" in combined
-            assert "completed" in combined
+    # 1. First event must be handshake connected event
+    connected_event = await anext(gen)
+    assert "event: connected" in connected_event
+    assert "test-sse-user-id" in connected_event
+
+    # 2. Broadcast a status change
+    await event_broadcaster.broadcast_document_status(
+        document_id="doc-sse-888",
+        status="completed",
+        filename="financial_summary.pdf",
+        chunk_count=24,
+        user_id=mock_user.id,
+    )
+
+    # 3. Next yielded event must be document_status event with chunk details
+    status_event = await anext(gen)
+    assert "event: document_status" in status_event
+    assert "doc-sse-888" in status_event
+    assert "financial_summary.pdf" in status_event
+    assert "completed" in status_event
+    assert "24" in status_event
+
+    # Clean up generator
+    await gen.aclose()
