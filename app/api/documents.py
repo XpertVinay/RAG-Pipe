@@ -67,9 +67,12 @@ async def upload_documents(
     )
     user_agent = request.headers.get("user-agent", "")[:500]
 
+    any_duplicate_completed = False
+    any_duplicate_processing = False
+
     for file in files:
         try:
-            doc = await process_document_upload(
+            doc, should_enqueue, reason = await process_document_upload(
                 file=file,
                 current_user=current_user,
                 client_ip=client_ip,
@@ -77,7 +80,12 @@ async def upload_documents(
                 db=db,
                 is_shared=is_shared,
             )
-            await queue_service.enqueue_document_job(doc.id, background_tasks=background_tasks)
+            if should_enqueue:
+                await queue_service.enqueue_document_job(doc.id, background_tasks=background_tasks)
+            if reason == "duplicate_completed":
+                any_duplicate_completed = True
+            elif reason == "duplicate_processing":
+                any_duplicate_processing = True
             uploaded_docs.append(DocumentResponse.model_validate(doc))
         except Exception as e:
             logger.warning(f"Upload failed for file '{file.filename}': {e}", exc_info=True)
@@ -85,7 +93,16 @@ async def upload_documents(
 
     await db.commit()
 
-    message = f"Uploaded {len(uploaded_docs)} file(s) for indexing by @{current_user.username}."
+    if any_duplicate_completed and len(uploaded_docs) == 1:
+        message = f"File '{files[0].filename}' is already uploaded and indexed. Reused existing document (skipped duplicate embedding)."
+    elif any_duplicate_processing and len(uploaded_docs) == 1:
+        message = f"File '{files[0].filename}' is already actively being indexed by the background worker."
+    else:
+        message = f"Uploaded {len(uploaded_docs)} file(s) for indexing by @{current_user.username}."
+        if any_duplicate_completed:
+            message += " (Existing indexed file(s) reused to prevent duplicate vector embedding)"
+        if any_duplicate_processing:
+            message += " (Active background jobs monitored)"
     if failed_files:
         message += f" ({len(failed_files)} file(s) failed validation)"
 
@@ -290,6 +307,22 @@ async def reprocess_document(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Permission denied to reprocess this document.",
             )
+
+    # Prevent enqueuing duplicate job if document is already actively being processed by worker
+    if doc.status == "processing":
+        last_activity = doc.updated_at or doc.created_at
+        now = datetime.now(timezone.utc)
+        if last_activity:
+            if last_activity.tzinfo is None:
+                last_activity = last_activity.replace(tzinfo=timezone.utc)
+            timeout_sec = getattr(settings, "DOCUMENT_PROCESSING_TIMEOUT_SECONDS", 600)
+            elapsed = (now - last_activity).total_seconds()
+            if elapsed < timeout_sec:
+                return {
+                    "message": f"Document '{doc.filename}' is already actively being processed by the background worker ({int(elapsed)}s elapsed).",
+                    "document_id": document_id,
+                    "already_processing": True,
+                }
 
     doc.status = "queued"
     doc.error_message = None

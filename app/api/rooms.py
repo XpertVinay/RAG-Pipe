@@ -312,9 +312,12 @@ async def upload_files_to_room(
     uploaded_docs: List[DocumentResponse] = []
     failed_files: List[dict] = []
 
+    any_duplicate_completed = False
+    any_duplicate_processing = False
+
     for file in files:
         try:
-            doc = await process_room_file_upload(
+            doc, should_enqueue, reason = await process_room_file_upload(
                 file=file,
                 room=room,
                 current_user=current_user,
@@ -322,7 +325,12 @@ async def upload_files_to_room(
                 user_agent=user_agent,
                 db=db,
             )
-            await queue_service.enqueue_document_job(doc.id, background_tasks=background_tasks)
+            if should_enqueue:
+                await queue_service.enqueue_document_job(doc.id, background_tasks=background_tasks)
+            if reason in ("duplicate_completed", "attached_existing_completed"):
+                any_duplicate_completed = True
+            elif reason in ("duplicate_processing", "attached_existing_processing"):
+                any_duplicate_processing = True
             uploaded_docs.append(DocumentResponse.model_validate(doc))
         except Exception as e:
             logger.warning(f"Upload to room {room_id} failed for file '{file.filename}': {e}")
@@ -330,8 +338,21 @@ async def upload_files_to_room(
 
     await db.commit()
 
+    if any_duplicate_completed and len(uploaded_docs) == 1:
+        message = f"File '{files[0].filename}' is already indexed. Attached to room '{room.name}' (skipped duplicate embedding)."
+    elif any_duplicate_processing and len(uploaded_docs) == 1:
+        message = f"File '{files[0].filename}' is already actively being processed by the worker."
+    else:
+        message = f"Uploaded {len(uploaded_docs)} file(s) to room '{room.name}'."
+        if any_duplicate_completed:
+            message += " (Reused existing indexed vectors to prevent duplicate processing)"
+        if any_duplicate_processing:
+            message += " (Active background jobs monitored)"
+    if failed_files:
+        message += f" ({len(failed_files)} file(s) failed)"
+
     return {
-        "message": f"Uploaded {len(uploaded_docs)} file(s) to room '{room.name}'.",
+        "message": message,
         "room_id": room_id,
         "uploaded": uploaded_docs,
         "failed": failed_files,

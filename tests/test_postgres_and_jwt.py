@@ -64,8 +64,22 @@ async def test_postgres_vector_store_crud():
     settings = get_settings()
     orig_url = settings.DATABASE_URL
     settings.DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/rag_agent"
+
+    from langchain_core.embeddings import Embeddings
+    from app.providers.factory import ModelFactory
+
+    class Dim768Mock(Embeddings):
+        def embed_documents(self, texts):
+            return [[(len(t) % 100) / 100.0] * 768 for t in texts]
+        def embed_query(self, text):
+            return [(len(text) % 100) / 100.0] * 768
+
+    orig_get_emb = ModelFactory.get_embeddings
+    ModelFactory.get_embeddings = lambda: Dim768Mock()
+
     try:
         pv = PostgresVectorStore()
+        pv.reset_connection()
         assert pv.is_postgres is True
 
         test_docs = [
@@ -105,7 +119,10 @@ async def test_postgres_vector_store_crud():
         # Test deletion
         deleted = pv.delete_document("test-doc-pg-1")
         assert deleted is True
+        deleted2 = pv.delete_document("test-doc-pg-2")
+        assert deleted2 is True
     finally:
+        ModelFactory.get_embeddings = orig_get_emb
         settings.DATABASE_URL = orig_url
 
 

@@ -13,7 +13,7 @@ from app import database
 from app.ingestion.chunker import DocumentChunker
 from app.ingestion.parsers import DocumentParser
 from app.ingestion.vector_store import vector_store
-from app.models.document import Document, DocumentChunk
+from app.models.document import Document, DocumentChunk, utc_now
 from app.models.room import RoomDocument
 from app.models.memory import MemoryItem
 
@@ -25,7 +25,7 @@ class IngestionPipeline:
         self.chunker = DocumentChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     async def process_document(self, document_id: str) -> None:
-        """Process an uploaded document in the background."""
+        """Process an uploaded document in the background with duplicate vector awareness."""
         logger.info(f"Starting ingestion for document_id={document_id}")
 
         async with database.AsyncSessionLocal() as db:
@@ -35,9 +35,15 @@ class IngestionPipeline:
                 logger.error(f"Document {document_id} not found in database for ingestion.")
                 return
 
-            # Mark document as processing
+            # Check if document is already completed (idempotency guard)
+            if doc.status == "completed" and doc.chunk_count > 0:
+                logger.info(f"Document {document_id} ({doc.filename}) is already completed with {doc.chunk_count} chunks. Skipping duplicate embedding.")
+                return
+
+            # Mark document as processing and update heartbeat timestamp
             doc.status = "processing"
             doc.error_message = None
+            doc.updated_at = utc_now()
             await db.commit()
 
             file_path = Path(doc.storage_path)
@@ -50,6 +56,85 @@ class IngestionPipeline:
             from app.config import get_settings
             current_settings = get_settings()
             timeout_sec = getattr(current_settings, "DOCUMENT_PROCESSING_TIMEOUT_SECONDS", 600)
+
+            # Deduplication Optimization: Check if an identical file was already indexed
+            if doc.file_hash:
+                try:
+                    source_res = await db.execute(
+                        select(Document)
+                        .where(
+                            Document.file_hash == doc.file_hash,
+                            Document.file_size == doc.file_size,
+                            Document.file_type == doc.file_type,
+                            Document.status == "completed",
+                            Document.chunk_count > 0,
+                            Document.id != doc.id,
+                        )
+                        .order_by(Document.created_at.desc())
+                    )
+                    source_doc = source_res.scalars().first()
+
+                    if source_doc:
+                        source_chunks_res = await db.execute(
+                            select(DocumentChunk)
+                            .where(DocumentChunk.document_id == source_doc.id)
+                            .order_by(DocumentChunk.chunk_index)
+                        )
+                        source_chunks = source_chunks_res.scalars().all()
+
+                        if source_chunks:
+                            logger.info(
+                                f"Identical content hash detected (from source doc {source_doc.id}). "
+                                f"Reusing {len(source_chunks)} cached chunks & embeddings for {doc.filename} to avoid CPU/RAM overhead."
+                            )
+                            # Purge any existing chunks for this doc
+                            vector_store.delete_document(document_id=doc.id)
+                            await db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == doc.id))
+
+                            for sc in source_chunks:
+                                meta = dict(sc.chunk_metadata or {})
+                                meta["document_id"] = doc.id
+                                meta["filename"] = doc.filename
+                                meta["user_id"] = doc.user_id
+                                meta["uploader_username"] = doc.uploader_username
+                                new_chunk_id = f"{doc.id}_chunk_{sc.chunk_index}"
+                                meta["chunk_id"] = new_chunk_id
+
+                                db_chunk = DocumentChunk(
+                                    id=new_chunk_id,
+                                    document_id=doc.id,
+                                    chunk_index=sc.chunk_index,
+                                    content=sc.content,
+                                    chunk_metadata=meta,
+                                )
+                                db.add(db_chunk)
+
+                            # Copy vector embeddings in vector database without re-invoking LLM embedding provider
+                            vector_store.copy_document_vectors(
+                                source_doc_id=source_doc.id,
+                                target_doc_id=doc.id,
+                                new_filename=doc.filename,
+                            )
+
+                            doc.status = "completed"
+                            doc.chunk_count = len(source_chunks)
+                            doc.error_message = None
+                            doc.updated_at = utc_now()
+                            await db.commit()
+                            logger.info(
+                                f"Successfully completed ingestion for {doc.filename} via cached vector reuse ({len(source_chunks)} chunks)"
+                            )
+
+                            try:
+                                from app.memory.revaluation import revaluation_engine
+                                await revaluation_engine.revaluate_for_document(doc.id, db)
+                            except Exception as reval_err:
+                                logger.warning(f"Post-ingestion memory revaluation note: {reval_err}")
+                            return
+                except Exception as dedupe_err:
+                    logger.warning(
+                        f"Cached vector reuse skipped due to error: {dedupe_err}. Proceeding with standard embedding pipeline."
+                    )
 
             try:
                 async with asyncio.timeout(timeout_sec):
@@ -90,6 +175,10 @@ class IngestionPipeline:
                         )
                         db.add(db_chunk)
 
+                    # Update heartbeat before launching embedding batches
+                    doc.updated_at = utc_now()
+                    await db.commit()
+
                     # 5. Persist to vector store using configured batch size optimized for local LLM
                     vector_store.add_chunks(lc_chunks, batch_size=current_settings.EMBEDDING_BATCH_SIZE)
 
@@ -97,6 +186,7 @@ class IngestionPipeline:
                     doc.status = "completed"
                     doc.chunk_count = len(lc_chunks)
                     doc.error_message = None
+                    doc.updated_at = utc_now()
                     await db.commit()
                     logger.info(f"Successfully completed ingestion for {doc.filename} ({len(lc_chunks)} chunks)")
 

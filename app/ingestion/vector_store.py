@@ -2,6 +2,8 @@
 
 import json
 import re
+import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import create_engine, text
@@ -100,46 +102,65 @@ class PostgresVectorStore:
             return 0
 
         effective_batch_size = batch_size or getattr(settings, "EMBEDDING_BATCH_SIZE", 8)
-        attempt = 0
-        while attempt < max_retries:
-            attempt += 1
-            try:
-                store = self._get_store()
-                total = len(chunks)
-                total_batches = (total + effective_batch_size - 1) // effective_batch_size
-                for idx in range(0, total, effective_batch_size):
-                    batch = chunks[idx : idx + effective_batch_size]
-                    ids = [chunk.metadata.get("chunk_id") for chunk in batch]
-                    store.add_documents(documents=batch, ids=ids)
-                    current_batch = (idx // effective_batch_size) + 1
-                    logger.info(f"Indexed batch {current_batch}/{total_batches} ({len(batch)} chunks)")
-                logger.info(f"Successfully indexed all {total} chunks into collection '{self.get_collection_name()}'")
-                return total
-            except Exception as e:
-                err_str = str(e).lower()
-                is_conn_error = any(
-                    k in err_str
-                    for k in (
-                        "closed the connection",
-                        "operationalerror",
-                        "broken pipe",
-                        "connection refused",
-                        "terminat",
-                        "server closed",
-                        "connection lost",
-                    )
-                )
-                if is_conn_error and attempt < max_retries:
-                    logger.warning(
-                        f"Vector store database connection dropped during indexing (attempt {attempt}/{max_retries}): {e}. "
-                        "Re-initializing connection pool and retrying..."
-                    )
-                    self.reset_connection()
-                    continue
+        store = self._get_store()
+        total = len(chunks)
+        total_batches = (total + effective_batch_size - 1) // effective_batch_size
 
-                logger.error(f"Failed to index chunks in vector store: {e}", exc_info=True)
+        for idx in range(0, total, effective_batch_size):
+            batch = chunks[idx : idx + effective_batch_size]
+            ids = [chunk.metadata.get("chunk_id") for chunk in batch]
+            current_batch = (idx // effective_batch_size) + 1
+
+            batch_attempt = 0
+            batch_success = False
+            last_err = None
+
+            while batch_attempt < max_retries and not batch_success:
+                batch_attempt += 1
+                try:
+                    store.add_documents(documents=batch, ids=ids)
+                    batch_success = True
+                    logger.info(f"Indexed batch {current_batch}/{total_batches} ({len(batch)} chunks)")
+                except Exception as e:
+                    last_err = e
+                    err_str = str(e).lower()
+                    is_transient = any(
+                        k in err_str
+                        for k in (
+                            "timed out",
+                            "timeout",
+                            "connecttimeout",
+                            "readtimeout",
+                            "closed the connection",
+                            "operationalerror",
+                            "broken pipe",
+                            "connection refused",
+                            "terminat",
+                            "server closed",
+                            "connection lost",
+                            "disconnected",
+                            "remote disconnected",
+                        )
+                    )
+                    if is_transient and batch_attempt < max_retries:
+                        wait_sec = 2.0 * batch_attempt
+                        logger.warning(
+                            f"Transient indexing error on batch {current_batch}/{total_batches} (attempt {batch_attempt}/{max_retries}): {e}. "
+                            f"Retrying in {wait_sec:.1f}s..."
+                        )
+                        time.sleep(wait_sec)
+                        self.reset_connection()
+                        store = self._get_store()
+                    else:
+                        break
+
+            if not batch_success:
+                logger.error(f"Failed to index batch {current_batch}/{total_batches} in vector store after {batch_attempt} attempts: {last_err}", exc_info=True)
                 self.reset_connection()
-                raise VectorStoreError(f"Failed to index chunks: {str(e)}")
+                raise VectorStoreError(f"Failed to index chunks: {str(last_err)}")
+
+        logger.info(f"Successfully indexed all {total} chunks into collection '{self.get_collection_name()}'")
+        return total
 
     def delete_document(self, document_id: str) -> bool:
         """Delete all vectors associated with a specific document ID."""
@@ -171,6 +192,105 @@ class PostgresVectorStore:
         except Exception as e:
             logger.error(f"Failed to delete document vectors for {document_id}: {e}")
             raise VectorStoreError(f"Failed to delete document from vector store: {str(e)}")
+
+    def copy_document_vectors(
+        self,
+        source_doc_id: str,
+        target_doc_id: str,
+        new_filename: Optional[str] = None,
+    ) -> int:
+        """Duplicate existing vector embeddings from source document to target document without re-embedding."""
+        try:
+            if self.is_postgres:
+                engine = create_engine(settings.vector_database_url, pool_pre_ping=True)
+                try:
+                    with engine.connect() as conn:
+                        rows = conn.execute(
+                            text(
+                                "SELECT collection_id, embedding, document, cmetadata FROM langchain_pg_embedding WHERE cmetadata->>'document_id' = :source_id"
+                            ),
+                            {"source_id": source_doc_id},
+                        ).fetchall()
+                        if not rows:
+                            return 0
+
+                        for row in rows:
+                            meta = row[3]
+                            if isinstance(meta, str):
+                                meta = json.loads(meta)
+                            elif not isinstance(meta, dict):
+                                meta = dict(meta or {})
+                            else:
+                                meta = dict(meta)
+
+                            meta["document_id"] = target_doc_id
+                            if new_filename:
+                                meta["filename"] = new_filename
+                            chunk_idx = meta.get("chunk_index", 0)
+                            meta["chunk_id"] = f"{target_doc_id}_chunk_{chunk_idx}"
+
+                            new_id = str(uuid.uuid4())
+                            conn.execute(
+                                text("""
+                                    INSERT INTO langchain_pg_embedding (id, collection_id, embedding, document, cmetadata)
+                                    VALUES (:id, :collection_id, :embedding, :document, :cmetadata)
+                                """),
+                                {
+                                    "id": new_id,
+                                    "collection_id": row[0],
+                                    "embedding": row[1],
+                                    "document": row[2],
+                                    "cmetadata": json.dumps(meta),
+                                },
+                            )
+                        conn.commit()
+                        logger.info(
+                            f"Fast-copied {len(rows)} vectors in PostgreSQL from {source_doc_id} to {target_doc_id} (skipped LLM embedding)"
+                        )
+                        return len(rows)
+                finally:
+                    engine.dispose()
+            else:
+                store = self._get_store()
+                collection = getattr(store, "_collection", None)
+                if collection:
+                    existing = collection.get(
+                        where={"document_id": source_doc_id},
+                        include=["embeddings", "documents", "metadatas"],
+                    )
+                    ids = existing.get("ids", [])
+                    embeddings = existing.get("embeddings", [])
+                    documents = existing.get("documents", [])
+                    metadatas = existing.get("metadatas", [])
+
+                    if ids and embeddings and documents and metadatas:
+                        new_ids = []
+                        new_metadatas = []
+                        for i, meta in enumerate(metadatas):
+                            m = dict(meta)
+                            m["document_id"] = target_doc_id
+                            if new_filename:
+                                m["filename"] = new_filename
+                            chunk_idx = m.get("chunk_index", i)
+                            new_chunk_id = f"{target_doc_id}_chunk_{chunk_idx}"
+                            m["chunk_id"] = new_chunk_id
+                            new_ids.append(new_chunk_id)
+                            new_metadatas.append(m)
+
+                        collection.add(
+                            ids=new_ids,
+                            embeddings=embeddings,
+                            documents=documents,
+                            metadatas=new_metadatas,
+                        )
+                        logger.info(
+                            f"Fast-copied {len(new_ids)} vectors in Chroma from {source_doc_id} to {target_doc_id} (skipped LLM embedding)"
+                        )
+                        return len(new_ids)
+                return 0
+        except Exception as e:
+            logger.warning(f"Note during copy_document_vectors from {source_doc_id} to {target_doc_id}: {e}")
+            return 0
 
     def sync_from_database(self, document_ids: Optional[List[str]] = None, limit: Optional[int] = None) -> int:
         """Synchronize document chunks from relational database into the active vector collection."""

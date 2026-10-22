@@ -34,7 +34,11 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Application lifespan: initialize local directories, SQLite DB, mandate scheduler, and tracing."""
     logger.info("Initializing Production RAG Agent...")
-    logger.info(f"fetch_external_data:{await fetch_external_data()}")
+    try:
+        data = await fetch_external_data()
+        logger.info(f"fetch_external_data: {data}")
+    except Exception as e:
+        logger.warning(f"fetch_external_data probe warning during startup: {e}")
     if settings.APP_ENV.lower() == "production" and "dev-secret-key" in settings.SECRET_KEY:
         logger.critical(
             "SECURITY WARNING: Running in production with default insecure SECRET_KEY! "
@@ -312,7 +316,7 @@ async def fetch_external_data():
     import httpx
     from fastapi import HTTPException
 
-    EXTERNAL_API_URL = "http://72.62.226.107:11434/api/tags"
+    EXTERNAL_API_URL = "http://host.docker.internal:11434/api/tags"
     # Initialize the async HTTP client
     async with httpx.AsyncClient() as client:
         try:

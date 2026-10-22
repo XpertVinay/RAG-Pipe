@@ -120,28 +120,40 @@ async def run_document_consumer() -> None:
     logger.info("[RabbitMQ Worker] Document consumer loop stopped.")
 
 
-async def recover_orphaned_processing_jobs() -> int:
-    """Reset any documents left stuck in 'processing' status across server restarts."""
+async def recover_orphaned_processing_jobs(timeout_seconds: Optional[int] = None) -> int:
+    """Reset any documents left stuck in 'processing' status beyond the configured timeout.
+    
+    Active jobs currently being handled by dedicated worker containers within the valid timeout
+    window are preserved.
+    """
     from app import database
     from app.models.document import Document
     from sqlalchemy import select
 
+    timeout_sec = timeout_seconds or getattr(settings, "DOCUMENT_PROCESSING_TIMEOUT_SECONDS", 600)
+    now = datetime.now(timezone.utc)
     recovered = 0
     try:
         async with database.AsyncSessionLocal() as db:
             result = await db.execute(select(Document).where(Document.status == "processing"))
             stuck_docs = result.scalars().all()
             for doc in stuck_docs:
-                doc.status = "failed"
-                doc.error_message = (
-                    "Ingestion was interrupted due to server reboot or unexpected worker crash. "
-                    "Please click reprocess to retry."
-                )
-                recovered += 1
+                last_activity = doc.updated_at or doc.created_at
+                if last_activity:
+                    if last_activity.tzinfo is None:
+                        last_activity = last_activity.replace(tzinfo=timezone.utc)
+                    elapsed = (now - last_activity).total_seconds()
+                    if elapsed > timeout_sec:
+                        doc.status = "failed"
+                        doc.error_message = (
+                            f"Ingestion timed out after {int(elapsed // 60)}m (exceeded {timeout_sec // 60}m limit) "
+                            "or worker was interrupted. Please click reprocess to retry."
+                        )
+                        recovered += 1
             if recovered > 0:
                 await db.commit()
                 logger.warning(
-                    f"Recovered {recovered} orphaned document(s) stuck in 'processing'. Marked as failed for safe retry."
+                    f"Recovered {recovered} orphaned document(s) stuck in 'processing' beyond {timeout_sec}s. Marked as failed for safe retry."
                 )
     except Exception as e:
         logger.warning(f"Error during orphaned job recovery: {e}")

@@ -114,19 +114,33 @@
       }
     }
 
+    // Check if any selected files are currently actively processing in background
+    if (RAG.state.activeDocuments && RAG.state.activeDocuments.length > 0) {
+      const activePending = RAG.state.activeDocuments.filter((d) => d.status === 'processing' || d.status === 'queued');
+      for (const f of filesToUpload) {
+        const match = activePending.find((d) => d.filename === f.name || (d.file_size === f.size && d.filename.startsWith(f.name.split('.')[0])));
+        if (match) {
+          RAG.utils.showToast(`File "${f.name}" is already actively indexing in the background. Monitoring progress.`, 'info');
+        }
+      }
+    }
+
     const fileNames = Array.from(filesToUpload).map((f) => f.name).join(', ');
     setDropzoneUploading(true, filesToUpload.length, fileNames);
     showUploadLoaderInList(filesToUpload);
     RAG.utils.showToast(`Uploading ${filesToUpload.length} file(s)...`, 'info');
 
     try {
+      let res;
       if (RAG.state.currentRoomId) {
-        const res = await API.uploadFilesToRoom(RAG.state.currentRoomId, filesToUpload);
-        RAG.utils.showToast(res.message, 'success');
+        res = await API.uploadFilesToRoom(RAG.state.currentRoomId, filesToUpload);
       } else {
-        const res = await API.uploadFiles(filesToUpload);
-        RAG.utils.showToast(res.message, 'success');
+        res = await API.uploadFiles(filesToUpload);
       }
+
+      const toastType = res.message && (res.message.includes('skipped') || res.message.includes('already')) ? 'info' : 'success';
+      RAG.utils.showToast(res.message, toastType);
+
       await RAG.documents.loadDocuments();
       if (RAG.state.currentRoomId && RAG.rooms?.selectRoom) RAG.rooms.selectRoom(RAG.state.currentRoomId, false);
       if (RAG.chat?.checkDocumentQueueReadiness) {
