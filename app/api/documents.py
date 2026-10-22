@@ -69,6 +69,7 @@ async def upload_documents(
 
     any_duplicate_completed = False
     any_duplicate_processing = False
+    docs_to_enqueue: List[str] = []
 
     for file in files:
         try:
@@ -81,7 +82,7 @@ async def upload_documents(
                 is_shared=is_shared,
             )
             if should_enqueue:
-                await queue_service.enqueue_document_job(doc.id, background_tasks=background_tasks)
+                docs_to_enqueue.append(doc.id)
             if reason == "duplicate_completed":
                 any_duplicate_completed = True
             elif reason == "duplicate_processing":
@@ -91,7 +92,12 @@ async def upload_documents(
             logger.warning(f"Upload failed for file '{file.filename}': {e}", exc_info=True)
             failed_files.append({"filename": file.filename or "unknown", "error": str(e)})
 
+    # CRITICAL: Commit database transaction BEFORE publishing to RabbitMQ
+    # so background worker immediately finds the committed document record in PostgreSQL!
     await db.commit()
+
+    for doc_id in docs_to_enqueue:
+        await queue_service.enqueue_document_job(doc_id, background_tasks=background_tasks)
 
     if any_duplicate_completed and len(uploaded_docs) == 1:
         message = f"File '{files[0].filename}' is already uploaded and indexed. Reused existing document (skipped duplicate embedding)."
@@ -394,12 +400,28 @@ async def check_documents_readiness(
     has_stale = False
 
     for d in docs:
-        if d.status in ("queued", "processing"):
-            last_activity = d.updated_at or d.created_at
-            if last_activity:
-                if last_activity.tzinfo is None:
-                    last_activity = last_activity.replace(tzinfo=timezone.utc)
-                elapsed = (now - last_activity).total_seconds()
+        last_activity = d.updated_at or d.created_at
+        if last_activity:
+            if last_activity.tzinfo is None:
+                last_activity = last_activity.replace(tzinfo=timezone.utc)
+            elapsed = (now - last_activity).total_seconds()
+
+            if d.status == "queued":
+                if elapsed > timeout_sec:
+                    d.status = "failed"
+                    d.error_message = (
+                        f"Document queuing timed out after {int(elapsed // 60)}m. Please click reprocess to retry."
+                    )
+                    has_stale = True
+                elif elapsed > 15:
+                    # Self-healing: if stuck in queued without a worker picking it up, re-enqueue
+                    d.updated_at = now
+                    has_stale = True
+                    logger.info(
+                        f"Auto-healing queued document {d.id} ({d.filename}): idle for {int(elapsed)}s. Re-dispatching to worker queue."
+                    )
+                    await queue_service.enqueue_document_job(d.id)
+            elif d.status == "processing":
                 if elapsed > timeout_sec:
                     d.status = "failed"
                     d.error_message = (

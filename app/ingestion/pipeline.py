@@ -29,10 +29,19 @@ class IngestionPipeline:
         logger.info(f"Starting ingestion for document_id={document_id}")
 
         async with database.AsyncSessionLocal() as db:
-            result = await db.execute(select(Document).where(Document.id == document_id))
-            doc = result.scalar_one_or_none()
+            doc = None
+            for attempt in range(6):
+                result = await db.execute(select(Document).where(Document.id == document_id))
+                doc = result.scalar_one_or_none()
+                if doc:
+                    break
+                logger.info(
+                    f"Document {document_id} not yet visible in DB (attempt {attempt + 1}/6). Retrying in 0.5s..."
+                )
+                await asyncio.sleep(0.5)
+
             if not doc:
-                logger.error(f"Document {document_id} not found in database for ingestion.")
+                logger.error(f"Document {document_id} not found in database for ingestion after retries.")
                 return
 
             # Check if document is already completed (idempotency guard)

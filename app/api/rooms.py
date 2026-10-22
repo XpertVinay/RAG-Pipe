@@ -314,6 +314,7 @@ async def upload_files_to_room(
 
     any_duplicate_completed = False
     any_duplicate_processing = False
+    docs_to_enqueue: List[str] = []
 
     for file in files:
         try:
@@ -326,7 +327,7 @@ async def upload_files_to_room(
                 db=db,
             )
             if should_enqueue:
-                await queue_service.enqueue_document_job(doc.id, background_tasks=background_tasks)
+                docs_to_enqueue.append(doc.id)
             if reason in ("duplicate_completed", "attached_existing_completed"):
                 any_duplicate_completed = True
             elif reason in ("duplicate_processing", "attached_existing_processing"):
@@ -336,7 +337,11 @@ async def upload_files_to_room(
             logger.warning(f"Upload to room {room_id} failed for file '{file.filename}': {e}")
             failed_files.append({"filename": file.filename or "unknown", "error": str(e)})
 
+    # CRITICAL: Commit to database FIRST before publishing to RabbitMQ!
     await db.commit()
+
+    for doc_id in docs_to_enqueue:
+        await queue_service.enqueue_document_job(doc_id, background_tasks=background_tasks)
 
     if any_duplicate_completed and len(uploaded_docs) == 1:
         message = f"File '{files[0].filename}' is already indexed. Attached to room '{room.name}' (skipped duplicate embedding)."

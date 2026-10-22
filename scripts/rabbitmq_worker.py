@@ -13,7 +13,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.config import get_settings
 from app.core.logging import logger
 from app.database import init_db
-from app.services.document_worker import run_document_consumer, stop_embedded_worker
+from app.services.document_worker import (
+    recover_orphaned_processing_jobs,
+    run_document_consumer,
+    stop_embedded_worker,
+)
 
 settings = get_settings()
 
@@ -22,6 +26,7 @@ async def main():
     logger.info("Initializing Database for Standalone Document Worker...")
     settings.ensure_directories()
     await init_db()
+    await recover_orphaned_processing_jobs()
 
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
