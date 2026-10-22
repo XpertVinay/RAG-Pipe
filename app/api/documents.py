@@ -1,11 +1,13 @@
 """API endpoints for document upload, listing, details, deletion, and reprocessing."""
 
+import asyncio
+import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +15,7 @@ from app.core.auth import get_current_user, get_optional_user
 from app.core.logging import logger
 from app.core.rate_limit import RateLimiter
 from app.database import get_db
+from app.services.event_broadcaster import event_broadcaster
 from app.ingestion.pipeline import ingestion_pipeline
 from app.models.document import AuditLog, Document, DocumentChunk
 from app.models.user import User
@@ -98,6 +101,11 @@ async def upload_documents(
 
     for doc_id in docs_to_enqueue:
         await queue_service.enqueue_document_job(doc_id, background_tasks=background_tasks)
+        await event_broadcaster.broadcast_document_status(
+            document_id=doc_id,
+            status="queued",
+            user_id=current_user.id,
+        )
 
     if any_duplicate_completed and len(uploaded_docs) == 1:
         message = f"File '{files[0].filename}' is already uploaded and indexed. Reused existing document (skipped duplicate embedding)."
@@ -350,11 +358,70 @@ async def reprocess_document(
 
     await db.commit()
     queue_res = await queue_service.enqueue_document_job(document_id, background_tasks=background_tasks)
+    await event_broadcaster.broadcast_document_status(
+        document_id=doc.id,
+        status="queued",
+        filename=doc.filename,
+        user_id=doc.user_id,
+    )
     return {
         "message": f"Document re-ingestion queued via {queue_res.get('mechanism', 'queue')}.",
         "document_id": document_id,
         "queue_details": queue_res,
     }
+
+
+@router.get("/events/stream")
+async def stream_document_events(
+    request: Request,
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """Server-Sent Events (SSE) endpoint to push real-time document processing and chunking updates.
+
+    Eliminates repetitive interval polling from client browsers.
+    Supports JWT via Authorization Bearer header, URL query param (?token=...), or cookie.
+    """
+    queue = await event_broadcaster.subscribe()
+
+    async def event_generator():
+        try:
+            # Initial handshake event confirming SSE stream connection
+            init_payload = {
+                "status": "connected",
+                "user_id": current_user.id if current_user else None,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            yield f"event: connected\ndata: {json.dumps(init_payload)}\n\n"
+
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    # Filter events: if document is owned by a user, only send to that user unless shared
+                    event_user_id = event.get("user_id")
+                    if current_user and event_user_id and event_user_id != current_user.id:
+                        if not event.get("is_shared", False):
+                            continue
+
+                    yield f"event: document_status\ndata: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    # Keep-alive ping every 15s to maintain HTTP stream across proxies/gateways
+                    yield ": ping\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await event_broadcaster.unsubscribe(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/queue/status")

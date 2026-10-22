@@ -72,12 +72,16 @@ async def lifespan(app: FastAPI):
         start_embedded_worker,
         stop_embedded_worker,
     )
+    from app.services.event_broadcaster import event_broadcaster
+
     await recover_orphaned_processing_jobs()
     start_embedded_worker()
+    event_broadcaster.start_listener()
 
     yield
 
     logger.info("Shutting down RAG Agent...")
+    await event_broadcaster.stop_listener()
     await stop_mandate_sync_scheduler()
     await stop_embedded_worker()
 

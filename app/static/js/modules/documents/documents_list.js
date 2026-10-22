@@ -1,5 +1,7 @@
 /**
- * Document Library Loader, Card Rendering & Status Polling
+ * Document Library Loader, Card Rendering & Real-Time SSE Event Handling
+ *
+ * Eliminates repetitive polling intervals by listening to Server-Sent Events (SSE).
  */
 (function (global) {
   'use strict';
@@ -7,6 +9,8 @@
   global.RAG = global.RAG || {};
   const RAG = global.RAG;
   RAG.documents = RAG.documents || {};
+
+  let activeEventSource = null;
 
   function showLibraryLoader() {
     const docsCount = document.getElementById('docs-count');
@@ -36,20 +40,96 @@
     }
   }
 
+  function updateDocumentCardInDom(data) {
+    if (!data || !data.document_id) return;
+    const card = document.getElementById(`doc-${data.document_id}`);
+    if (!card) return;
+
+    // 1. Update status badge
+    const badge = card.querySelector('.status-badge');
+    if (badge) {
+      badge.className = `status-badge ${data.status}`;
+      const isProcessing = data.status === 'processing' || data.status === 'queued';
+      badge.innerHTML = `${isProcessing ? '<span class="status-pulse"></span>' : ''} ${data.status}`;
+    }
+
+    // 2. Update chunk count & metadata text
+    const metaSpan = card.querySelector('.doc-meta > span:first-child');
+    if (metaSpan && (data.chunk_count !== undefined || data.file_size !== undefined)) {
+      const doc = RAG.state.activeDocuments?.find((d) => d.id === data.document_id);
+      const sizeKb = Math.round((data.file_size || (doc ? doc.file_size : 0)) / 1024);
+      const chunks = data.chunk_count !== undefined ? data.chunk_count : (doc ? doc.chunk_count : 0);
+      const currentUser = API.getCurrentUser ? API.getCurrentUser() : null;
+      const isMine = currentUser && doc && doc.user_id === currentUser.id;
+      const ownerLabel = isMine ? '👤 Mine' : (doc?.uploader_username ? `👤 @${RAG.utils.escapeHtml(doc.uploader_username)}` : '🌐 Shared');
+      metaSpan.textContent = `${sizeKb} KB • ${chunks} chunks • ${ownerLabel}`;
+    }
+
+    // 3. Update or remove error message
+    let errorDiv = card.querySelector('.doc-error-text');
+    if (data.status === 'failed' && data.error_message) {
+      if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.className = 'doc-error-text';
+        errorDiv.style.cssText = 'margin-top: 6px; font-size: 0.7rem; color: var(--status-failed); line-height: 1.3;';
+        card.appendChild(errorDiv);
+      }
+      errorDiv.textContent = data.error_message;
+    } else if (data.status === 'completed' && errorDiv) {
+      errorDiv.remove();
+    }
+  }
+
+  function handleDocumentStatusEvent(data) {
+    if (!data || !data.document_id) return;
+    console.debug('[SSE] Received document_status event:', data);
+
+    // Update in-memory state
+    let matchedDoc = null;
+    if (RAG.state.activeDocuments) {
+      matchedDoc = RAG.state.activeDocuments.find((d) => d.id === data.document_id);
+      if (matchedDoc) {
+        matchedDoc.status = data.status;
+        if (data.chunk_count !== undefined) matchedDoc.chunk_count = data.chunk_count;
+        if (data.error_message !== undefined) matchedDoc.error_message = data.error_message;
+      }
+    }
+
+    // If card exists in DOM, update in place without full page re-render
+    const card = document.getElementById(`doc-${data.document_id}`);
+    if (card) {
+      updateDocumentCardInDom(data);
+    } else if (data.status === 'completed' || data.status === 'processing') {
+      // New file uploaded from another tab or container: reload documents once
+      loadDocuments(false);
+    }
+
+    // Notify chat view to update readiness banner without polling
+    if (RAG.chat?.onDocumentStatusEvent) {
+      RAG.chat.onDocumentStatusEvent(data);
+    }
+  }
+
+  function initDocumentEventsStream() {
+    if (activeEventSource) {
+      activeEventSource.close();
+      activeEventSource = null;
+    }
+    if (typeof API.connectDocumentEventsStream === 'function') {
+      activeEventSource = API.connectDocumentEventsStream(handleDocumentStatusEvent);
+    }
+  }
+
   async function loadDocuments(forceLoader = false) {
     const docsList = document.getElementById('docs-list');
     const docsCount = document.getElementById('docs-count');
     const tabDocsBadge = document.getElementById('tab-docs-badge');
-    const currentUser = API.getCurrentUser();
+    const currentUser = API.getCurrentUser ? API.getCurrentUser() : null;
 
     if (!currentUser) {
       RAG.state.activeDocuments = [];
       if (docsCount) docsCount.textContent = '0 files';
       if (tabDocsBadge) tabDocsBadge.textContent = '0';
-      if (RAG.state.pollInterval) {
-        clearInterval(RAG.state.pollInterval);
-        RAG.state.pollInterval = null;
-      }
       if (docsList) {
         docsList.innerHTML = `
           <div style="text-align: center; padding: 32px 14px; color: var(--text-muted); font-size: 0.82rem;">
@@ -65,14 +145,21 @@
       return;
     }
 
-    if (forceLoader || (docsList && !docsList.querySelector('.doc-card') && !docsList.querySelector('.doc-card-uploading'))) {
+    // Ensure real-time SSE event stream is active
+    if (!activeEventSource) {
+      initDocumentEventsStream();
+    }
+
+    if (forceLoader || !docsList || !docsList.querySelector('.doc-card')) {
       showLibraryLoader();
     }
+
     try {
       const data = await API.getDocuments();
-      RAG.state.activeDocuments = data.items || [];
+      RAG.state.activeDocuments = data.documents || [];
+
       if (docsCount) docsCount.textContent = `${RAG.state.activeDocuments.length} files`;
-      if (tabDocsBadge) tabDocsBadge.textContent = RAG.state.activeDocuments.length;
+      if (tabDocsBadge) tabDocsBadge.textContent = `${RAG.state.activeDocuments.length}`;
 
       if (RAG.state.activeDocuments.length === 0) {
         if (docsList) {
@@ -130,22 +217,16 @@
                   ${privacyBadge}
                   ${persistentBadge}
                 </div>
-                ${doc.error_message ? `<div style="margin-top: 6px; font-size: 0.7rem; color: var(--status-failed); line-height: 1.3;">${RAG.utils.escapeHtml(doc.error_message)}</div>` : ''}
+                ${doc.error_message ? `<div class="doc-error-text" style="margin-top: 6px; font-size: 0.7rem; color: var(--status-failed); line-height: 1.3;">${RAG.utils.escapeHtml(doc.error_message)}</div>` : ''}
               </div>
             `;
           })
           .join('');
       }
 
-      const hasPending = RAG.state.activeDocuments.some((d) => d.status === 'processing' || d.status === 'queued');
-      if (hasPending && !RAG.state.pollInterval) {
-        RAG.state.pollInterval = setInterval(loadDocuments, 2500);
-      } else if (!hasPending && RAG.state.pollInterval) {
-        clearInterval(RAG.state.pollInterval);
-        RAG.state.pollInterval = null;
-      }
+      // Check initial readiness status once on load without starting interval polling
       if (RAG.chat?.checkDocumentQueueReadiness) {
-        RAG.chat.checkDocumentQueueReadiness();
+        RAG.chat.checkDocumentQueueReadiness(false);
       }
     } catch (e) {
       console.error('Error fetching documents:', e);
@@ -162,4 +243,6 @@
 
   RAG.documents.showLibraryLoader = showLibraryLoader;
   RAG.documents.loadDocuments = loadDocuments;
+  RAG.documents.initEventsStream = initDocumentEventsStream;
+  RAG.documents.updateDocumentCardInDom = updateDocumentCardInDom;
 })(window);

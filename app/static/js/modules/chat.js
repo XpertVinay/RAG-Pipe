@@ -563,10 +563,63 @@
     });
   }
 
-  let readinessPollTimer = null;
   let wasPreviouslyPending = false;
-  let readinessPollCount = 0;
-  const MAX_POLL_ATTEMPTS = 60; // Max 60 polls (approx 3 minutes) before stopping automatic polling
+
+  function onDocumentStatusEvent(event) {
+    const queueBanner = document.getElementById('doc-queue-banner');
+    const titleText = document.getElementById('doc-queue-title-text');
+    const detailText = document.getElementById('doc-queue-status-detail');
+    const chatInput = document.getElementById('chat-input');
+    if (!queueBanner) return;
+
+    const fname = event.filename || 'Document';
+
+    if (event.status === 'queued' || event.status === 'processing') {
+      wasPreviouslyPending = true;
+      queueBanner.style.display = 'block';
+      queueBanner.classList.remove('ready');
+      if (titleText) {
+        titleText.textContent = event.status === 'processing'
+          ? `⚙️ Indexing "${fname}" in background...`
+          : `⏳ "${fname}" queued for processing...`;
+      }
+      if (detailText) {
+        detailText.textContent = 'Worker is parsing text chunks and embedding vectors into the database.';
+      }
+    } else if (event.status === 'completed') {
+      queueBanner.style.display = 'block';
+      queueBanner.classList.add('ready');
+      if (titleText) {
+        titleText.textContent = `✨ "${fname}" is ready for LLM prompts!`;
+      }
+      if (detailText) {
+        detailText.textContent = `Indexed ${event.chunk_count || 0} chunks into persistent vector store.`;
+      }
+      if (RAG.utils?.showToast) {
+        RAG.utils.showToast(`✨ "${fname}" indexed successfully (${event.chunk_count || 0} chunks)!`, 'success');
+      }
+      if (chatInput) {
+        chatInput.focus();
+      }
+      setTimeout(() => {
+        if (queueBanner && queueBanner.classList.contains('ready')) {
+          queueBanner.style.display = 'none';
+        }
+      }, 6000);
+    } else if (event.status === 'failed') {
+      queueBanner.style.display = 'block';
+      queueBanner.classList.remove('ready');
+      if (titleText) {
+        titleText.textContent = `⚠️ "${fname}" failed indexing`;
+      }
+      if (detailText) {
+        detailText.textContent = event.error_message || 'Indexing failed or worker timed out. Click Reprocess to retry.';
+      }
+      if (RAG.utils?.showToast) {
+        RAG.utils.showToast(`⚠️ Indexing failed for ${fname}: ${event.error_message || 'Error'}`, 'error');
+      }
+    }
+  }
 
   async function checkDocumentQueueReadiness(forceToast = false) {
     const queueBanner = document.getElementById('doc-queue-banner');
@@ -589,55 +642,19 @@
 
       if (res && res.pending_count > 0) {
         wasPreviouslyPending = true;
-        readinessPollCount++;
-
-        // Circuit breaker: prevent infinite polling loop if background worker is stuck or offline
-        if (readinessPollCount > MAX_POLL_ATTEMPTS) {
-          if (readinessPollTimer) {
-            clearInterval(readinessPollTimer);
-            readinessPollTimer = null;
-          }
-          queueBanner.style.display = 'block';
-          queueBanner.classList.remove('ready');
-          if (titleText) {
-            titleText.textContent = '⚠️ Document indexing is taking longer than expected';
-          }
-          if (detailText) {
-            detailText.innerHTML = `${res.pending_count} file(s) still processing. Worker may be busy or job timed out. <button id="retry-poll-now-btn" style="background:none;border:none;color:var(--color-primary-light, #6366f1);cursor:pointer;text-decoration:underline;padding:0;font-size:inherit;">Check again</button> or view Documents to reprocess.`;
-            const retryNowBtn = document.getElementById('retry-poll-now-btn');
-            if (retryNowBtn) {
-              retryNowBtn.onclick = (e) => {
-                e.preventDefault();
-                readinessPollCount = 0;
-                checkDocumentQueueReadiness(true);
-              };
-            }
-          }
-          return;
-        }
-
         queueBanner.style.display = 'block';
         queueBanner.classList.remove('ready');
         if (titleText) {
-          titleText.textContent = `${res.pending_count} file(s) processing in RabbitMQ queue...`;
+          titleText.textContent = `${res.pending_count} file(s) processing in worker queue...`;
         }
         if (detailText) {
-          detailText.textContent = `Worker is parsing & indexing chunks (${res.ready_count}/${res.total} ready). LLM prompts ready soon.`;
+          detailText.textContent = `Worker is parsing & indexing chunks (${res.ready_count}/${res.total} ready). Real-time updates active via SSE.`;
         }
         if (forceToast && RAG.utils?.showToast) {
-          RAG.utils.showToast(`${res.pending_count} document(s) currently being indexed by RabbitMQ worker.`, 'info');
-        }
-
-        if (!readinessPollTimer) {
-          readinessPollTimer = setInterval(() => checkDocumentQueueReadiness(false), 3000);
+          RAG.utils.showToast(`${res.pending_count} document(s) currently being indexed by background worker.`, 'info');
         }
       } else if (res && res.total > 0 && res.all_ready && wasPreviouslyPending) {
         wasPreviouslyPending = false;
-        readinessPollCount = 0;
-        if (readinessPollTimer) {
-          clearInterval(readinessPollTimer);
-          readinessPollTimer = null;
-        }
         queueBanner.style.display = 'block';
         queueBanner.classList.add('ready');
         if (titleText) {
@@ -652,10 +669,6 @@
         if (chatInput) {
           chatInput.focus();
         }
-        if (RAG.documents?.loadDocuments) {
-          RAG.documents.loadDocuments();
-        }
-
         setTimeout(() => {
           if (!wasPreviouslyPending && queueBanner) {
             queueBanner.style.display = 'none';
@@ -663,41 +676,23 @@
         }, 6000);
       } else if (res && res.failed_count > 0 && wasPreviouslyPending) {
         wasPreviouslyPending = false;
-        readinessPollCount = 0;
-        if (readinessPollTimer) {
-          clearInterval(readinessPollTimer);
-          readinessPollTimer = null;
-        }
         queueBanner.style.display = 'block';
         queueBanner.classList.remove('ready');
         if (titleText) {
           titleText.textContent = `⚠️ ${res.failed_count} document(s) failed indexing`;
         }
         if (detailText) {
-          detailText.textContent = 'Some documents encountered processing errors or timed out. Please check Document Manager to reprocess.';
+          detailText.textContent = 'Some documents encountered processing errors. Please check Document Manager to reprocess.';
         }
         if (RAG.utils?.showToast) {
           RAG.utils.showToast(`${res.failed_count} document(s) failed indexing.`, 'error');
         }
-        if (RAG.documents?.loadDocuments) {
-          RAG.documents.loadDocuments();
-        }
       } else {
-        if (readinessPollTimer) {
-          clearInterval(readinessPollTimer);
-          readinessPollTimer = null;
-        }
         queueBanner.style.display = 'none';
         wasPreviouslyPending = false;
-        readinessPollCount = 0;
       }
     } catch (err) {
       console.warn('Error checking document readiness:', err);
-      readinessPollCount++;
-      if (readinessPollCount > 20 && readinessPollTimer) {
-        clearInterval(readinessPollTimer);
-        readinessPollTimer = null;
-      }
     }
   }
 
@@ -711,6 +706,7 @@
     usePrompt,
     retryLastQuery,
     checkDocumentQueueReadiness,
+    onDocumentStatusEvent,
     init: initChatListeners,
   };
 

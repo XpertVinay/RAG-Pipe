@@ -16,6 +16,7 @@ from app.ingestion.vector_store import vector_store
 from app.models.document import Document, DocumentChunk, utc_now
 from app.models.room import RoomDocument
 from app.models.memory import MemoryItem
+from app.services.event_broadcaster import event_broadcaster
 
 
 class IngestionPipeline:
@@ -54,12 +55,29 @@ class IngestionPipeline:
             doc.error_message = None
             doc.updated_at = utc_now()
             await db.commit()
+            await event_broadcaster.broadcast_document_status(
+                document_id=doc.id,
+                status="processing",
+                filename=doc.filename,
+                chunk_count=0,
+                file_size=doc.file_size,
+                user_id=doc.user_id,
+            )
 
             file_path = Path(doc.storage_path)
             if not file_path.exists():
                 doc.status = "failed"
                 doc.error_message = f"File not found on storage: {file_path}"
                 await db.commit()
+                await event_broadcaster.broadcast_document_status(
+                    document_id=doc.id,
+                    status="failed",
+                    filename=doc.filename,
+                    chunk_count=0,
+                    file_size=doc.file_size,
+                    error_message=doc.error_message,
+                    user_id=doc.user_id,
+                )
                 return
 
             from app.config import get_settings
@@ -130,6 +148,14 @@ class IngestionPipeline:
                             doc.error_message = None
                             doc.updated_at = utc_now()
                             await db.commit()
+                            await event_broadcaster.broadcast_document_status(
+                                document_id=doc.id,
+                                status="completed",
+                                filename=doc.filename,
+                                chunk_count=doc.chunk_count,
+                                file_size=doc.file_size,
+                                user_id=doc.user_id,
+                            )
                             logger.info(
                                 f"Successfully completed ingestion for {doc.filename} via cached vector reuse ({len(source_chunks)} chunks)"
                             )
@@ -197,6 +223,14 @@ class IngestionPipeline:
                     doc.error_message = None
                     doc.updated_at = utc_now()
                     await db.commit()
+                    await event_broadcaster.broadcast_document_status(
+                        document_id=doc.id,
+                        status="completed",
+                        filename=doc.filename,
+                        chunk_count=doc.chunk_count,
+                        file_size=doc.file_size,
+                        user_id=doc.user_id,
+                    )
                     logger.info(f"Successfully completed ingestion for {doc.filename} ({len(lc_chunks)} chunks)")
 
                     # 7. Revaluate any existing memories linked to this document
@@ -223,6 +257,15 @@ class IngestionPipeline:
                         err_doc.status = "failed"
                         err_doc.error_message = err_msg
                         await err_db.commit()
+                        await event_broadcaster.broadcast_document_status(
+                            document_id=err_doc.id,
+                            status="failed",
+                            filename=err_doc.filename,
+                            chunk_count=0,
+                            file_size=err_doc.file_size,
+                            error_message=err_msg,
+                            user_id=err_doc.user_id,
+                        )
 
             except Exception as e:
                 logger.error(f"Ingestion failed for {doc.filename}: {e}", exc_info=True)
@@ -242,6 +285,15 @@ class IngestionPipeline:
                         err_doc.status = "failed"
                         err_doc.error_message = str(e)
                         await err_db.commit()
+                        await event_broadcaster.broadcast_document_status(
+                            document_id=err_doc.id,
+                            status="failed",
+                            filename=err_doc.filename,
+                            chunk_count=0,
+                            file_size=err_doc.file_size,
+                            error_message=str(e),
+                            user_id=err_doc.user_id,
+                        )
 
     @staticmethod
     async def delete_document(db: AsyncSession, document_id: str, purge_vectors: bool = False) -> bool:

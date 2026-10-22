@@ -12,6 +12,7 @@ from app.core.rate_limit import RateLimiter
 from app.database import get_db
 from app.ingestion.pipeline import ingestion_pipeline
 from app.services.queue_service import queue_service
+from app.services.event_broadcaster import event_broadcaster
 from app.models.conversation import Conversation, Message
 from app.models.document import Document
 from app.models.project import Project
@@ -342,6 +343,12 @@ async def upload_files_to_room(
 
     for doc_id in docs_to_enqueue:
         await queue_service.enqueue_document_job(doc_id, background_tasks=background_tasks)
+        await event_broadcaster.broadcast_document_status(
+            document_id=doc_id,
+            status="queued",
+            user_id=current_user.id,
+            extra={"room_id": str(room_id)},
+        )
 
     if any_duplicate_completed and len(uploaded_docs) == 1:
         message = f"File '{files[0].filename}' is already indexed. Attached to room '{room.name}' (skipped duplicate embedding)."

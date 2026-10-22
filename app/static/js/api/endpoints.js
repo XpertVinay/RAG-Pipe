@@ -277,6 +277,37 @@
     return API.get(`/api/documents/readiness/check${qs}`);
   };
 
+  API.connectDocumentEventsStream = function (onEvent, onError) {
+    const token = API.getAccessToken();
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+    const url = `/api/documents/events/stream${tokenParam}`;
+
+    let eventSource = null;
+    try {
+      eventSource = new EventSource(url);
+      eventSource.addEventListener('document_status', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (typeof onEvent === 'function') onEvent(data);
+        } catch (err) {
+          console.warn('[SSE] Error parsing document_status payload:', err);
+        }
+      });
+      eventSource.addEventListener('connected', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          console.debug('[SSE] Document events stream connected:', data);
+        } catch (err) {}
+      });
+      eventSource.onerror = (err) => {
+        if (typeof onError === 'function') onError(err);
+      };
+    } catch (e) {
+      console.warn('[SSE] Failed to initialize EventSource:', e);
+    }
+    return eventSource;
+  };
+
   // Chat & Conversation Endpoints
   API.getConversations = async function (roomId = null) {
     const q = roomId ? `?room_id=${encodeURIComponent(roomId)}` : '';
