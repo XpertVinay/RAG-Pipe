@@ -5,8 +5,9 @@ services:
       dockerfile: Dockerfile
     container_name: rag-agent-app
     restart: unless-stopped
-    ports:
-      - "${PORT:-8000}:8000"
+    # Do not expose to public/host; accessible internally by rag-proxy on rag_network
+    expose:
+      - "8000"
     environment:
       - APP_NAME=Production RAG Agent
       - APP_ENV=${APP_ENV:-development}
@@ -44,7 +45,13 @@ services:
       - RABBITMQ_ENABLED=true
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:-rag_admin}:${RABBITMQ_PASSWORD:-rag_secret_pass}@rabbitmq:5672/
       - RABBITMQ_QUEUE_NAME=document_processing_queue
+      - RABBITMQ_CHUNK_QUEUE_NAME=document_chunks_queue
       - RABBITMQ_EMBEDDED_WORKER=false
+      - ENABLE_CONCURRENT_CHUNK_PROCESSING=${ENABLE_CONCURRENT_CHUNK_PROCESSING:-false}
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-1}
+      - NUM_CHUNKING_WORKERS=${NUM_CHUNKING_WORKERS:-1}
+      - CHUNK_PARTITION_SIZE_MB=${CHUNK_PARTITION_SIZE_MB:-3.0}
+      - CHUNK_PARTITION_THRESHOLD_MB=${CHUNK_PARTITION_THRESHOLD_MB:-1.0}
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,14 +65,37 @@ services:
     networks:
       - rag_network
 
-  # Dedicated Scalable Document Processing Worker (scale with --scale rag-worker=N)
+  # High-Concurrency Reverse Proxy & Load Balancer with SSE Streaming Support
+  rag-proxy:
+    image: nginx:alpine
+    container_name: rag-proxy
+    restart: unless-stopped
+    ports:
+      # Bound strictly to localhost interface: reachable only by host Apache reverse proxy
+      - "127.0.0.1:${PROXY_PORT:-8181}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - rag-agent
+    networks:
+      - rag_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://127.0.0.1:80/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Dedicated Scalable Document Processing Worker (scale with --scale rag-worker=N or WORKER_CONCURRENCY=N)
   rag-worker:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: rag-worker
     restart: unless-stopped
     command: python scripts/rabbitmq_worker.py
+    deploy:
+      replicas: ${WORKER_CONCURRENCY:-1}
     environment:
       - APP_NAME=RAG Document Worker
       - APP_ENV=${APP_ENV:-development}
@@ -88,7 +118,13 @@ services:
       - RABBITMQ_ENABLED=true
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:-rag_admin}:${RABBITMQ_PASSWORD:-rag_secret_pass}@rabbitmq:5672/
       - RABBITMQ_QUEUE_NAME=document_processing_queue
+      - RABBITMQ_CHUNK_QUEUE_NAME=document_chunks_queue
       - RABBITMQ_PREFETCH_COUNT=2
+      - ENABLE_CONCURRENT_CHUNK_PROCESSING=${ENABLE_CONCURRENT_CHUNK_PROCESSING:-false}
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-1}
+      - NUM_CHUNKING_WORKERS=${NUM_CHUNKING_WORKERS:-1}
+      - CHUNK_PARTITION_SIZE_MB=${CHUNK_PARTITION_SIZE_MB:-3.0}
+      - CHUNK_PARTITION_THRESHOLD_MB=${CHUNK_PARTITION_THRESHOLD_MB:-1.0}
     healthcheck:
       test: [ "CMD-SHELL", "python -c 'import sys; sys.exit(0)'" ]
       interval: 30s
@@ -113,8 +149,9 @@ services:
     image: pgvector/pgvector:pg16
     container_name: rag-postgres
     restart: unless-stopped
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # Secured within internal bridge network; inaccessible to public/host
+    expose:
+      - "5432"
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-rag_agent}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
@@ -139,9 +176,10 @@ services:
     container_name: rag-rabbitmq
     hostname: rabbitmq
     restart: unless-stopped
-    ports:
-      - "${RABBITMQ_PORT:-5672}:5672"
-      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    # Secured within internal bridge network; inaccessible to public/host
+    expose:
+      - "5672"
+      - "15672"
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-rag_admin}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-rag_secret_pass}
@@ -165,23 +203,6 @@ services:
       resources:
         limits:
           memory: 1024M
-  # Dedicated Local Ollama LLM & Embedding Server (Self-Contained Production Option)
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: rag-ollama
-  #   restart: unless-stopped
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama_models:/root/.ollama
-  #   environment:
-  #     - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-60m}
-  #     - OLLAMA_HOST=0.0.0.0:11434
-  #   networks:
-  #     rag_network:
-  #       aliases:
-  #         - ollama
-  #         - rag-ollama
 
 volumes:
   rag_data:
@@ -190,8 +211,6 @@ volumes:
     name: rag_postgres_data
   rabbitmq_data:
     name: rag_rabbitmq_data
-  # ollama_models:
-  #   name: rag_ollama_models
 
 networks:
   rag_network:

@@ -91,8 +91,14 @@ class QueueService:
                     durable=True,
                     auto_delete=False,
                 )
+                chunk_queue_name = getattr(settings, "RABBITMQ_CHUNK_QUEUE_NAME", "document_chunks_queue")
+                await self._channel.declare_queue(
+                    chunk_queue_name,
+                    durable=True,
+                    auto_delete=False,
+                )
                 self._failed_connection_attempts = 0
-                logger.info(f"Connected to RabbitMQ. Declared durable queue '{queue_name}' (prefetch={prefetch})")
+                logger.info(f"Connected to RabbitMQ. Declared durable queues '{queue_name}', '{chunk_queue_name}' (prefetch={prefetch})")
                 return self._connection
             except Exception as e:
                 self._failed_connection_attempts += 1
@@ -171,6 +177,91 @@ class QueueService:
             "mechanism": "background_task",
             "queue": "in_process_fallback",
             "document_id": document_id,
+            "enqueued_at": enqueued_at,
+        }
+
+    async def enqueue_chunk_partition_job(
+        self,
+        document_id: str,
+        partition_id: str,
+        partition_index: int,
+        total_partitions: int,
+        chunks: list,
+        background_tasks: Optional[Any] = None,
+        retry_count: int = 0,
+    ) -> Dict[str, Any]:
+        """Publish an individual chunk partition job to RabbitMQ for concurrent worker distribution."""
+        enqueued_at = datetime.now(timezone.utc).isoformat()
+        payload = {
+            "action": "process_chunk_partition",
+            "document_id": document_id,
+            "partition_id": partition_id,
+            "partition_index": partition_index,
+            "total_partitions": total_partitions,
+            "chunks": chunks,
+            "retry_count": retry_count,
+            "enqueued_at": enqueued_at,
+        }
+
+        channel = await self.get_channel()
+        chunk_queue_name = getattr(settings, "RABBITMQ_CHUNK_QUEUE_NAME", "document_chunks_queue")
+
+        if channel and not channel.is_closed:
+            try:
+                body = json.dumps(payload).encode("utf-8")
+                message = aio_pika.Message(
+                    body=body,
+                    delivery_mode=DeliveryMode.PERSISTENT,
+                    content_type="application/json",
+                    headers={"retry_count": retry_count, "partition_index": partition_index},
+                )
+                await channel.default_exchange.publish(
+                    message,
+                    routing_key=chunk_queue_name,
+                )
+                logger.info(
+                    f"Published chunk partition {partition_index + 1}/{total_partitions} "
+                    f"for doc {document_id} to queue '{chunk_queue_name}' ({len(chunks)} chunks)"
+                )
+                return {
+                    "status": "queued",
+                    "mechanism": "rabbitmq",
+                    "queue": chunk_queue_name,
+                    "document_id": document_id,
+                    "partition_id": partition_id,
+                    "enqueued_at": enqueued_at,
+                }
+            except Exception as e:
+                logger.warning(f"Error publishing chunk partition to RabbitMQ: {e}. Falling back to in-process.")
+
+        # Fallback to local async background execution
+        from app.ingestion.pipeline import ingestion_pipeline
+        if background_tasks is not None:
+            background_tasks.add_task(
+                ingestion_pipeline.process_chunk_partition,
+                partition_id,
+                document_id,
+                partition_index,
+                total_partitions,
+                chunks,
+            )
+        else:
+            asyncio.create_task(
+                ingestion_pipeline.process_chunk_partition(
+                    partition_id,
+                    document_id,
+                    partition_index,
+                    total_partitions,
+                    chunks,
+                )
+            )
+
+        return {
+            "status": "queued",
+            "mechanism": "background_task",
+            "queue": "in_process_fallback",
+            "document_id": document_id,
+            "partition_id": partition_id,
             "enqueued_at": enqueued_at,
         }
 

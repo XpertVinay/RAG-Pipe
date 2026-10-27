@@ -24,7 +24,7 @@
   }
 
   function renderInitialViewHtml(options = {}) {
-    const { title, subtitle, authButtonsHtml } = options;
+    const { title, subtitle, authButtonsHtml, attachedDocsHtml } = options;
     return `
       <div class="welcome-screen">
         <!-- Hero / Application Objective -->
@@ -63,6 +63,9 @@
             </div>
           </div>
         </div>
+
+        <!-- Attached & Recent Documents Showcase for Active Grounded Chat -->
+        ${attachedDocsHtml || ''}
 
         <!-- Curated Industry Intelligence & Top News Header -->
         <div class="intel-news-header">
@@ -190,6 +193,118 @@
     `;
   }
 
+  function renderAttachedDocumentsHtml(docs) {
+    if (!docs || docs.length === 0) {
+      return `
+        <div class="welcome-docs-section" style="margin: 18px 0; background: var(--bg-tertiary); border: 1px dashed var(--border-color); border-radius: var(--radius-md); padding: 14px 18px; text-align: center;">
+          <div style="font-size: 1.4rem; margin-bottom: 4px;">📎</div>
+          <div style="font-weight: 600; font-size: 0.82rem; color: var(--text-primary); margin-bottom: 4px;">No Documents Attached Yet</div>
+          <div style="font-size: 0.74rem; color: var(--text-secondary); margin-bottom: 10px;">
+            Upload files in the sidebar or click below to attach files for grounded answers with verified citations.
+          </div>
+          <button class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 12px;" onclick="document.getElementById('file-input')?.click()">
+            + Upload / Attach File
+          </button>
+        </div>
+      `;
+    }
+
+    const pills = docs.map((doc) => {
+      const icon = RAG.utils.iconMap[doc.file_type] || '📄';
+      const sizeKb = Math.round((doc.file_size || 0) / 1024);
+      const sizeStr = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`;
+      const status = doc.status || 'completed';
+      const isPending = status === 'queued' || status === 'processing';
+      const isFailed = status === 'failed';
+      let statusBadge = `<span class="status-badge completed" style="font-size: 0.65rem;">ready</span>`;
+      if (isPending) {
+        statusBadge = `<span class="status-badge ${status}" style="font-size: 0.65rem;"><span class="status-pulse"></span>${status}</span>`;
+      } else if (isFailed) {
+        statusBadge = `<span class="status-badge failed" style="font-size: 0.65rem;">failed</span>`;
+      }
+      const chunkLabel = isPending ? 'Processing chunks...' : `${doc.chunk_count || 0} chunks`;
+
+      return `
+        <div class="welcome-doc-pill" id="welcome-doc-${doc.id}" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+            <span style="font-size: 1.1rem;">${icon}</span>
+            <div style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <div style="font-weight: 500; font-size: 0.8rem; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden;" title="${RAG.utils.escapeHtml(doc.filename)}">
+                ${RAG.utils.escapeHtml(doc.filename)}
+              </div>
+              <div style="font-size: 0.7rem; color: var(--text-secondary);">
+                ${sizeStr} • ${chunkLabel}
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            ${statusBadge}
+            <button class="btn btn-outline" type="button" style="font-size: 0.68rem; padding: 2px 8px;" onclick="window.usePrompt('Summarize key points, facts, and actionable findings from ${RAG.utils.escapeHtml(doc.filename)}')">
+              Ask
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="welcome-docs-section" style="margin: 16px 0; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px;">
+        <div class="welcome-docs-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span>📎</span>
+            <span style="font-weight: 600; font-size: 0.8rem; color: var(--text-primary);">Attached &amp; Recent Documents (${docs.length})</span>
+          </div>
+          <button class="btn btn-outline" type="button" style="font-size: 0.7rem; padding: 2px 8px;" onclick="document.getElementById('file-input')?.click()">
+            + Add Files
+          </button>
+        </div>
+        <div class="welcome-docs-list" style="max-height: 190px; overflow-y: auto;">
+          ${pills}
+        </div>
+      </div>
+    `;
+  }
+
+  function updateRoomFilesAndRecentDocs() {
+    const bannerRoomFiles = document.getElementById('banner-room-files');
+    const roomDocs = RAG.state.currentRoom?.documents || [];
+    const activeDocs = RAG.state.activeDocuments || [];
+    const docsToShow = roomDocs.length > 0 ? roomDocs : activeDocs;
+
+    if (bannerRoomFiles) {
+      if (docsToShow.length === 0) {
+        bannerRoomFiles.innerHTML = `<span class="room-files-empty-pill"><span>📎</span><span>No files attached</span></span>`;
+      } else {
+        bannerRoomFiles.innerHTML = docsToShow
+          .map((d) => {
+            const isPending = d.status === 'queued' || d.status === 'processing';
+            const icon = RAG.utils.iconMap[d.file_type] || '📄';
+            const pulse = isPending
+              ? '<span class="status-pulse" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#f59e0b;margin-right:4px;"></span>'
+              : '';
+            const detachAction = RAG.state.currentRoom?.id
+              ? `<span style="opacity: 0.6; cursor: pointer; margin-left: 4px;" onclick="window.detachDocFromRoom('${RAG.state.currentRoom.id}', '${d.id}', event)" title="Detach file from room">×</span>`
+              : '';
+            return `
+              <span class="room-file-pill" title="${RAG.utils.escapeHtml(d.filename)} (${d.chunk_count || 0} chunks, ${d.status || 'ready'})">
+                <span>${icon}</span>
+                ${pulse}
+                <span>${RAG.utils.escapeHtml(d.filename)}</span>
+                ${detachAction}
+              </span>
+            `;
+          })
+          .join('');
+      }
+    }
+
+    // Refresh welcome screen attached documents if welcome screen is active
+    const welcomeDocsContainer = document.querySelector('.welcome-docs-section');
+    if (welcomeDocsContainer) {
+      welcomeDocsContainer.outerHTML = renderAttachedDocumentsHtml(docsToShow);
+    }
+  }
+
   function showWelcomeScreen() {
     const messagesContainer = document.getElementById('messages-container');
     if (!messagesContainer) return;
@@ -214,15 +329,21 @@
       return;
     }
 
-    const fileCount = RAG.state.currentRoom?.documents?.length || 0;
+    const roomDocs = RAG.state.currentRoom?.documents || [];
+    const activeDocs = RAG.state.activeDocuments || [];
+    const docsToShow = roomDocs.length > 0 ? roomDocs : activeDocs;
+    const fileCount = docsToShow.length;
     const roomTitle = RAG.state.currentRoom?.name || 'Workspace';
 
     messagesContainer.innerHTML = renderInitialViewHtml({
       title: `${RAG.utils.escapeHtml(roomTitle)} — Grounded AI Assistant`,
       subtitle: fileCount > 0
-        ? `Ready to answer questions grounded in <strong>${fileCount} indexed file(s)</strong> in this room. Context persists across browser refreshes.`
-        : `Upload or attach documents to this workspace room to begin grounded Q&amp;A with verifiable citations.`,
+        ? `Ready to answer questions grounded in <strong>${fileCount} indexed file(s)</strong>. Real-time chunking and citations active.`
+        : `Upload or attach documents to this workspace to begin grounded Q&amp;A with verifiable citations.`,
+      attachedDocsHtml: renderAttachedDocumentsHtml(docsToShow),
     });
+
+    updateRoomFilesAndRecentDocs();
   }
 
   async function startNewChat() {
@@ -246,6 +367,7 @@
       localStorage.setItem('rag_active_conv_id', conv.id);
       if (messagesContainer) messagesContainer.innerHTML = '';
       showWelcomeScreen();
+      updateRoomFilesAndRecentDocs();
       RAG.utils.showToast('Started new conversation thread', 'info');
       if (RAG.history?.loadConversations) RAG.history.loadConversations();
     } catch (e) {
@@ -619,6 +741,25 @@
         RAG.utils.showToast(`⚠️ Indexing failed for ${fname}: ${event.error_message || 'Error'}`, 'error');
       }
     }
+
+    // Live update document state in memory and refresh UI pills & welcome cards
+    if (RAG.state?.activeDocuments && event.document_id) {
+      const match = RAG.state.activeDocuments.find((d) => d.id === event.document_id);
+      if (match) {
+        match.status = event.status;
+        if (event.chunk_count !== undefined) match.chunk_count = event.chunk_count;
+        if (event.error_message !== undefined) match.error_message = event.error_message;
+      }
+    }
+    if (RAG.state?.currentRoom?.documents && event.document_id) {
+      const match = RAG.state.currentRoom.documents.find((d) => d.id === event.document_id);
+      if (match) {
+        match.status = event.status;
+        if (event.chunk_count !== undefined) match.chunk_count = event.chunk_count;
+        if (event.error_message !== undefined) match.error_message = event.error_message;
+      }
+    }
+    updateRoomFilesAndRecentDocs();
   }
 
   async function checkDocumentQueueReadiness(forceToast = false) {
@@ -707,6 +848,7 @@
     retryLastQuery,
     checkDocumentQueueReadiness,
     onDocumentStatusEvent,
+    updateRoomFilesAndRecentDocs,
     init: initChatListeners,
   };
 

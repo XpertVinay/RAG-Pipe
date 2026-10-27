@@ -146,9 +146,11 @@ async def list_documents(
     results = await db.execute(query)
     docs = results.scalars().all()
 
+    doc_items = [DocumentResponse.model_validate(d) for d in docs]
     return DocumentListResponse(
         total=total,
-        items=[DocumentResponse.model_validate(d) for d in docs],
+        items=doc_items,
+        documents=doc_items,
     )
 
 

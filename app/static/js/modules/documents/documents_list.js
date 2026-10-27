@@ -99,12 +99,12 @@
     const card = document.getElementById(`doc-${data.document_id}`);
     if (card) {
       updateDocumentCardInDom(data);
-    } else if (data.status === 'completed' || data.status === 'processing') {
-      // New file uploaded from another tab or container: reload documents once
+    } else {
+      // New file uploaded or card not in DOM yet: reload documents
       loadDocuments(false);
     }
 
-    // Notify chat view to update readiness banner without polling
+    // Notify chat view to update readiness banner and live file pills
     if (RAG.chat?.onDocumentStatusEvent) {
       RAG.chat.onDocumentStatusEvent(data);
     }
@@ -156,10 +156,15 @@
 
     try {
       const data = await API.getDocuments();
-      RAG.state.activeDocuments = data.documents || [];
+      RAG.state.activeDocuments = data.items || data.documents || (Array.isArray(data) ? data : []);
 
       if (docsCount) docsCount.textContent = `${RAG.state.activeDocuments.length} files`;
       if (tabDocsBadge) tabDocsBadge.textContent = `${RAG.state.activeDocuments.length}`;
+
+      // Live synchronize chat header pills and new chat documents
+      if (RAG.chat?.updateRoomFilesAndRecentDocs) {
+        RAG.chat.updateRoomFilesAndRecentDocs();
+      }
 
       if (RAG.state.activeDocuments.length === 0) {
         if (docsList) {

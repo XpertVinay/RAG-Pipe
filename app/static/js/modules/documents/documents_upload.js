@@ -141,8 +141,25 @@
       const toastType = res.message && (res.message.includes('skipped') || res.message.includes('already')) ? 'info' : 'success';
       RAG.utils.showToast(res.message, toastType);
 
+      if (res && res.uploaded && Array.isArray(res.uploaded)) {
+        RAG.state.activeDocuments = RAG.state.activeDocuments || [];
+        for (const newDoc of res.uploaded) {
+          const idx = RAG.state.activeDocuments.findIndex((d) => d.id === newDoc.id);
+          if (idx >= 0) {
+            RAG.state.activeDocuments[idx] = newDoc;
+          } else {
+            RAG.state.activeDocuments.unshift(newDoc);
+          }
+        }
+      }
+
       await RAG.documents.loadDocuments();
-      if (RAG.state.currentRoomId && RAG.rooms?.selectRoom) RAG.rooms.selectRoom(RAG.state.currentRoomId, false);
+      if (RAG.state.currentRoomId && RAG.rooms?.selectRoom) {
+        await RAG.rooms.selectRoom(RAG.state.currentRoomId, false);
+      }
+      if (RAG.chat?.updateRoomFilesAndRecentDocs) {
+        RAG.chat.updateRoomFilesAndRecentDocs();
+      }
       if (RAG.chat?.checkDocumentQueueReadiness) {
         RAG.chat.checkDocumentQueueReadiness(true);
       }

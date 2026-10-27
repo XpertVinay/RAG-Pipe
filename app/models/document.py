@@ -78,3 +78,20 @@ class DocumentChunk(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     document: Mapped["Document"] = relationship("Document", back_populates="chunks")
+
+
+class DocumentPartition(Base):
+    """Partition job metadata for multi-worker concurrent document chunking."""
+
+    __tablename__ = "document_partitions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    partition_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_partitions: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="queued", index=True)  # queued, processing, completed, failed
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    worker_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

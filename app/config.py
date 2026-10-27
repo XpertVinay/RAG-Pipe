@@ -109,17 +109,30 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 25
     ALLOWED_EXTENSIONS: str = "pdf,docx,txt,md,csv,html"
     MAX_INGESTION_CONCURRENCY: int = 3
-    DOCUMENT_PROCESSING_TIMEOUT_SECONDS: int = 600  # 10 minutes max before timing out stale processing jobs
+    DOCUMENT_PROCESSING_TIMEOUT_SECONDS: int = 600  # 10 mins for recovery of orphaned/crashed jobs after server reboot
 
     # RabbitMQ Queue Settings for High-Traffic Document Ingestion
     RABBITMQ_ENABLED: bool = True
     RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
     RABBITMQ_QUEUE_NAME: str = "document_processing_queue"
+    RABBITMQ_CHUNK_QUEUE_NAME: str = "document_chunks_queue"
     RABBITMQ_PREFETCH_COUNT: int = 2
     RABBITMQ_MAX_RETRIES: int = 3
     RABBITMQ_RETRY_DELAY_SECONDS: int = 5
     RABBITMQ_EMBEDDED_WORKER: bool = True
     RABBITMQ_HEARTBEAT: int = 120
+
+    # Multi-Worker Concurrency & Chunk Partitioning (Flag basis configuration)
+    ENABLE_CONCURRENT_CHUNK_PROCESSING: bool = False
+    WORKER_CONCURRENCY: int = 1
+    NUM_CHUNKING_WORKERS: int = 1
+    CHUNK_PARTITION_SIZE_MB: float = 3.0
+    CHUNK_PARTITION_THRESHOLD_MB: float = 1.0
+
+    # Reverse Proxy / Load Balancer Settings
+    LOAD_BALANCER_ENABLED: bool = False
+    LOAD_BALANCER_PORT: int = 80
+    PROXY_PORT: int = 8181
 
     # RAG Retrieval & LangGraph Workflow
     RETRIEVAL_TOP_K: int = 4

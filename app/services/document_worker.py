@@ -26,10 +26,11 @@ _consumer_task: Optional[asyncio.Task] = None
 
 
 async def process_incoming_job(message: AbstractIncomingMessage) -> None:
-    """Callback handling a single document ingestion job from RabbitMQ with retry & error handling."""
+    """Callback handling document ingestion and chunk partition jobs from RabbitMQ with retry & error handling."""
     async with message.process(requeue=False, ignore_processed=True):
         try:
             payload = json.loads(message.body.decode("utf-8"))
+            action = payload.get("action", "process_document")
             document_id = payload.get("document_id")
             retry_count = int(payload.get("retry_count", 0))
 
@@ -37,17 +38,45 @@ async def process_incoming_job(message: AbstractIncomingMessage) -> None:
                 logger.error("Received RabbitMQ message with missing document_id. Skipping.")
                 return
 
-            logger.info(
-                f"[RabbitMQ Worker] Processing document_id={document_id} (attempt {retry_count + 1})"
-            )
+            if action == "process_chunk_partition":
+                partition_id = payload.get("partition_id")
+                partition_index = payload.get("partition_index", 0)
+                total_partitions = payload.get("total_partitions", 1)
+                chunk_items = payload.get("chunks", [])
 
-            # Execute the core ingestion pipeline (parse, chunk, embed, vectorize, DB update)
-            await ingestion_pipeline.process_document(document_id)
-            logger.info(f"[RabbitMQ Worker] Successfully completed document_id={document_id}")
+                logger.info(
+                    f"[RabbitMQ Worker] Processing chunk partition {partition_index + 1}/{total_partitions} "
+                    f"for doc_id={document_id} ({len(chunk_items)} chunks)"
+                )
+                success = await ingestion_pipeline.process_chunk_partition(
+                    partition_id=partition_id,
+                    document_id=document_id,
+                    partition_index=partition_index,
+                    total_partitions=total_partitions,
+                    chunk_items=chunk_items,
+                )
+                if success:
+                    logger.info(
+                        f"[RabbitMQ Worker] Finished partition {partition_index + 1}/{total_partitions} for {document_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"[RabbitMQ Worker] Partition {partition_index + 1}/{total_partitions} reported failure for {document_id}"
+                    )
+            else:
+                logger.info(
+                    f"[RabbitMQ Worker] Processing document_id={document_id} (attempt {retry_count + 1})"
+                )
+                # Execute core ingestion pipeline (parse, chunk, embed, DB update, or partition dispatch)
+                success = await ingestion_pipeline.process_document(document_id)
+                if success:
+                    logger.info(f"[RabbitMQ Worker] Successfully completed document_id={document_id}")
+                else:
+                    logger.warning(f"[RabbitMQ Worker] Ingestion finished with failed status for document_id={document_id}")
 
         except Exception as exc:
             max_retries = getattr(settings, "RABBITMQ_MAX_RETRIES", 3)
-            logger.error(f"[RabbitMQ Worker] Error processing document job: {exc}", exc_info=True)
+            logger.error(f"[RabbitMQ Worker] Error processing job: {exc}", exc_info=True)
 
             try:
                 payload = json.loads(message.body.decode("utf-8"))
@@ -56,14 +85,25 @@ async def process_incoming_job(message: AbstractIncomingMessage) -> None:
 
                 if retries <= max_retries and doc_id:
                     delay = getattr(settings, "RABBITMQ_RETRY_DELAY_SECONDS", 5)
+                    action = payload.get("action", "process_document")
                     logger.warning(
-                        f"[RabbitMQ Worker] Re-enqueuing document {doc_id} in {delay}s (retry {retries}/{max_retries})"
+                        f"[RabbitMQ Worker] Re-enqueuing {action} for doc {doc_id} in {delay}s (retry {retries}/{max_retries})"
                     )
                     await asyncio.sleep(delay)
-                    await queue_service.enqueue_document_job(
-                        document_id=doc_id,
-                        retry_count=retries,
-                    )
+                    if action == "process_chunk_partition":
+                        await queue_service.enqueue_chunk_partition_job(
+                            document_id=doc_id,
+                            partition_id=payload.get("partition_id"),
+                            partition_index=payload.get("partition_index", 0),
+                            total_partitions=payload.get("total_partitions", 1),
+                            chunks=payload.get("chunks", []),
+                            retry_count=retries,
+                        )
+                    else:
+                        await queue_service.enqueue_document_job(
+                            document_id=doc_id,
+                            retry_count=retries,
+                        )
                 else:
                     logger.error(
                         f"[RabbitMQ Worker] Document {doc_id} exceeded max retries ({max_retries}). Job marked permanently failed."
@@ -73,12 +113,13 @@ async def process_incoming_job(message: AbstractIncomingMessage) -> None:
 
 
 async def run_document_consumer() -> None:
-    """Long-running async loop consuming document ingestion jobs from RabbitMQ."""
+    """Long-running async loop consuming document ingestion and chunk partition jobs from RabbitMQ."""
     global _worker_running
     _worker_running = True
 
     queue_name = getattr(settings, "RABBITMQ_QUEUE_NAME", "document_processing_queue")
-    logger.info(f"Starting RabbitMQ document worker consumer on queue: '{queue_name}'...")
+    chunk_queue_name = getattr(settings, "RABBITMQ_CHUNK_QUEUE_NAME", "document_chunks_queue")
+    logger.info(f"Starting RabbitMQ document worker consumer on queues: '{queue_name}', '{chunk_queue_name}'...")
 
     reconnect_delay = 5.0
 
@@ -94,14 +135,26 @@ async def run_document_consumer() -> None:
                 await asyncio.sleep(reconnect_delay)
                 continue
 
+            # Declare and consume from primary document queue
             queue = await channel.declare_queue(
                 queue_name,
                 durable=True,
                 auto_delete=False,
             )
-
-            logger.info(f"[RabbitMQ Worker] Ready and waiting for incoming document messages on '{queue_name}'...")
             await queue.consume(process_incoming_job)
+
+            # Declare and consume from concurrent chunk partition queue
+            chunk_queue = await channel.declare_queue(
+                chunk_queue_name,
+                durable=True,
+                auto_delete=False,
+            )
+            await chunk_queue.consume(process_incoming_job)
+
+            logger.info(
+                f"[RabbitMQ Worker] Ready and waiting for incoming document & chunk partition jobs "
+                f"on '{queue_name}' and '{chunk_queue_name}'..."
+            )
 
             # Keep task alive while connection is healthy and worker is running
             while _worker_running and not conn.is_closed:
