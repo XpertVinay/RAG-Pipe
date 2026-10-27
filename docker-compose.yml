@@ -77,8 +77,8 @@ services:
     container_name: rag-proxy
     restart: unless-stopped
     ports:
-      # Bound strictly to localhost interface: reachable only by host Apache reverse proxy
-      - "127.0.0.1:${PROXY_PORT:-8181}:80"
+      # Exposes 8181 so Apache (or external <server-ip>:8181) can reach the Nginx reverse proxy
+      - "${PROXY_PORT:-8181}:8181"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -89,7 +89,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: [ "CMD-SHELL", "wget -q -O - http://127.0.0.1:80/health || exit 1" ]
+      test: [ "CMD-SHELL", "wget -q -O - http://127.0.0.1:8181/health || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 3
