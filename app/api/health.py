@@ -14,6 +14,7 @@ settings = get_settings()
 
 
 @router.get("", response_model=SystemHealthResponse)
+@router.get("/", response_model=SystemHealthResponse, include_in_schema=False)
 async def check_system_health(db: AsyncSession = Depends(get_db)):
     """Perform a high-speed concurrent health check of Database, Vector Store, LLM providers, and Queue."""
     # 1. Database check
@@ -85,6 +86,7 @@ async def check_system_health(db: AsyncSession = Depends(get_db)):
 
 @router.get("/liveness")
 @router.get("/ready")
+@router.get("/ping")
 async def liveness_probe():
     """Ultra-fast sub-millisecond liveness probe for Docker, Kubernetes, and load balancers."""
     return {"status": "ok"}

@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.exceptions import RequestValidationError
 
 from app.api import api_router
+from app.api.health import router as health_router
 from app.config import get_settings
 from app.core.exceptions import (
     RAGException,
@@ -176,6 +177,16 @@ templates.env.globals["get_asset_manifest"] = get_asset_manifest
 
 # Mount API routes (includes official /api/v1/* and legacy /api/* compatibility)
 app.include_router(api_router)
+
+# Mount root /health endpoint for reverse proxies (Nginx), Docker healthchecks, and load balancers
+app.include_router(health_router)
+
+
+@app.get("/healthz", include_in_schema=False)
+@app.get("/ping", include_in_schema=False)
+async def root_liveness():
+    """Root-level liveness probe for load balancers."""
+    return {"status": "ok"}
 
 
 @app.get("/", response_class=HTMLResponse, tags=["ui"])

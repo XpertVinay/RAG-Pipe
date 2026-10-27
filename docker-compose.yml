@@ -64,6 +64,12 @@ services:
       - ./app:/app/app
     networks:
       - rag_network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://127.0.0.1:8000/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # High-Concurrency Reverse Proxy & Load Balancer with SSE Streaming Support
   rag-proxy:
@@ -76,7 +82,8 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - rag-agent
+      rag-agent:
+        condition: service_healthy
     networks:
       - rag_network
     extra_hosts:
@@ -86,6 +93,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 15s
 
   # Dedicated Scalable Document Processing Worker (scale with --scale rag-worker=N or WORKER_CONCURRENCY=N)
   rag-worker:
