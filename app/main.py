@@ -3,6 +3,8 @@
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
+import time
+from typing import Optional
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -191,28 +193,60 @@ async def root_liveness():
     return {"status": "ok"}
 
 
+# In-memory cached HTML responses for static landing and dashboard pages
+_CACHED_DASHBOARD_HTML: Optional[str] = None
+_DASHBOARD_CACHE_TIME: float = 0.0
+
+_CACHED_PRICING_HTML: Optional[str] = None
+_PRICING_CACHE_TIME: float = 0.0
+
+
 @app.get("/", response_class=HTMLResponse, tags=["ui"])
 async def render_dashboard(request: Request):
-    """Render the main server-side Jinja2 dashboard."""
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context={
-            "app_name": settings.APP_NAME,
-            "default_provider": settings.DEFAULT_CHAT_PROVIDER,
-            "default_model": settings.DEFAULT_CHAT_MODEL,
+    """Render the main server-side Jinja2 dashboard with in-memory response caching."""
+    global _CACHED_DASHBOARD_HTML, _DASHBOARD_CACHE_TIME
+    now = time.time()
+    if _CACHED_DASHBOARD_HTML is None or (now - _DASHBOARD_CACHE_TIME > 60.0):
+        resp = templates.TemplateResponse(
+            request=request,
+            name="index.html",
+            context={
+                "app_name": settings.APP_NAME,
+                "default_provider": settings.DEFAULT_CHAT_PROVIDER,
+                "default_model": settings.DEFAULT_CHAT_MODEL,
+            },
+        )
+        _CACHED_DASHBOARD_HTML = resp.body.decode("utf-8")
+        _DASHBOARD_CACHE_TIME = now
+
+    return HTMLResponse(
+        content=_CACHED_DASHBOARD_HTML,
+        headers={
+            "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
         },
     )
 
 
 @app.get("/pricing", response_class=HTMLResponse, tags=["ui"])
 async def render_pricing_page(request: Request):
-    """Render the dedicated Plan and Pricing page with checkout payment."""
-    return templates.TemplateResponse(
-        request=request,
-        name="pricing.html",
-        context={
-            "app_name": settings.APP_NAME,
+    """Render the dedicated Plan and Pricing page with in-memory response caching."""
+    global _CACHED_PRICING_HTML, _PRICING_CACHE_TIME
+    now = time.time()
+    if _CACHED_PRICING_HTML is None or (now - _PRICING_CACHE_TIME > 60.0):
+        resp = templates.TemplateResponse(
+            request=request,
+            name="pricing.html",
+            context={
+                "app_name": settings.APP_NAME,
+            },
+        )
+        _CACHED_PRICING_HTML = resp.body.decode("utf-8")
+        _PRICING_CACHE_TIME = now
+
+    return HTMLResponse(
+        content=_CACHED_PRICING_HTML,
+        headers={
+            "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
         },
     )
 

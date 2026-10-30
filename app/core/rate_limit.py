@@ -19,7 +19,12 @@ class RateLimiter:
         self._clients: Dict[str, List[float]] = defaultdict(list)
 
     def __call__(self, request: Request) -> None:
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = (
+            request.headers.get("cf-connecting-ip")
+            or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or request.headers.get("x-real-ip")
+            or (request.client.host if request.client else "unknown")
+        )
         now = time.time()
         window_start = now - self.window_seconds
 
