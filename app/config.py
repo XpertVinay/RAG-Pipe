@@ -73,9 +73,12 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "rag_agent"
-    DB_POOL_SIZE: int = 20
-    DB_MAX_OVERFLOW: int = 10
-    DB_POOL_RECYCLE: int = 3600
+    DB_POOL_SIZE: int = 50
+    DB_MAX_OVERFLOW: int = 50
+    DB_POOL_TIMEOUT: float = 20.0
+    DB_POOL_RECYCLE: int = 1800
+    AUTH_USER_CACHE_TTL_SECONDS: int = 60
+    DOC_META_CACHE_TTL_SECONDS: int = 120
 
     # Default LLM & Embedding Providers
     DEFAULT_CHAT_PROVIDER: Literal["ollama", "openai", "anthropic", "openai-compatible", "gemini", "google"] = "ollama"

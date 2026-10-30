@@ -29,9 +29,10 @@ else:
         settings.DATABASE_URL,
         echo=False,
         future=True,
-        pool_size=getattr(settings, "DB_POOL_SIZE", 20),
-        max_overflow=getattr(settings, "DB_MAX_OVERFLOW", 10),
-        pool_recycle=getattr(settings, "DB_POOL_RECYCLE", 3600),
+        pool_size=getattr(settings, "DB_POOL_SIZE", 50),
+        max_overflow=getattr(settings, "DB_MAX_OVERFLOW", 50),
+        pool_timeout=getattr(settings, "DB_POOL_TIMEOUT", 20.0),
+        pool_recycle=getattr(settings, "DB_POOL_RECYCLE", 1800),
         pool_pre_ping=True,
     )
 
@@ -78,12 +79,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
-            await session.commit()
+            if session.is_active:
+                if session.dirty or session.new or session.deleted:
+                    await session.commit()
         except Exception:
-            await session.rollback()
+            if session.is_active:
+                await session.rollback()
             raise
         finally:
-            await session.close()
+            if session.is_active:
+                await session.close()
 
 
 async def init_db() -> None:

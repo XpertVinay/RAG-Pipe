@@ -52,6 +52,10 @@ services:
       - NUM_CHUNKING_WORKERS=${NUM_CHUNKING_WORKERS:-1}
       - CHUNK_PARTITION_SIZE_MB=${CHUNK_PARTITION_SIZE_MB:-3.0}
       - CHUNK_PARTITION_THRESHOLD_MB=${CHUNK_PARTITION_THRESHOLD_MB:-1.0}
+      - WORKERS=${WORKERS:-4}
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-50}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-50}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-20.0}
     depends_on:
       postgres:
         condition: service_healthy
@@ -138,6 +142,10 @@ services:
       - NUM_CHUNKING_WORKERS=${NUM_CHUNKING_WORKERS:-1}
       - CHUNK_PARTITION_SIZE_MB=${CHUNK_PARTITION_SIZE_MB:-3.0}
       - CHUNK_PARTITION_THRESHOLD_MB=${CHUNK_PARTITION_THRESHOLD_MB:-1.0}
+      - WORKERS=${WORKERS:-4}
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-50}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-50}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-20.0}
     healthcheck:
       test: [ "CMD-SHELL", "python -c 'import sys; sys.exit(0)'" ]
       interval: 30s
@@ -162,6 +170,7 @@ services:
     image: pgvector/pgvector:pg16
     container_name: rag-postgres
     restart: unless-stopped
+    command: postgres -c max_connections=300 -c shared_buffers=256MB -c work_mem=16MB -c checkpoint_completion_target=0.9
     # Secured within internal bridge network; inaccessible to public/host
     expose:
       - "5432"

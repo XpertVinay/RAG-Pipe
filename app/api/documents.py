@@ -2,12 +2,13 @@
 
 import asyncio
 import json
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -165,33 +166,123 @@ async def get_document_details(document_id: str, db: AsyncSession = Depends(get_
     return DocumentDetailResponse.model_validate(doc)
 
 
+# High-concurrency in-memory document metadata cache with bounded size and TTL
+_DOCUMENT_META_CACHE: Dict[str, Tuple[dict, float]] = {}
+_DOC_CACHE_MAX_SIZE = 5000
+
+
+def get_cached_doc_meta(doc_id: str) -> Optional[dict]:
+    """Retrieve document metadata from in-memory cache if still valid."""
+    entry = _DOCUMENT_META_CACHE.get(doc_id)
+    if entry:
+        meta, expires_at = entry
+        if time.time() < expires_at:
+            return meta
+        _DOCUMENT_META_CACHE.pop(doc_id, None)
+    return None
+
+
+def set_cached_doc_meta(doc: Document) -> None:
+    """Store document metadata in in-memory cache."""
+    ttl = float(getattr(settings, "DOC_META_CACHE_TTL_SECONDS", 120))
+    if len(_DOCUMENT_META_CACHE) > _DOC_CACHE_MAX_SIZE:
+        now = time.time()
+        expired = [k for k, (_, exp) in _DOCUMENT_META_CACHE.items() if now >= exp]
+        for k in expired:
+            _DOCUMENT_META_CACHE.pop(k, None)
+        if len(_DOCUMENT_META_CACHE) > _DOC_CACHE_MAX_SIZE:
+            _DOCUMENT_META_CACHE.clear()
+    _DOCUMENT_META_CACHE[doc.id] = (
+        {
+            "id": doc.id,
+            "filename": doc.filename,
+            "file_type": doc.file_type,
+            "storage_path": doc.storage_path,
+            "user_id": doc.user_id,
+            "is_shared": getattr(doc, "is_shared", False),
+        },
+        time.time() + ttl,
+    )
+
+
+def invalidate_doc_meta_cache(doc_id: str) -> None:
+    """Invalidate cached document metadata on modification or deletion."""
+    _DOCUMENT_META_CACHE.pop(doc_id, None)
+
+
 @router.get("/{document_id}/file")
 async def get_document_file(
     document_id: str,
+    request: Request,
     token: Optional[str] = Query(None),
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Serve the raw document file inline with proper content-type for previewing / landing on pages."""
-    res = await db.execute(select(Document).where(Document.id == document_id))
-    doc = res.scalar_one_or_none()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found.")
+    """Serve the raw document file inline with proper content-type, ETag, and high-concurrency connection release."""
+    meta = get_cached_doc_meta(document_id)
+    if meta is None:
+        res = await db.execute(select(Document).where(Document.id == document_id))
+        doc = res.scalar_one_or_none()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        set_cached_doc_meta(doc)
+        storage_path = doc.storage_path
+        filename = doc.filename
+        file_type = doc.file_type
+        await verify_document_access(doc, current_user, db, "view this document")
+    else:
+        storage_path = meta["storage_path"]
+        filename = meta["filename"]
+        file_type = meta["file_type"]
+        user_id = meta["user_id"]
+        is_shared = meta["is_shared"]
 
-    await verify_document_access(doc, current_user, db, "view this document")
+        # Fast in-memory permission check
+        has_access = False
+        if is_shared:
+            has_access = True
+        elif current_user and (user_id == current_user.id or getattr(current_user, "role", "user") == "admin"):
+            has_access = True
 
-    file_path = Path(doc.storage_path)
+        if not has_access:
+            # Fall back to DB check for room-level membership
+            res = await db.execute(select(Document).where(Document.id == document_id))
+            doc = res.scalar_one_or_none()
+            if not doc:
+                raise HTTPException(status_code=404, detail="Document not found.")
+            await verify_document_access(doc, current_user, db, "view this document")
+
+    # CRITICAL: Release database session immediately so the connection returns
+    # to the pool BEFORE file streaming begins!
+    if db.is_active:
+        await db.close()
+
+    file_path = Path(storage_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Document file not found on disk.")
 
-    media_type = get_document_mime_type(doc.file_type)
+    # High-performance conditional request handling (HTTP 304 Not Modified)
+    stat = file_path.stat()
+    etag = f'"{stat.st_mtime_ns}-{stat.st_size}"'
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and if_none_match.strip('"') == etag.strip('"'):
+        return Response(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            headers={
+                "ETag": etag,
+                "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+            },
+        )
+
+    media_type = get_document_mime_type(file_type)
 
     return FileResponse(
         path=str(file_path),
         media_type=media_type,
         headers={
-            "Content-Disposition": f'inline; filename="{doc.filename}"',
-            "Cache-Control": "public, max-age=3600",
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+            "ETag": etag,
         },
     )
 
@@ -290,6 +381,8 @@ async def delete_document(
     success = await ingestion_pipeline.delete_document(db, document_id, purge_vectors=purge_vectors)
     if not success:
         raise HTTPException(status_code=404, detail="Document not found.")
+
+    invalidate_doc_meta_cache(document_id)
 
     msg = (
         "Document and associated vectors completely deleted."
@@ -601,5 +694,6 @@ async def toggle_document_share(
     doc.is_shared = share_req.is_shared
     await db.commit()
     await db.refresh(doc)
+    invalidate_doc_meta_cache(document_id)
     return DocumentResponse.model_validate(doc)
 

@@ -1,6 +1,7 @@
 """Core authentication service: JWT tokens (access, id, refresh) and password hashing."""
 
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 import bcrypt
@@ -169,6 +170,45 @@ def extract_token_from_request(
     return None
 
 
+# High-concurrency in-memory user cache with bounded size and TTL
+_USER_CACHE: Dict[str, Tuple[User, float]] = {}
+_USER_CACHE_MAX_SIZE = 2000
+
+
+def get_cached_user(user_id: str) -> Optional[User]:
+    """Retrieve user from in-memory cache if still valid."""
+    entry = _USER_CACHE.get(user_id)
+    if entry:
+        user, expires_at = entry
+        if time.time() < expires_at and getattr(user, "is_active", False):
+            return user
+        _USER_CACHE.pop(user_id, None)
+    return None
+
+
+def set_cached_user(user: User, db: Optional[AsyncSession] = None) -> None:
+    """Store user in in-memory cache, expunging from session to detach safely."""
+    ttl = float(getattr(settings, "AUTH_USER_CACHE_TTL_SECONDS", 60))
+    if len(_USER_CACHE) > _USER_CACHE_MAX_SIZE:
+        now = time.time()
+        expired = [k for k, (_, exp) in _USER_CACHE.items() if now >= exp]
+        for k in expired:
+            _USER_CACHE.pop(k, None)
+        if len(_USER_CACHE) > _USER_CACHE_MAX_SIZE:
+            _USER_CACHE.clear()
+    if db:
+        try:
+            db.expunge(user)
+        except Exception:
+            pass
+    _USER_CACHE[user.id] = (user, time.time() + ttl)
+
+
+def invalidate_user_cache(user_id: str) -> None:
+    """Invalidate cached user instance on profile / permission changes."""
+    _USER_CACHE.pop(user_id, None)
+
+
 async def get_current_user(
     request: Request,
     auth: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
@@ -188,6 +228,10 @@ async def get_current_user(
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject.")
 
+    cached = get_cached_user(user_id)
+    if cached:
+        return cached
+
     res = await db.execute(select(User).where(User.id == user_id))
     user = res.scalar_one_or_none()
     if not user:
@@ -195,6 +239,7 @@ async def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is deactivated.")
 
+    set_cached_user(user, db)
     return user
 
 
@@ -212,9 +257,15 @@ async def get_optional_user(
         user_id = payload.get("sub")
         if not user_id:
             return None
+        cached = get_cached_user(user_id)
+        if cached:
+            return cached
         res = await db.execute(select(User).where(User.id == user_id))
         user = res.scalar_one_or_none()
-        return user if user and user.is_active else None
+        if user and user.is_active:
+            set_cached_user(user, db)
+            return user
+        return None
     except Exception:
         return None
 

@@ -1,6 +1,7 @@
 """FastAPI application entrypoint, lifespan, middleware, and route mounting."""
 
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -147,6 +148,7 @@ templates_dir = (
     if settings.should_use_optimized_assets and (BASE_DIR / "templates_dist").exists()
     else str(BASE_DIR / "templates")
 )
+@lru_cache(maxsize=1)
 def get_asset_manifest() -> dict:
     """Load asset optimization manifest with fallback defaults."""
     manifest_file = BASE_DIR / "static" / "dist" / "manifest.json"
