@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.documents import Document as LCDocument
 
 from app.agent.prompts import (
+    GREETING_SYSTEM_PROMPT,
     GRADE_DOCUMENTS_SYSTEM_PROMPT,
     GROUNDED_RAG_SYSTEM_PROMPT,
     GROUNDED_RAG_USER_PROMPT,
@@ -28,9 +29,11 @@ from app.services.guardrail_service import guardrail_service
 
 
 GREETING_PATTERNS = [
-    r"^(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|greetings)(\s+(there|assistant|bot|everyone|all))?[\s!.]*$",
-    r"^who\s+are\s+you[\s?.]*$",
-    r"^what\s+can\s+you\s+do[\s?.]*$",
+    r"^(hi|hello|hey|howdy|greetings|good\s+(morning|afternoon|evening|day))(\s+(there|assistant|bot|everyone|all))?([,\s!.]+)?$",
+    r"^(hi|hello|hey|good\s+(morning|afternoon|evening|day))[,!\s]+(how\s+(are\s+you(\s+doing)?|are\s+things|is\s+it\s+going)|how\'s\s+it\s+going|hope\s+you.*|how\s+do\s+you\s+do|what\'s\s+up)[\s!?.]*$",
+    r"^(how\s+are\s+you(\s+doing)?|how\'s\s+it\s+going|how\s+are\s+things|how\s+do\s+you\s+do|what\'s\s+up|wassup)[\s!?.]*$",
+    r"^(who\s+are\s+you|what\s+can\s+you\s+do|tell\s+me\s+about\s+yourself|what\s+is\s+your\s+name|help|can\s+you\s+help\s+me)[\s?.]*$",
+    r"^(nice\s+to\s+meet\s+you|pleased\s+to\s+meet\s+you)[\s!.]*$",
 ]
 
 VISUALIZATION_KEYWORDS = [
@@ -225,9 +228,12 @@ async def retrieve_documents(state: AgentState) -> Dict[str, Any]:
 async def grade_documents(state: AgentState) -> Dict[str, Any]:
     """Evaluate whether retrieved document chunks are relevant to the query."""
     documents = state.get("documents", [])
+    citations = state.get("citations", [])
     if not documents:
         return {
             "is_relevant": False,
+            "documents": [],
+            "citations": [],
             "status_update": "No matching document chunks found in knowledge base.",
         }
 
@@ -241,8 +247,10 @@ async def grade_documents(state: AgentState) -> Dict[str, Any]:
     )
 
     relevant_docs: List[LCDocument] = []
-    # Fast evaluation on top chunks
-    for doc in documents[:2]:
+    relevant_indices: set = set()
+    # Fast evaluation on top chunks (up to 4)
+    chunks_to_grade = documents[: min(len(documents), 4)]
+    for idx, doc in enumerate(chunks_to_grade):
         try:
             prompt = [
                 SystemMessage(content=GRADE_DOCUMENTS_SYSTEM_PROMPT),
@@ -254,14 +262,22 @@ async def grade_documents(state: AgentState) -> Dict[str, Any]:
             content = resp.content.strip().lower() if hasattr(resp, "content") else str(resp).lower()
             if "yes" in content:
                 relevant_docs.append(doc)
+                relevant_indices.add(idx)
         except Exception as e:
             logger.warning(f"Grading chunk skipped due to error: {e}")
-            # On grading failure, keep document optimistically
+            # On grading failure/timeout, keep document optimistically
             relevant_docs.append(doc)
+            relevant_indices.add(idx)
 
-    is_relevant = len(relevant_docs) > 0 or len(documents) > 0
+    is_relevant = len(relevant_docs) > 0
+    filtered_citations = [
+        c for idx, c in enumerate(citations) if idx in relevant_indices
+    ] if is_relevant else []
+
     return {
         "is_relevant": is_relevant,
+        "documents": relevant_docs if is_relevant else [],
+        "citations": filtered_citations,
         "status_update": "Evaluated document relevance." if is_relevant else "Documents not sufficiently relevant.",
     }
 
@@ -324,14 +340,27 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
     if intent == "greeting":
         try:
             resp = await model.ainvoke([
-                SystemMessage(content=GROUNDED_RAG_SYSTEM_PROMPT),
+                SystemMessage(content=GREETING_SYSTEM_PROMPT),
                 HumanMessage(content=query),
             ])
             answer = resp.content if hasattr(resp, "content") else str(resp)
-            return {"answer": answer, "status_update": "Completed response."}
+            return {
+                "answer": answer,
+                "citations": [],
+                "documents": [],
+                "generation_grounded": True,
+                "needs_visualization": False,
+                "visualization": None,
+                "status_update": "Completed response.",
+            }
         except Exception as e:
             return {
-                "answer": "Hello! I am your RAG document assistant. Upload documents and ask any questions about them.",
+                "answer": "Hello! I am your AI assistant. How can I help you today?",
+                "citations": [],
+                "documents": [],
+                "generation_grounded": True,
+                "needs_visualization": False,
+                "visualization": None,
                 "status_update": "Completed greeting.",
             }
 

@@ -10,6 +10,7 @@ from app.services.guardrail_service import guardrail_service
 from app.agent.graph import rag_agent_app
 from app.agent.nodes import detect_visualization_need
 from app.agent.prompts import (
+    GREETING_SYSTEM_PROMPT,
     GROUNDED_RAG_SYSTEM_PROMPT,
     GROUNDED_RAG_USER_PROMPT,
     UNGROUNDED_SENSIBLE_SYSTEM_PROMPT,
@@ -83,15 +84,18 @@ async def stream_rag_agent(
         # Run workflow up to retrieval & evaluation
         final_state = await rag_agent_app.ainvoke(initial_state)
 
+        intent = final_state.get("intent", "qa")
+
         citations_list = [
             c.model_dump() if isinstance(c, Citation) else c
             for c in final_state.get("citations", [])
         ]
 
+        if intent in ("greeting", "guardrail_blocked"):
+            citations_list = []
+
         if citations_list:
             yield format_sse("citations", {"citations": citations_list})
-
-        intent = final_state.get("intent", "qa")
 
         if intent == "guardrail_blocked":
             refusal_ans = final_state.get("answer", "Safety policy refusal: Prohibited inquiry blocked.")
@@ -242,7 +246,7 @@ async def stream_rag_agent(
                 yield format_sse("token", {"token": token})
 
         elif intent == "greeting":
-            greeting_messages = [SystemMessage(content=GROUNDED_RAG_SYSTEM_PROMPT)]
+            greeting_messages = [SystemMessage(content=GREETING_SYSTEM_PROMPT)]
             if memory_context:
                 greeting_messages.append(SystemMessage(content=memory_context))
             greeting_messages.append(HumanMessage(content=query))

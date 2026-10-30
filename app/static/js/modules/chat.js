@@ -442,8 +442,9 @@
           <span class="status-pulse"></span>
           <span class="status-text">Analyzing query and scoping room references...</span>
         </div>
-        <div class="message-bubble">
-          <span class="bubble-text"></span><span class="streaming-cursor"></span>
+        <div class="message-bubble streaming-bubble">
+          <div class="bubble-markdown streaming-markdown"></div>
+          <span class="streaming-cursor"></span>
         </div>
       </div>
     `;
@@ -452,7 +453,8 @@
 
     const avatarEl = assistantRow.querySelector('.message-avatar');
     const statusEl = assistantRow.querySelector('.status-text');
-    const bubbleText = assistantRow.querySelector('.bubble-text');
+    const bubbleMarkdown = assistantRow.querySelector('.bubble-markdown');
+    const streamingCursor = assistantRow.querySelector('.streaming-cursor');
 
     let accumulatedContent = '';
     let currentCitations = [];
@@ -491,7 +493,14 @@
       },
       onToken: (tok) => {
         accumulatedContent += tok;
-        bubbleText.textContent = accumulatedContent;
+        if (RAG.markdown?.renderStreaming) {
+          RAG.markdown.renderStreaming(bubbleMarkdown, accumulatedContent, {
+            isStreaming: true,
+            citations: currentCitations,
+          });
+        } else {
+          bubbleMarkdown.textContent = accumulatedContent;
+        }
         RAG.utils.scheduleScrollToBottom();
       },
       onCitations: (citations) => {
@@ -510,14 +519,25 @@
         const wasScrolledUp = RAG.utils?.getIsUserScrolledUp?.() || false;
         const prevScrollTop = messagesContainer ? messagesContainer.scrollTop : 0;
 
-        assistantRow.remove();
-        if (RAG.markdown?.renderAssistantMessage) {
-          RAG.markdown.renderAssistantMessage({
+        if (streamingCursor) streamingCursor.remove();
+
+        if (RAG.markdown?.finalizeStreaming) {
+          RAG.markdown.finalizeStreaming(assistantRow, {
             content: accumulatedContent || data?.answer || '',
             citations: finalCitations,
             meta: finalMeta,
             timestamp: new Date().toISOString(),
           });
+        } else {
+          assistantRow.remove();
+          if (RAG.markdown?.renderAssistantMessage) {
+            RAG.markdown.renderAssistantMessage({
+              content: accumulatedContent || data?.answer || '',
+              citations: finalCitations,
+              meta: finalMeta,
+              timestamp: new Date().toISOString(),
+            });
+          }
         }
 
         // If the user was reading initial/earlier content, preserve their exact scroll position
@@ -576,9 +596,17 @@
   function copyCode(btn, codeId) {
     const container = document.getElementById(codeId);
     if (!container) return;
-    const codeEl = container.querySelector('pre code');
+    const codeEl = container.querySelector('.browser-code-viewport code') || container.querySelector('pre code') || container.querySelector('code');
     if (!codeEl) return;
-    const codeText = codeEl.innerText || codeEl.textContent;
+    let codeText = codeEl.innerText || codeEl.textContent || '';
+
+    // If it's a terminal block, strip the leading '$ ' prompt on commands for clean execution
+    if (container.classList.contains('terminal-block-container')) {
+      codeText = codeText
+        .split('\n')
+        .map((line) => line.replace(/^\$\s+/, ''))
+        .join('\n');
+    }
 
     navigator.clipboard.writeText(codeText).then(() => {
       const label = btn.querySelector('.copy-label');

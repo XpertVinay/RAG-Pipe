@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: rag-agent-app
+    # container_name: rag-agent-app (omitted to support multi-instance load balancing via docker compose up --scale rag-agent=N)
     restart: unless-stopped
     # Do not expose to public/host; accessible internally by rag-proxy on rag_network
     expose:
@@ -79,6 +79,9 @@ services:
     ports:
       # Exposes 8181 so Apache (or external <server-ip>:8181) can reach the Nginx reverse proxy
       - "${PROXY_PORT:-8181}:8181"
+    environment:
+      - ENABLE_LB_DEBUG_HEADERS=${ENABLE_LB_DEBUG_HEADERS:-false}
+      - PROXY_PORT=${PROXY_PORT:-8181}
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:

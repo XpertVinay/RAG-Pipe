@@ -26,6 +26,16 @@ async def test_validate_and_classify_query():
     res_greet = await validate_and_classify_query(state_greet)
     assert res_greet["intent"] == "greeting"
 
+    # Test conversational greeting with pleasantries
+    res_greet2 = await validate_and_classify_query({"query": "Hi, How are you?"})
+    assert res_greet2["intent"] == "greeting"
+
+    res_greet3 = await validate_and_classify_query({"query": "Hello, how are you doing?"})
+    assert res_greet3["intent"] == "greeting"
+
+    res_greet4 = await validate_and_classify_query({"query": "Good morning! How are you?"})
+    assert res_greet4["intent"] == "greeting"
+
     # Test blank query
     state_blank: AgentState = {"query": "   "}
     res_blank = await validate_and_classify_query(state_blank)
@@ -96,3 +106,34 @@ async def test_end_to_end_graph_execution():
     final_state = await rag_agent_app.ainvoke(initial_state)
     assert "answer" in final_state
     assert len(final_state["answer"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_greeting_graph_skips_retrieval_and_has_no_citations():
+    """Verify conversational greeting routes to generate without retrieval or citations."""
+    initial_state: AgentState = {
+        "query": "Hi, How are you?",
+        "original_query": "Hi, How are you?",
+        "chat_history": [],
+        "document_ids": None,
+        "provider": "ollama",
+        "model": "llama3.2",
+        "temperature": 0.2,
+        "top_k": 4,
+        "intent": "qa",
+        "documents": [],
+        "citations": [],
+        "retrieval_retry_count": 0,
+        "max_retries": 2,
+        "is_relevant": False,
+        "generation_grounded": True,
+        "answer": "",
+        "error": None,
+        "status_update": "Start",
+    }
+
+    final_state = await rag_agent_app.ainvoke(initial_state)
+    assert final_state["intent"] == "greeting"
+    assert len(final_state.get("citations", [])) == 0
+    assert len(final_state["answer"]) > 0
+

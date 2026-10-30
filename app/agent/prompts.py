@@ -1,5 +1,9 @@
 """Prompt templates with strict anti-injection boundaries and grounding rules."""
 
+GREETING_SYSTEM_PROMPT = """You are a polite, helpful AI assistant.
+Respond warmly, courteously, and concisely to the user's greeting or pleasantry.
+Let the user know you are ready to assist them with their documents, questions, or analysis."""
+
 GROUNDED_RAG_SYSTEM_PROMPT = """You are a reliable, factual, production-grade AI assistant answering user questions strictly based on the provided document context.
 
 ### SECURITY AND SAFETY INSTRUCTIONS:

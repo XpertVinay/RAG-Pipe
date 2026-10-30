@@ -133,6 +133,8 @@ class Settings(BaseSettings):
     LOAD_BALANCER_ENABLED: bool = False
     LOAD_BALANCER_PORT: int = 80
     PROXY_PORT: int = 8181
+    ENABLE_LB_DEBUG_HEADERS: bool = False
+    LB_ALGORITHM: str = "round_robin"
 
     # RAG Retrieval & LangGraph Workflow
     RETRIEVAL_TOP_K: int = 4
