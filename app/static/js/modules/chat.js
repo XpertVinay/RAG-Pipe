@@ -477,9 +477,16 @@
       },
       onMeta: (meta) => {
         receivedMeta = meta;
+        if (meta?.conversation_id) {
+          RAG.state.currentConversationId = meta.conversation_id;
+          localStorage.setItem('rag_active_conv_id', meta.conversation_id);
+        }
         if (meta.response_type === 'grounded') {
           avatarEl.textContent = '🛡️';
           avatarEl.className = 'message-avatar grounded';
+        } else if (meta.response_type === 'ungrounded_sensible') {
+          avatarEl.textContent = '💡';
+          avatarEl.className = 'message-avatar';
         } else if (meta.response_type === 'insufficient_info') {
           avatarEl.textContent = '⚠️';
           avatarEl.className = 'message-avatar insufficient_info';
@@ -515,6 +522,12 @@
 
         const finalCitations = (data && data.citations) || currentCitations;
         const finalMeta = Object.assign({}, receivedMeta, data || {});
+
+        const finalConvId = data?.conversation_id || receivedMeta?.conversation_id;
+        if (finalConvId) {
+          RAG.state.currentConversationId = finalConvId;
+          localStorage.setItem('rag_active_conv_id', finalConvId);
+        }
 
         const wasScrolledUp = RAG.utils?.getIsUserScrolledUp?.() || false;
         const prevScrollTop = messagesContainer ? messagesContainer.scrollTop : 0;

@@ -3,10 +3,11 @@
 import asyncio
 import re
 from typing import Any, Dict, List, Optional
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.documents import Document as LCDocument
 
 from app.agent.prompts import (
+    COMMON_STOPWORDS,
     GREETING_SYSTEM_PROMPT,
     GRADE_DOCUMENTS_SYSTEM_PROMPT,
     GROUNDED_RAG_SYSTEM_PROMPT,
@@ -16,6 +17,12 @@ from app.agent.prompts import (
     UNGROUNDED_SENSIBLE_SYSTEM_PROMPT,
     VISUALIZATION_CODE_SYSTEM_PROMPT,
     VISUALIZATION_INTENT_SYSTEM_PROMPT,
+    MeaningProfile,
+    analyze_query_meaning,
+    build_meaning_aligned_grounded_prompt,
+    build_meaning_aligned_ungrounded_prompt,
+    is_anaphoric_query,
+    is_topic_shift,
 )
 from app.agent.sandbox import execute_code_safely, extract_python_code
 from app.agent.state import AgentState
@@ -84,6 +91,36 @@ def detect_visualization_need(query: str) -> bool:
     return any(re.search(rf"\b{re.escape(kw)}\b", q_lower) for kw in VISUALIZATION_KEYWORDS)
 
 
+def format_chat_history_messages(
+    chat_history: Optional[List[Dict[str, str]]],
+    current_query: str,
+    max_turns: int = 8,
+) -> List[Any]:
+    """Format prior dialogue turns into alternating HumanMessage and AIMessage objects, avoiding duplication."""
+    if not chat_history:
+        return []
+    history_items = list(chat_history)
+    # If the history contains the current query at the very end, trim it off so it's not duplicated
+    if (
+        history_items
+        and history_items[-1].get("role") == "user"
+        and history_items[-1].get("content", "").strip() == current_query.strip()
+    ):
+        history_items = history_items[:-1]
+
+    msgs: List[Any] = []
+    for h in history_items[-max_turns:]:
+        role = h.get("role")
+        content = h.get("content", "")
+        if not content:
+            continue
+        if role == "user":
+            msgs.append(HumanMessage(content=content))
+        elif role == "assistant":
+            msgs.append(AIMessage(content=content))
+    return msgs
+
+
 async def validate_and_classify_query(state: AgentState) -> Dict[str, Any]:
     """Validate user query and identify greeting vs app creation vs document retrieval intent."""
     query = state.get("query", "").strip()
@@ -133,27 +170,39 @@ async def validate_and_classify_query(state: AgentState) -> Dict[str, Any]:
 
     needs_vis = False if (is_greeting or is_app_create) else detect_visualization_need(query)
 
+    # Perform semantic meaning and intent analysis
+    meaning_profile = analyze_query_meaning(query)
+
     return {
         "original_query": query,
         "query": query,
         "intent": intent,
+        "semantic_intent": meaning_profile.intent if intent == "qa" else intent,
+        "semantic_intent_label": meaning_profile.intent_label if intent == "qa" else ("Greeting" if intent == "greeting" else "App Creation"),
+        "meaning_query": meaning_profile.meaning_query,
+        "meaning_profile": meaning_profile.to_dict(),
         "is_app_creation": is_app_create,
         "suggested_app_name": suggested_name,
         "needs_visualization": needs_vis,
         "status_update": (
             "Application creation request recognized."
             if is_app_create
-            else ("Question validated." if intent == "qa" else "Processing greeting...")
+            else (
+                f"Analyzed query meaning: '{meaning_profile.intent_label}'."
+                if intent == "qa"
+                else "Processing greeting..."
+            )
         ),
     }
 
 
 async def load_memory_context(state: AgentState) -> Dict[str, Any]:
-    """Retrieve relevant short-term and long-term memory context (Global and User-Specific)."""
+    """Retrieve relevant short-term and long-term memory context (Global, User-Specific, and Active Thread)."""
     query = state.get("query", "")
     user_id = state.get("user_id")
     room_id = state.get("room_id")
     document_ids = state.get("document_ids")
+    conversation_id = state.get("conversation_id")
 
     try:
         mem_context, consulted = await memory_manager.retrieve_context(
@@ -161,6 +210,7 @@ async def load_memory_context(state: AgentState) -> Dict[str, Any]:
             user_id=user_id,
             room_id=room_id,
             document_ids=document_ids,
+            conversation_id=conversation_id,
             top_k=4,
             max_tokens_budget=250,
         )
@@ -178,20 +228,45 @@ async def load_memory_context(state: AgentState) -> Dict[str, Any]:
 
 
 async def retrieve_documents(state: AgentState) -> Dict[str, Any]:
-    """Retrieve relevant document chunks from the vector store."""
+    """Retrieve relevant document chunks from the vector store using meaning-based similarity search."""
     query = state["query"]
+    meaning_query = state.get("meaning_query") or query
     top_k = state.get("top_k", 4)
     doc_filter = state.get("document_ids")
+    intent_label = state.get("semantic_intent_label") or "Semantic Search"
 
-    logger.info(f"LangGraph node: Retrieving for query='{query[:40]}' with top_k={top_k}")
+    logger.info(
+        f"LangGraph node: Meaning-based retrieval for query='{query[:40]}' (meaning='{meaning_query[:40]}') with top_k={top_k}"
+    )
 
     try:
+        # Perform similarity search using the extracted meaning query
         results = vector_store.similarity_search_with_score(
-            query=query,
+            query=meaning_query,
             k=top_k,
             similarity_threshold=0.25,
             document_ids=doc_filter,
         )
+
+        # If meaning query differs from raw query and results are sparse, also search with raw query and merge
+        if len(results) < top_k and meaning_query.strip().lower() != query.strip().lower():
+            raw_results = vector_store.similarity_search_with_score(
+                query=query,
+                k=top_k,
+                similarity_threshold=0.25,
+                document_ids=doc_filter,
+            )
+            seen_chunk_ids = {
+                (doc.metadata or {}).get("chunk_id", str(id(doc))): score
+                for doc, score in results
+            }
+            for raw_doc, raw_score in raw_results:
+                cid = (raw_doc.metadata or {}).get("chunk_id", str(id(raw_doc)))
+                if cid not in seen_chunk_ids:
+                    results.append((raw_doc, raw_score))
+                    seen_chunk_ids[cid] = raw_score
+            results.sort(key=lambda x: x[1], reverse=True)
+            results = results[:top_k]
 
         documents: List[LCDocument] = []
         citations: List[Citation] = []
@@ -210,10 +285,17 @@ async def retrieve_documents(state: AgentState) -> Dict[str, Any]:
                 )
             )
 
+        status_msg = (
+            f"Retrieved {len(documents)} document chunk(s) via meaning-based similarity search ({intent_label})."
+            if documents
+            else "No matching document chunks found above similarity threshold."
+        )
+
         return {
             "documents": documents,
             "citations": citations,
-            "status_update": f"Retrieved {len(documents)} relevant document chunks.",
+            "meaning_query": meaning_query,
+            "status_update": status_msg,
         }
     except Exception as e:
         logger.error(f"Error during retrieval node: {e}", exc_info=True)
@@ -237,8 +319,17 @@ async def grade_documents(state: AgentState) -> Dict[str, Any]:
             "status_update": "No matching document chunks found in knowledge base.",
         }
 
-    # If documents exist, check relevance
-    query = state["query"]
+    # Evaluate relevance against the user's ORIGINAL query, not a potentially drifted rewritten query
+    original_query = state.get("original_query") or state.get("query", "")
+    query = original_query
+
+    # Extract salient content words from original query
+    q_content_tokens = [
+        t.lower()
+        for t in re.findall(r"\w+", query)
+        if len(t) > 2 and t.lower() not in COMMON_STOPWORDS
+    ]
+
     model = ModelFactory.get_chat_model(
         provider_name=state.get("provider"),
         model_name=state.get("model"),
@@ -251,6 +342,18 @@ async def grade_documents(state: AgentState) -> Dict[str, Any]:
     # Fast evaluation on top chunks (up to 4)
     chunks_to_grade = documents[: min(len(documents), 4)]
     for idx, doc in enumerate(chunks_to_grade):
+        doc_text = doc.page_content[:600].lower()
+        has_token_overlap = (
+            any(t in doc_text for t in q_content_tokens)
+            if q_content_tokens
+            else True
+        )
+
+        # If substantive query terms share zero overlap with chunk, reject chunk
+        if q_content_tokens and len(q_content_tokens) >= 2 and not has_token_overlap:
+            logger.info(f"Grading chunk {idx} rejected: 0 token overlap with query '{query[:40]}'")
+            continue
+
         try:
             prompt = [
                 SystemMessage(content=GRADE_DOCUMENTS_SYSTEM_PROMPT),
@@ -265,9 +368,10 @@ async def grade_documents(state: AgentState) -> Dict[str, Any]:
                 relevant_indices.add(idx)
         except Exception as e:
             logger.warning(f"Grading chunk skipped due to error: {e}")
-            # On grading failure/timeout, keep document optimistically
-            relevant_docs.append(doc)
-            relevant_indices.add(idx)
+            # On grading failure/timeout, only keep document if it has token overlap
+            if has_token_overlap:
+                relevant_docs.append(doc)
+                relevant_indices.add(idx)
 
     is_relevant = len(relevant_docs) > 0
     filtered_citations = [
@@ -283,11 +387,31 @@ async def grade_documents(state: AgentState) -> Dict[str, Any]:
 
 
 async def rewrite_query(state: AgentState) -> Dict[str, Any]:
-    """Reformulate user query to improve vector retrieval in subsequent pass."""
+    """Reformulate user query to improve vector retrieval in subsequent pass, leveraging conversation history."""
     retry_count = state.get("retrieval_retry_count", 0) + 1
     query = state.get("query", "")
+    original_query = state.get("original_query") or query
+    chat_history = state.get("chat_history", [])
 
     logger.info(f"LangGraph node: Rewriting query for retry #{retry_count}")
+
+    history_items = list(chat_history)
+    if (
+        history_items
+        and history_items[-1].get("role") == "user"
+        and history_items[-1].get("content", "").strip() == original_query.strip()
+    ):
+        history_items = history_items[:-1]
+
+    # Detect topic shift: If the query introduces a new topic with zero overlap with past turns,
+    # preserve original query to prevent context bleed (e.g. JavaScript topic bleeding into India's constitution)
+    if is_topic_shift(original_query, history_items):
+        logger.info(f"Topic shift detected for query: '{original_query[:50]}' -> preserving query without history blending")
+        return {
+            "query": original_query,
+            "retrieval_retry_count": retry_count,
+            "status_update": f"Refined search query for new topic (attempt {retry_count}).",
+        }
 
     try:
         model = ModelFactory.get_chat_model(
@@ -296,16 +420,34 @@ async def rewrite_query(state: AgentState) -> Dict[str, Any]:
             temperature=0.2,
             streaming=False,
         )
+
+        prompt_content = f"Original Query: {original_query}\nRewrite for semantic search:"
+        if history_items:
+            history_lines = []
+            for h in history_items[-6:]:
+                role_label = "User" if h.get("role") == "user" else "Assistant"
+                history_lines.append(f"{role_label}: {h.get('content', '')[:200]}")
+            history_text = "\n".join(history_lines)
+            prompt_content = (
+                f"Conversation History:\n{history_text}\n\n"
+                f"Original User Query: {original_query}\n\n"
+                f"Instructions:\n"
+                f"- If the query is an anaphoric follow-up (e.g. uses 'it', 'they', 'the second one'), resolve pronouns using the history.\n"
+                f"- If the query is already standalone, output it as is.\n"
+                f"- Do NOT add unrelated keywords from prior topics.\n\n"
+                f"Reformulated standalone search query:"
+            )
+
         prompt = [
             SystemMessage(content=QUERY_REWRITE_SYSTEM_PROMPT),
-            HumanMessage(content=f"Original Query: {query}\nRewrite for semantic search:"),
+            HumanMessage(content=prompt_content),
         ]
         resp = await model.ainvoke(prompt)
         rewritten = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
-        new_query = rewritten if rewritten else query
+        new_query = rewritten if rewritten else original_query
     except Exception as e:
         logger.warning(f"Query rewrite failed, falling back to original: {e}")
-        new_query = query
+        new_query = original_query
 
     return {
         "query": new_query,
@@ -338,11 +480,24 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
         }
 
     if intent == "greeting":
+        if state.get("stream_mode"):
+            return {
+                "answer": "",
+                "citations": [],
+                "documents": [],
+                "generation_grounded": True,
+                "needs_visualization": False,
+                "visualization": None,
+                "status_update": "Streaming greeting response.",
+            }
         try:
-            resp = await model.ainvoke([
-                SystemMessage(content=GREETING_SYSTEM_PROMPT),
-                HumanMessage(content=query),
-            ])
+            greeting_messages = [SystemMessage(content=GREETING_SYSTEM_PROMPT)]
+            if state.get("memory_context"):
+                greeting_messages.append(SystemMessage(content=state["memory_context"]))
+            greeting_messages.extend(format_chat_history_messages(state.get("chat_history", []), query))
+            greeting_messages.append(HumanMessage(content=query))
+
+            resp = await model.ainvoke(greeting_messages)
             answer = resp.content if hasattr(resp, "content") else str(resp)
             return {
                 "answer": answer,
@@ -366,6 +521,15 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
 
     if intent == "app_creation":
         app_name = state.get("suggested_app_name") or "Custom Application Project"
+        if state.get("stream_mode"):
+            return {
+                "answer": "",
+                "citations": [],
+                "generation_grounded": True,
+                "needs_visualization": False,
+                "visualization": None,
+                "status_update": f"Streaming application blueprint for {app_name}.",
+            }
         prompt_content = (
             f"You are a Principal Enterprise Solutions Architect and Technical Lead. The user wants to build and launch an application:\n\n"
             f"\"{query}\"\n\n"
@@ -394,10 +558,14 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
             f"💼 *A project request has been initialized on the Projects table. Fill out your contact details below to initiate a consultation call (via Google Meet, Teams, or Zoom) accompanied by the complete conversation transcripts.*"
         )
         try:
-            resp = await model.ainvoke([
+            app_messages = [
                 SystemMessage(content="You are an expert enterprise solution architect creating structured, actionable software blueprints for client project requests."),
-                HumanMessage(content=prompt_content),
-            ])
+            ]
+            if state.get("memory_context"):
+                app_messages.append(SystemMessage(content=state["memory_context"]))
+            app_messages.extend(format_chat_history_messages(state.get("chat_history", []), query))
+            app_messages.append(HumanMessage(content=prompt_content))
+            resp = await model.ainvoke(app_messages)
             ans = resp.content if hasattr(resp, "content") else str(resp)
             return {
                 "answer": ans,
@@ -441,26 +609,33 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
                 return {
                     "answer": "The provided documents do not contain sufficient information to answer this question. Please upload relevant files or verify the query.",
                     "citations": [],
-                    "generation_grounded": True,
+                    "generation_grounded": False,
                     "status_update": "Specific documentation required to answer this inquiry.",
                 }
 
-            # Generate sensible, high-quality output recursively from domain principles
-            logger.info(f"No grounded documents found; producing sensible ungrounded response for query: '{query[:60]}'")
+            # Generate sensible, high-quality output recursively from domain principles aligned with query meaning
+            meaning_profile = analyze_query_meaning(query)
+            if state.get("stream_mode"):
+                return {
+                    "answer": "",
+                    "citations": [],
+                    "generation_grounded": False,
+                    "needs_visualization": False,
+                    "visualization": None,
+                    "semantic_intent": meaning_profile.intent,
+                    "semantic_intent_label": meaning_profile.intent_label,
+                    "meaning_query": meaning_profile.meaning_query,
+                    "status_update": f"Streaming sensible output aligned with {meaning_profile.intent_label} (no workspace documents provided).",
+                }
+            logger.info(f"No grounded documents found; producing meaning-aligned ungrounded response ({meaning_profile.intent_label}) for query: '{query[:60]}'")
+            ungrounded_prompt = build_meaning_aligned_ungrounded_prompt(query, meaning_profile)
             ungrounded_messages = [
-                SystemMessage(content=UNGROUNDED_SENSIBLE_SYSTEM_PROMPT),
+                SystemMessage(content=ungrounded_prompt),
             ]
             if state.get("memory_context"):
                 ungrounded_messages.append(SystemMessage(content=state["memory_context"]))
 
-            for hist in state.get("chat_history", [])[-4:]:
-                role = hist.get("role")
-                content = hist.get("content", "")
-                if role == "user":
-                    ungrounded_messages.append(HumanMessage(content=content))
-                elif role == "assistant":
-                    ungrounded_messages.append(SystemMessage(content=f"Previous assistant answer: {content}"))
-
+            ungrounded_messages.extend(format_chat_history_messages(state.get("chat_history", []), query))
             ungrounded_messages.append(HumanMessage(content=f"User Query:\n{query}\n\nProvide a comprehensive, sensible, and structured response:"))
 
             try:
@@ -469,17 +644,20 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
                 return {
                     "answer": ans,
                     "citations": [],
-                    "generation_grounded": True,
+                    "generation_grounded": False,
                     "needs_visualization": False,
                     "visualization": None,
-                    "status_update": "Generated sensible output from domain principles (no workspace documents provided).",
+                    "semantic_intent": meaning_profile.intent,
+                    "semantic_intent_label": meaning_profile.intent_label,
+                    "meaning_query": meaning_profile.meaning_query,
+                    "status_update": f"Generated sensible output from domain principles aligned with {meaning_profile.intent_label} (no workspace documents provided).",
                 }
             except Exception as e:
                 logger.error(f"Error generating sensible ungrounded output: {e}")
                 return {
                     "answer": f"Unable to generate response: {str(e)}",
                     "citations": [],
-                    "generation_grounded": True,
+                    "generation_grounded": False,
                     "status_update": "Failed to generate ungrounded response.",
                 }
         context_str = (
@@ -514,23 +692,19 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
 
         context_str = "\n\n".join(formatted_contexts)
 
-        # Build prompt messages
+        # Build meaning-aligned prompt messages in direct correspondence with user query meaning
+        meaning_profile = analyze_query_meaning(query)
+        grounded_system_prompt = build_meaning_aligned_grounded_prompt(query, meaning_profile)
         messages = [
-            SystemMessage(content=GROUNDED_RAG_SYSTEM_PROMPT),
+            SystemMessage(content=grounded_system_prompt),
         ]
 
         # Incorporate retrieved low-memory context (Global & User-Specific, STM & LTM)
         if state.get("memory_context"):
             messages.append(SystemMessage(content=state["memory_context"]))
 
-        # Incorporate recent chat history if available
-        for hist in state.get("chat_history", [])[-4:]:
-            role = hist.get("role")
-            content = hist.get("content", "")
-            if role == "user":
-                messages.append(HumanMessage(content=content))
-            elif role == "assistant":
-                messages.append(SystemMessage(content=f"Previous assistant answer: {content}"))
+        # Incorporate recent chat history dialogue turns
+        messages.extend(format_chat_history_messages(state.get("chat_history", []), query))
 
         user_prompt = GROUNDED_RAG_USER_PROMPT.format(query=query, context=context_str)
         messages.append(HumanMessage(content=user_prompt))
@@ -562,6 +736,19 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
                     "error": str(vis_err),
                     "execution_time_ms": 0.0,
                 }
+
+        if state.get("stream_mode"):
+            vis_payload = await _generate_visualization_artifact()
+            return {
+                "answer": "",
+                "needs_visualization": True,
+                "visualization": vis_payload,
+                "semantic_intent": meaning_profile.intent if 'meaning_profile' in locals() else state.get("semantic_intent"),
+                "semantic_intent_label": meaning_profile.intent_label if 'meaning_profile' in locals() else state.get("semantic_intent_label"),
+                "meaning_query": meaning_profile.meaning_query if 'meaning_profile' in locals() else state.get("meaning_query"),
+                "error": None,
+                "status_update": "Visualization synthesized; ready to stream explanation.",
+            }
 
         # Concurrently execute Track A (Textual synthesis) and Track B (Visual code generation & sandbox execution)
         text_task = model.ainvoke(messages)
@@ -599,8 +786,22 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
             "answer": answer,
             "needs_visualization": True,
             "visualization": vis_payload,
+            "semantic_intent": meaning_profile.intent if 'meaning_profile' in locals() else state.get("semantic_intent"),
+            "semantic_intent_label": meaning_profile.intent_label if 'meaning_profile' in locals() else state.get("semantic_intent_label"),
+            "meaning_query": meaning_profile.meaning_query if 'meaning_profile' in locals() else state.get("meaning_query"),
             "error": err_msg,
             "status_update": "Answer and visual representation synthesized successfully.",
+        }
+
+    if state.get("stream_mode"):
+        return {
+            "answer": "",
+            "needs_visualization": False,
+            "visualization": None,
+            "semantic_intent": meaning_profile.intent if 'meaning_profile' in locals() else state.get("semantic_intent"),
+            "semantic_intent_label": meaning_profile.intent_label if 'meaning_profile' in locals() else state.get("semantic_intent_label"),
+            "meaning_query": meaning_profile.meaning_query if 'meaning_profile' in locals() else state.get("meaning_query"),
+            "status_update": f"Streaming verified answer aligned with {meaning_profile.intent_label if 'meaning_profile' in locals() else 'query meaning'}.",
         }
 
     try:
@@ -623,7 +824,10 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
             "answer": answer,
             "needs_visualization": False,
             "visualization": None,
-            "status_update": "Answer generated from verified context.",
+            "semantic_intent": meaning_profile.intent if 'meaning_profile' in locals() else state.get("semantic_intent"),
+            "semantic_intent_label": meaning_profile.intent_label if 'meaning_profile' in locals() else state.get("semantic_intent_label"),
+            "meaning_query": meaning_profile.meaning_query if 'meaning_profile' in locals() else state.get("meaning_query"),
+            "status_update": f"Answer generated from verified context aligned with {meaning_profile.intent_label if 'meaning_profile' in locals() else 'query meaning'}.",
         }
     except Exception as e:
         logger.error(f"Generation error in RAG agent: {e}", exc_info=True)

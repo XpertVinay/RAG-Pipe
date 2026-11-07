@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -256,6 +257,10 @@ async def ask_query(
         db.add(conv)
         await db.flush()
         conv_id = conv.id
+        conv_obj = conv
+
+    # Retrieve prior chat history before persisting current message
+    chat_history = await get_recent_chat_history(db, conv_id, limit=10)
 
     from app.services.pii_service import pii_service
     pii_scan = pii_service.scan_and_mask(request.message)
@@ -377,12 +382,11 @@ async def ask_query(
 
     active_doc_ids = readiness["ready_doc_ids"] if readiness["has_scoped_docs"] else doc_ids
 
-    chat_history = await get_recent_chat_history(db, conv_id, limit=10)
-
     # Run LangGraph RAG Agent
     state: AgentState = {
         "query": request.message,
         "original_query": request.message,
+        "conversation_id": conv_id,
         "chat_history": chat_history,
         "document_ids": active_doc_ids,
         "user_id": current_user.id if current_user else None,
@@ -422,7 +426,13 @@ async def ask_query(
     generation_grounded = final_state.get("generation_grounded", True)
     consulted_memories = final_state.get("consulted_memories", [])
 
-    response_type = classify_response_type(intent, documents, is_relevant, citations)
+    requires_doc_patterns = [
+        r"\b(secret code|confidential code|passcode|nda|contract clause|my invoice|my bill|my statement|uploaded file|attached document|page \d+|section \d+)\b",
+        r"\b(what is the secret|what's the secret|read the attached|summarize the attached|in the uploaded)\b",
+    ]
+    requires_doc = any(re.search(pat, request.message.lower()) for pat in requires_doc_patterns)
+    response_type = classify_response_type(intent, documents, is_relevant, citations, requires_doc=requires_doc)
+    generation_grounded = bool(documents and is_relevant and citations)
 
     user_role = getattr(current_user, "role", "user") if current_user else "user"
     is_admin_or_staff = user_role in ("admin", "staff", "staffs")
@@ -433,11 +443,18 @@ async def ask_query(
     if is_app_create:
         response_type = "app_creation"
 
+    semantic_intent = final_state.get("semantic_intent")
+    semantic_intent_label = final_state.get("semantic_intent_label")
+    meaning_query = final_state.get("meaning_query")
+
     meta_payload = {
         "provider": request.provider,
         "model": request.model,
         "response_type": response_type,
         "intent": intent,
+        "semantic_intent": semantic_intent,
+        "semantic_intent_label": semantic_intent_label,
+        "meaning_query": meaning_query,
         "is_app_creation": is_app_create,
         "suggested_app_name": suggested_app_name,
         "communication_channels": ["Gmeet", "Teams", "Zoom", "others"],
@@ -464,20 +481,19 @@ async def ask_query(
     await db.commit()
     await db.refresh(assistant_msg)
 
-    if current_user:
-        try:
-            from app.memory.manager import memory_manager
-            await memory_manager.record_chat_turn_memory(
-                user_id=current_user.id,
-                room_id=effective_room_id,
-                conversation_id=conv_id,
-                query=request.message,
-                answer=answer,
-                project_id=getattr(conv, "project_id", None) or request.project_id,
-                db=db,
-            )
-        except Exception as mem_err:
-            logger.warning(f"Note during chat STM/LTM memory persistence: {mem_err}")
+    try:
+        from app.memory.manager import memory_manager
+        await memory_manager.record_chat_turn_memory(
+            user_id=current_user.id if current_user else None,
+            room_id=effective_room_id,
+            conversation_id=conv_id,
+            query=request.message,
+            answer=answer,
+            project_id=getattr(conv_obj, "project_id", None) or request.project_id,
+            db=db,
+        )
+    except Exception as mem_err:
+        logger.warning(f"Note during chat STM/LTM memory persistence: {mem_err}")
 
     vis_obj = None
     if visualization_data:
@@ -541,6 +557,10 @@ async def stream_query(
         db.add(conv)
         await db.commit()
         conv_id = conv.id
+        conv_obj = conv
+
+    # Fetch prior conversation history before committing current user message
+    history = await get_recent_chat_history(db, conv_id, limit=10)
 
     # Record user message in DB
     user_msg = Message(
@@ -561,6 +581,7 @@ async def stream_query(
     )
     if guard_res.is_blocked:
         meta_payload = {
+            "conversation_id": conv_id,
             "provider": request.provider,
             "model": request.model,
             "response_type": "guardrail_violation",
@@ -622,6 +643,7 @@ async def stream_query(
 
         async def stream_pending_queue():
             meta = {
+                "conversation_id": conv_id,
                 "provider": request.provider,
                 "model": request.model,
                 "response_type": "queue_pending",
@@ -663,7 +685,6 @@ async def stream_query(
         )
 
     active_doc_ids = readiness["ready_doc_ids"] if readiness["has_scoped_docs"] else doc_ids
-    history = await get_recent_chat_history(db, conv_id, limit=10)
 
     # CRITICAL: Release database session before streaming begins to prevent connection pool exhaustion
     if db.is_active:

@@ -17,6 +17,44 @@ from app.providers.factory import ModelFactory
 
 settings = get_settings()
 
+TRANSIENT_DB_ERRORS = (
+    "recovery mode",
+    "starting up",
+    "shutting down",
+    "cannotconnectnowerror",
+    "closed the connection",
+    "server closed",
+    "connection closed",
+    "connection refused",
+    "connection reset",
+    "connection lost",
+    "operationalerror",
+    "broken pipe",
+    "terminat",
+    "timed out",
+    "timeout",
+    "connecttimeout",
+    "readtimeout",
+    "disconnected",
+    "remote disconnected",
+    "could not connect to server",
+    "admin shutdown",
+    "crash shutdown",
+)
+
+
+def is_transient_db_error(exc: Exception) -> bool:
+    """Check if an exception or any nested cause represents a transient connection/database recovery failure."""
+    visited = set()
+    curr: Optional[BaseException] = exc
+    while curr is not None and id(curr) not in visited:
+        visited.add(id(curr))
+        msg = str(curr).lower()
+        if any(token in msg for token in TRANSIENT_DB_ERRORS):
+            return True
+        curr = getattr(curr, "__cause__", None) or getattr(curr, "orig", None)
+    return False
+
 
 class PostgresVectorStore:
     """High-performance vector store backed by PostgreSQL pgvector with dynamic collection isolation."""
@@ -51,49 +89,60 @@ class PostgresVectorStore:
         self._store = None
         self._current_collection_name = None
 
-    def _get_store(self) -> Any:
-        """Get or initialize the underlying PGVector (or Chroma fallback) store."""
+    def _get_store(self, max_retries: int = 3, retry_delay: float = 1.0) -> Any:
+        """Get or initialize the underlying PGVector (or Chroma fallback) store with automatic retry on transient error."""
         target_name = self.get_collection_name()
 
         # Re-initialize if embedding configuration or collection target changed
         if self._store is None or self._current_collection_name != target_name:
-            try:
-                embeddings = ModelFactory.get_embeddings()
+            attempt = 0
+            while attempt < max_retries:
+                attempt += 1
+                try:
+                    embeddings = ModelFactory.get_embeddings()
 
-                if self.is_postgres:
-                    from langchain_postgres import PGVector
+                    if self.is_postgres:
+                        from langchain_postgres import PGVector
 
-                    conn_str = settings.vector_database_url
-                    engine_args = {
-                        "pool_pre_ping": True,
-                        "pool_recycle": 300,
-                        "pool_size": 10,
-                        "max_overflow": 20,
-                    }
-                    self._store = PGVector(
-                        embeddings=embeddings,
-                        connection=conn_str,
-                        collection_name=target_name,
-                        use_jsonb=True,
-                        engine_args=engine_args,
-                    )
-                    self._current_collection_name = target_name
-                    logger.info(f"Initialized PostgreSQL pgvector store on collection '{target_name}' with pool_pre_ping=True")
-                else:
-                    from langchain_chroma import Chroma
+                        conn_str = settings.vector_database_url
+                        engine_args = {
+                            "pool_pre_ping": True,
+                            "pool_recycle": 300,
+                            "pool_size": 10,
+                            "max_overflow": 20,
+                        }
+                        self._store = PGVector(
+                            embeddings=embeddings,
+                            connection=conn_str,
+                            collection_name=target_name,
+                            use_jsonb=True,
+                            engine_args=engine_args,
+                        )
+                        self._current_collection_name = target_name
+                        logger.info(f"Initialized PostgreSQL pgvector store on collection '{target_name}' with pool_pre_ping=True")
+                    else:
+                        from langchain_chroma import Chroma
 
-                    self._store = Chroma(
-                        collection_name=target_name,
-                        embedding_function=embeddings,
-                        persist_directory=str(self.persist_dir),
-                    )
-                    self._current_collection_name = target_name
-                    logger.info(f"Initialized Chroma vector store on collection '{target_name}' at '{self.persist_dir}'")
-
-            except Exception as e:
-                logger.error(f"Failed to initialize vector store: {e}")
-                self.reset_connection()
-                raise VectorStoreError(f"Vector store initialization error: {str(e)}")
+                        self._store = Chroma(
+                            collection_name=target_name,
+                            embedding_function=embeddings,
+                            persist_directory=str(self.persist_dir),
+                        )
+                        self._current_collection_name = target_name
+                        logger.info(f"Initialized Chroma vector store on collection '{target_name}' at '{self.persist_dir}'")
+                    break
+                except Exception as e:
+                    self.reset_connection()
+                    if is_transient_db_error(e) and attempt < max_retries:
+                        wait_sec = min(retry_delay * (2 ** (attempt - 1)), 5.0)
+                        logger.warning(
+                            f"Transient database error initializing vector store (attempt {attempt}/{max_retries}): {e}. "
+                            f"Retrying in {wait_sec:.1f}s..."
+                        )
+                        time.sleep(wait_sec)
+                        continue
+                    logger.error(f"Failed to initialize vector store: {e}")
+                    raise VectorStoreError(f"Vector store initialization error: {str(e)}")
 
         return self._store
 
@@ -124,34 +173,15 @@ class PostgresVectorStore:
                     logger.info(f"Indexed batch {current_batch}/{total_batches} ({len(batch)} chunks)")
                 except Exception as e:
                     last_err = e
-                    err_str = str(e).lower()
-                    is_transient = any(
-                        k in err_str
-                        for k in (
-                            "timed out",
-                            "timeout",
-                            "connecttimeout",
-                            "readtimeout",
-                            "closed the connection",
-                            "operationalerror",
-                            "broken pipe",
-                            "connection refused",
-                            "terminat",
-                            "server closed",
-                            "connection lost",
-                            "disconnected",
-                            "remote disconnected",
-                        )
-                    )
-                    if is_transient and batch_attempt < max_retries:
-                        wait_sec = 2.0 * batch_attempt
+                    if is_transient_db_error(e) and batch_attempt < max_retries:
+                        wait_sec = min(2.0 * batch_attempt, 6.0)
                         logger.warning(
                             f"Transient indexing error on batch {current_batch}/{total_batches} (attempt {batch_attempt}/{max_retries}): {e}. "
                             f"Retrying in {wait_sec:.1f}s..."
                         )
                         time.sleep(wait_sec)
                         self.reset_connection()
-                        store = self._get_store()
+                        store = self._get_store(max_retries=2, retry_delay=1.0)
                     else:
                         break
 
@@ -201,34 +231,15 @@ class PostgresVectorStore:
                     logger.info(f"Indexed batch {current_batch}/{total_batches} ({len(batch)} chunks)")
                 except Exception as e:
                     last_err = e
-                    err_str = str(e).lower()
-                    is_transient = any(
-                        k in err_str
-                        for k in (
-                            "timed out",
-                            "timeout",
-                            "connecttimeout",
-                            "readtimeout",
-                            "closed the connection",
-                            "operationalerror",
-                            "broken pipe",
-                            "connection refused",
-                            "terminat",
-                            "server closed",
-                            "connection lost",
-                            "disconnected",
-                            "remote disconnected",
-                        )
-                    )
-                    if is_transient and batch_attempt < max_retries:
-                        wait_sec = 2.0 * batch_attempt
+                    if is_transient_db_error(e) and batch_attempt < max_retries:
+                        wait_sec = min(2.0 * batch_attempt, 6.0)
                         logger.warning(
                             f"Transient indexing error on batch {current_batch}/{total_batches} (attempt {batch_attempt}/{max_retries}): {e}. "
                             f"Retrying in {wait_sec:.1f}s..."
                         )
                         await asyncio.sleep(wait_sec)
                         self.reset_connection()
-                        store = self._get_store()
+                        store = self._get_store(max_retries=2, retry_delay=1.0)
                     else:
                         break
 
@@ -254,36 +265,46 @@ class PostgresVectorStore:
         logger.info(f"Successfully indexed all {total} chunks into collection '{self.get_collection_name()}'")
         return total
 
-    def delete_document(self, document_id: str) -> bool:
-        """Delete all vectors associated with a specific document ID."""
-        try:
-            if self.is_postgres:
-                engine = create_engine(settings.vector_database_url, pool_pre_ping=True)
-                try:
-                    with engine.connect() as conn:
-                        result = conn.execute(
-                            text("DELETE FROM langchain_pg_embedding WHERE cmetadata->>'document_id' = :doc_id"),
-                            {"doc_id": document_id},
-                        )
-                        conn.commit()
-                        deleted_count = result.rowcount
-                    logger.info(f"Deleted {deleted_count} vectors from PostgreSQL for document {document_id}")
+    def delete_document(self, document_id: str, max_retries: int = 3) -> bool:
+        """Delete all vectors associated with a specific document ID with retry resilience."""
+        for attempt in range(1, max_retries + 1):
+            try:
+                if self.is_postgres:
+                    engine = create_engine(settings.vector_database_url, pool_pre_ping=True)
+                    try:
+                        with engine.connect() as conn:
+                            result = conn.execute(
+                                text("DELETE FROM langchain_pg_embedding WHERE cmetadata->>'document_id' = :doc_id"),
+                                {"doc_id": document_id},
+                            )
+                            conn.commit()
+                            deleted_count = result.rowcount
+                        logger.info(f"Deleted {deleted_count} vectors from PostgreSQL for document {document_id}")
+                        return True
+                    finally:
+                        engine.dispose()
+                else:
+                    store = self._get_store(max_retries=2, retry_delay=1.0)
+                    collection = getattr(store, "_collection", None)
+                    if collection:
+                        existing = collection.get(where={"document_id": document_id})
+                        ids_to_delete = existing.get("ids", [])
+                        if ids_to_delete:
+                            collection.delete(ids=ids_to_delete)
+                            logger.info(f"Deleted {len(ids_to_delete)} vectors for document {document_id}")
                     return True
-                finally:
-                    engine.dispose()
-            else:
-                store = self._get_store()
-                collection = getattr(store, "_collection", None)
-                if collection:
-                    existing = collection.get(where={"document_id": document_id})
-                    ids_to_delete = existing.get("ids", [])
-                    if ids_to_delete:
-                        collection.delete(ids=ids_to_delete)
-                        logger.info(f"Deleted {len(ids_to_delete)} vectors for document {document_id}")
-                return True
-        except Exception as e:
-            logger.error(f"Failed to delete document vectors for {document_id}: {e}")
-            raise VectorStoreError(f"Failed to delete document from vector store: {str(e)}")
+            except Exception as e:
+                if is_transient_db_error(e) and attempt < max_retries:
+                    wait_sec = min(1.0 * (2 ** (attempt - 1)), 4.0)
+                    logger.warning(
+                        f"Transient error deleting document vectors for {document_id} (attempt {attempt}/{max_retries}): {e}. "
+                        f"Retrying in {wait_sec:.1f}s..."
+                    )
+                    time.sleep(wait_sec)
+                    continue
+                logger.error(f"Failed to delete document vectors for {document_id}: {e}")
+                raise VectorStoreError(f"Failed to delete document from vector store: {str(e)}")
+        return False
 
     def copy_document_vectors(
         self,
@@ -439,14 +460,14 @@ class PostgresVectorStore:
         k: int = 4,
         similarity_threshold: float = 0.25,
         document_ids: Optional[List[str]] = None,
-        max_retries: int = 2,
+        max_retries: int = 3,
     ) -> List[Tuple[LCDocument, float]]:
-        """Retrieve most relevant document chunks with automatic threshold filtering and auto-reconnect."""
+        """Retrieve most relevant document chunks with automatic threshold filtering, backoff, and auto-reconnect."""
         attempt = 0
         while attempt < max_retries:
             attempt += 1
             try:
-                store = self._get_store()
+                store = self._get_store(max_retries=2, retry_delay=1.0)
 
                 filter_dict = None
                 if document_ids:
@@ -483,25 +504,15 @@ class PostgresVectorStore:
                 return filtered_results
 
             except Exception as e:
-                err_str = str(e).lower()
-                is_conn_error = any(
-                    k in err_str
-                    for k in (
-                        "closed the connection",
-                        "operationalerror",
-                        "broken pipe",
-                        "connection refused",
-                        "terminat",
-                        "server closed",
-                        "connection lost",
-                    )
-                )
-                if is_conn_error and attempt < max_retries:
+                is_transient = is_transient_db_error(e)
+                if is_transient and attempt < max_retries:
+                    wait_sec = min(1.0 * (2 ** (attempt - 1)), 5.0)
                     logger.warning(
-                        f"Vector store connection dropped during search (attempt {attempt}/{max_retries}): {e}. "
-                        "Re-initializing connection pool and retrying..."
+                        f"Vector store connection dropped or unavailable during search (attempt {attempt}/{max_retries}): {e}. "
+                        f"Re-initializing connection pool and retrying in {wait_sec:.1f}s..."
                     )
                     self.reset_connection()
+                    time.sleep(wait_sec)
                     continue
 
                 logger.error(f"Similarity search failed for query '{query}': {e}", exc_info=True)
@@ -526,7 +537,7 @@ class PostgresVectorStore:
                     "total_vectors": count,
                 }
             else:
-                store = self._get_store()
+                store = self._get_store(max_retries=2, retry_delay=1.0)
                 count = store._collection.count()
                 return {
                     "status": "healthy",

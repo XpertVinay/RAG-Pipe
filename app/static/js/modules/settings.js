@@ -125,6 +125,10 @@
         if (providerBadge) {
           providerBadge.textContent = `${updated.active_chat_provider.toUpperCase()} / ${updated.active_chat_model}`;
         }
+        const themeSelect = document.getElementById('theme-select');
+        if (themeSelect && themeSelect.value && window.ThemeManager) {
+          window.ThemeManager.setTheme(themeSelect.value);
+        }
         resetSettingsErrors();
         RAG.utils.showToast('Settings saved successfully', 'success');
       } catch (e) {

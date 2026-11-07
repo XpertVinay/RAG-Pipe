@@ -32,6 +32,9 @@ data/
 *.sqlite
 *.sqlite3
 
+# Logs & Backup
+logs/
+
 # Environment & Secrets
 .env
 .env.prod
