@@ -403,7 +403,7 @@
             <li><strong>Vector Generation:</strong> Each chunk is converted into a vector representation by your
               designated embedding model.</li>
             <li><strong>Database Storage:</strong> Embeddings and chunk references are saved directly into the isolated
-              ChromaDB vector store mapped to the specific Room ID and Organization ID.</li>
+              Postgresql pgvector store mapped to the specific Room ID and Organization ID.</li>
           </ol>
           <p>
             No external service or unauthorized user can search or cross-reference your vector indices.
@@ -450,7 +450,8 @@
           </p>
           <ul>
             <li><strong>Encryption Standards:</strong> Data in transit is secured using modern TLS 1.3 protocol with
-              strict cipher suites. Data at rest (SQLite databases, ChromaDB vector stores, uploaded files) is encrypted
+              strict cipher suites. Data at rest (SQLite databases, Postgresql pgvector stores, uploaded files) is
+              encrypted
               using industry-standard AES-256.</li>
             <li><strong>Strict Workspace Partitioning:</strong> Every room workspace maintains cryptographic isolation.
               Document queries enforce strict row-level security and room membership checks at the API middleware layer
@@ -481,7 +482,7 @@
             <li><strong>Cloud Foundation Providers (Optional):</strong> When configured by your administrator, queries
               may be dispatched to Google Cloud Platform (Gemini API), OpenAI Inc., or Anthropic PBC under enterprise
               zero-data retention agreements.</li>
-            <li><strong>ChromaDB &amp; SQLite:</strong> Localized vector and relational persistence engines operating
+            <li><strong>Postgresql pgvector</strong> Localized vector and relational persistence engines operating
               within your designated environment boundaries.</li>
           </ul>
         </section>

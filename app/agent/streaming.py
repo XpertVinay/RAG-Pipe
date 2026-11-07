@@ -34,6 +34,91 @@ def format_sse(event: str, data: Any) -> str:
     return f"event: {event}\ndata: {json_data}\n\n"
 
 
+MAX_STREAMING_CHARS = 8192
+
+
+def detect_repetition_loop(
+    text: str,
+    min_unit_len: int = 10,
+    max_unit_len: int = 250,
+    repeat_count: int = 3,
+) -> Optional[int]:
+    """Detect if the trailing part of text contains a degenerate repetition loop of a substring.
+
+    Returns the truncation index (cut point where repetition starts) if detected, or None.
+    """
+    if len(text) < min_unit_len * repeat_count:
+        return None
+
+    tail_len = min(len(text), max_unit_len * repeat_count + 50)
+    tail = text[-tail_len:]
+
+    for unit_len in range(min_unit_len, min(max_unit_len, len(tail) // repeat_count) + 1):
+        unit = tail[-unit_len:]
+        if len(set(unit.strip())) <= 1:
+            continue
+
+        is_loop = True
+        for r in range(1, repeat_count):
+            start_idx = -(r + 1) * unit_len
+            end_idx = -r * unit_len
+            slice_to_check = tail[start_idx:end_idx]
+            if slice_to_check != unit:
+                is_loop = False
+                break
+
+        if is_loop:
+            # Trailing repeat_count units are identical; scan backwards to find where repetition sequence started
+            pos = len(text) - (unit_len * repeat_count)
+            while pos >= unit_len and text[pos - unit_len : pos] == unit:
+                pos -= unit_len
+            return pos + unit_len
+
+    return None
+
+
+async def safe_stream_tokens(
+    chat_model: Any,
+    messages: List[Any],
+    max_chars: int = MAX_STREAMING_CHARS,
+) -> AsyncGenerator[str, None]:
+    """Safely stream tokens from chat model, enforcing character bounds and detecting degenerate repetition loops."""
+    accumulated = ""
+    check_counter = 0
+
+    try:
+        async for chunk in chat_model.astream(messages):
+            token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            if not token:
+                continue
+
+            accumulated += token
+            check_counter += 1
+
+            # Check for repetition loop periodically (every 3 tokens or after newline)
+            if check_counter % 3 == 0 or "\n" in token:
+                cut_idx = detect_repetition_loop(accumulated)
+                if cut_idx is not None:
+                    logger.warning(
+                        f"Degenerate repetition loop detected during streaming at char {len(accumulated)}. "
+                        f"Terminating stream to protect system resources."
+                    )
+                    break
+
+            # Hard ceiling check to prevent runaway generation
+            if len(accumulated) >= max_chars:
+                logger.warning(
+                    f"Maximum streaming character limit ({max_chars}) reached. Terminating stream."
+                )
+                yield token
+                break
+
+            yield token
+    except Exception as stream_err:
+        logger.error(f"Error during token streaming: {stream_err}")
+        raise
+
+
 async def stream_rag_agent(
     query: str,
     conversation_id: str,
@@ -59,6 +144,7 @@ async def stream_rag_agent(
         "document_ids": document_ids,
         "user_id": user_id,
         "room_id": room_id,
+        "stream_mode": True,
         "memory_context": None,
         "consulted_memories": [],
         "provider": provider,
@@ -88,7 +174,7 @@ async def stream_rag_agent(
     accumulated_answer: str = ""
 
     try:
-        yield format_sse("status", {"message": "Retrieving relevant context from indexed documents..."})
+        yield format_sse("status", {"message": "Thinking..."})
 
         # Run workflow up to retrieval & evaluation
         final_state = await rag_agent_app.ainvoke(initial_state)
@@ -271,8 +357,7 @@ async def stream_rag_agent(
                 app_messages.append(SystemMessage(content=memory_context))
             app_messages.extend(format_chat_history_messages(chat_history, query))
             app_messages.append(HumanMessage(content=app_prompt))
-            async for chunk in chat_model.astream(app_messages):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            async for token in safe_stream_tokens(chat_model, app_messages):
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
 
@@ -283,8 +368,7 @@ async def stream_rag_agent(
             greeting_messages.extend(format_chat_history_messages(chat_history, query))
             greeting_messages.append(HumanMessage(content=query))
 
-            async for chunk in chat_model.astream(greeting_messages):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            async for token in safe_stream_tokens(chat_model, greeting_messages):
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
 
@@ -307,8 +391,7 @@ async def stream_rag_agent(
                 ungrounded_messages.extend(format_chat_history_messages(chat_history, query))
                 ungrounded_messages.append(HumanMessage(content=f"User Query:\n{query}\n\nProvide a comprehensive, sensible, and structured response:"))
 
-                async for chunk in chat_model.astream(ungrounded_messages):
-                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                async for token in safe_stream_tokens(chat_model, ungrounded_messages):
                     accumulated_answer += token
                     yield format_sse("token", {"token": token})
 
@@ -326,8 +409,7 @@ async def stream_rag_agent(
                     content=f"User Query:\n{query}\n\nProvide the complete Python visualization program and clear explanation:"
                 ),
             ]
-            async for chunk in chat_model.astream(sample_messages):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            async for token in safe_stream_tokens(chat_model, sample_messages):
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
 
@@ -354,13 +436,18 @@ async def stream_rag_agent(
             user_prompt = GROUNDED_RAG_USER_PROMPT.format(query=query, context=context_str)
             messages.append(HumanMessage(content=user_prompt))
 
-            async for chunk in chat_model.astream(messages):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            async for token in safe_stream_tokens(chat_model, messages):
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
 
         # Emit visualization event if chart artifact was generated
         if visualization_data:
+            yield format_sse("visualization", visualization_data)
+
+        # Check if degenerate repetition occurred and trim trailing duplicate loops
+        cut_idx = detect_repetition_loop(accumulated_answer)
+        if cut_idx is not None:
+            accumulated_answer = accumulated_answer[:cut_idx].rstrip()
             yield format_sse("visualization", visualization_data)
 
         # Consolidate interaction into short-term / long-term memory

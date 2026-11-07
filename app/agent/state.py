@@ -41,3 +41,4 @@ class AgentState(TypedDict):
     semantic_intent_label: Optional[str]
     meaning_query: Optional[str]
     meaning_profile: Optional[Dict[str, Any]]
+    stream_mode: Optional[bool]

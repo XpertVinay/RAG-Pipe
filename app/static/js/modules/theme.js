@@ -222,7 +222,7 @@
       }
 
       // Select theme option
-      const option = e.target.closest('.theme-option');
+      const option = e.target.closest('.theme-option, .profile-theme-btn, [data-theme-choice]');
       if (option) {
         e.preventDefault();
         e.stopPropagation();
@@ -230,12 +230,14 @@
         if (choice && VALID_MODES.includes(choice)) {
           applyTheme(choice, true);
         }
-        closeAllMenus();
+        if (option.closest('.theme-dropdown-container')) {
+          closeAllMenus();
+        }
         return;
       }
 
-      // Close on outside click
-      if (!e.target.closest('.theme-dropdown-container')) {
+      // Close on outside click (ignore clicks inside dropdown containers)
+      if (!e.target.closest('.theme-dropdown-container, .profile-dropdown-container, #profileDropdownContainer, .room-dropdown-container, #roomDropdownContainer')) {
         closeAllMenus();
       }
     });

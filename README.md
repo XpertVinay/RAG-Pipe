@@ -1,6 +1,6 @@
 # Production-Ready Document Ingestion and Real-Time RAG Agent
 
-A modular, enterprise-grade Retrieval-Augmented Generation (RAG) system built with **FastAPI**, **LangChain**, **LangGraph**, **Chroma**, and **Ollama** (with pluggable external adapters for OpenAI and Anthropic).
+A modular, enterprise-grade Retrieval-Augmented Generation (RAG) system built with **FastAPI**, **LangChain**, **LangGraph**, **PostgreSQL**, and **Ollama** (with pluggable external adapters for OpenAI and Anthropic).
 
 Featuring asynchronous background document ingestion, multi-format parsing, anti-prompt injection grounding defenses, LangGraph stateful workflow routing, real-time Server-Sent Events (SSE) token streaming, and an interactive Jinja2 web interface.
 
@@ -35,7 +35,7 @@ Featuring asynchronous background document ingestion, multi-format parsing, anti
             ▼                                           └──────────┬───────────┘
  ┌──────────────────────┐                                          │
  │  Persistence Layer   │◄─────────────────────────────────────────┘
- │ • Chroma Vector DB   │
+ │ • Postgresql Vector DB   │
  │ • SQLite / Postgres  │
  └──────────────────────┘
 ```
@@ -74,7 +74,6 @@ RAG-agent/
 │   ├── database.py            # Async SQLAlchemy engine and session factory
 │   └── main.py                # FastAPI app initialization and lifespan
 ├── tests/                     # Comprehensive automated pytest suite (29 test cases)
-├── data/                      # Local uploads, Chroma vectors, and SQLite DB (gitignored)
 ├── Dockerfile                 # Production multi-stage Docker container
 ├── docker-compose.yml         # Containerized app + local Ollama service
 ├── requirements.txt           # Pinned production requirements
@@ -136,46 +135,62 @@ Open your browser to:
 ## Configuration Reference (`.env`)
 
 ```ini
-# Application
+# Application Configuration
 APP_NAME="Production RAG Agent"
 APP_ENV=development
 DEBUG=true
+HOST=0.0.0.0
 PORT=8000
+SECRET_KEY=change-me-to-a-secure-random-32-byte-hex-string
+ALLOWED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
 
-# Storage
-DATABASE_URL=sqlite+aiosqlite:///./data/sqlite.db
+# Data Directories
+DATA_DIR=./data
 UPLOAD_DIR=./data/uploads
-CHROMA_PERSIST_DIR=./data/chroma
+# Database & Vector Store Configuration (PostgreSQL + pgvector)
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/rag_agent
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=rag_agent
 
-# Default Providers (ollama | openai | anthropic | gemini | openai-compatible)
+# Database Connection Pooling & Concurrency Controls (Zero hardcoding)
+POSTGRES_MAX_CONNECTIONS=300
+POSTGRES_SHARED_BUFFERS=256MB
+POSTGRES_WORK_MEM=16MB
+DB_POOL_SIZE=15
+DB_MAX_OVERFLOW=15
+DB_POOL_TIMEOUT=20.0
+DB_POOL_RECYCLE=1800
+
+# LLM & Embedding Provider Settings
+# Options: ollama, openai, anthropic, gemini, openai-compatible
 DEFAULT_CHAT_PROVIDER=ollama
 DEFAULT_CHAT_MODEL=llama3.2
-DEFAULT_EMBEDDING_PROVIDER=ollama
-DEFAULT_EMBEDDING_MODEL=nomic-embed-text
+DEFAULT_EMBEDDING_PROVIDER=gemini
+DEFAULT_EMBEDDING_MODEL=models/gemini-embedding-001
 
-# Ollama Endpoint
-OLLAMA_BASE_URL=http://localhost:11434
+# Local LLM Optimization Flags
+USE_LOCAL_LLM=true
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_TIMEOUT=300.0
+OLLAMA_KEEP_ALIVE=60m
+EMBEDDING_BATCH_SIZE=8
 
-# External Provider API Keys (leave blank if running Ollama locally)
+# External Provider API Keys (Leave blank if using Ollama locally)
 OPENAI_API_KEY=
 OPENAI_BASE_URL=https://api.openai.com/v1
 ANTHROPIC_API_KEY=
 GEMINI_API_KEY=
+GOOGLE_API_KEY=
 
-# Ingestion Parameters
+# Ingestion & Chunking Settings
 CHUNK_SIZE=800
 CHUNK_OVERLAP=150
 MAX_UPLOAD_SIZE_MB=25
-
-# Retrieval & LangGraph Retry Limit
-RETRIEVAL_TOP_K=4
-SIMILARITY_THRESHOLD=0.3
-MAX_RETRIEVAL_RETRIES=2
-
-# LangSmith Observability (Optional)
-LANGCHAIN_TRACING_V2=false
-LANGCHAIN_API_KEY=
-LANGCHAIN_PROJECT=rag-agent-production
+ALLOWED_EXTENSIONS=pdf,docx,txt,md,csv,html
+MAX_INGESTION_CONCURRENCY=3
 
 # RabbitMQ High-Traffic Document Processing Queue & Broker
 RABBITMQ_ENABLED=true
@@ -186,12 +201,76 @@ RABBITMQ_MGMT_PORT=15672
 RABBITMQ_DEFAULT_VHOST=/
 RABBITMQ_URL=amqp://rag_admin:rag_secret_pass@localhost:5672/
 RABBITMQ_QUEUE_NAME=document_processing_queue
+RABBITMQ_CHUNK_QUEUE_NAME=document_chunks_queue
 RABBITMQ_PREFETCH_COUNT=2
 RABBITMQ_MAX_RETRIES=3
 RABBITMQ_RETRY_DELAY_SECONDS=5
 RABBITMQ_EMBEDDED_WORKER=false
 RABBITMQ_VM_MEMORY_HIGH_WATERMARK=0.7
 RABBITMQ_DISK_FREE_LIMIT=2GB
+
+# Multi-Worker Concurrent Chunk Processing & Auto-Partitioning
+# Managed on a flag basis: initially keeps 1 worker, but when ENABLE_CONCURRENT_CHUNK_PROCESSING=true,
+# divides large uploads into concurrent partitions (e.g., 9MB file / 3MB target = 3 concurrent chunks)
+# and processes them asynchronously across worker containers so workers release early for incoming traffic.
+ENABLE_CONCURRENT_CHUNK_PROCESSING=false
+WORKER_CONCURRENCY=1
+NUM_CHUNKING_WORKERS=1
+CHUNK_PARTITION_SIZE_MB=3.0
+CHUNK_PARTITION_THRESHOLD_MB=1.0
+
+# Reverse Proxy / Load Balancer Settings (Nginx with SSE streaming and WebSocket support)
+LOAD_BALANCER_ENABLED=false
+PROXY_PORT=8181
+ENABLE_LB_DEBUG_HEADERS=false
+LB_ALGORITHM=round_robin
+
+# ==============================================================================
+# TIERED RATE LIMITING & ANTI-DDOS PROTECTION (Zero Hardcoding)
+# ==============================================================================
+# Nginx Reverse Proxy Tier (Identity & Device Aware with Corporate NAT / VPN Protection)
+RATE_LIMIT_PUBLIC_RATE=20r/s
+RATE_LIMIT_PUBLIC_BURST=30
+RATE_LIMIT_API_RATE=10r/s
+RATE_LIMIT_API_BURST=15
+RATE_LIMIT_AUTH_RATE=5r/s
+RATE_LIMIT_AUTH_BURST=10
+RATE_LIMIT_STREAM_RATE=5r/s
+RATE_LIMIT_STREAM_BURST=10
+RATE_LIMIT_DEVICE_STREAM_MAX_CONNS=3
+RATE_LIMIT_IP_STREAM_FLOOD=100
+
+# Application Tier (FastAPI Sliding Window per Client IP / 60 seconds)
+# Moderate for public routes; strictly low for protected routes
+RATE_LIMIT_PUBLIC_MAX=120
+RATE_LIMIT_API_MAX=60
+RATE_LIMIT_LOGIN_MAX=10
+RATE_LIMIT_REGISTER_MAX=5
+RATE_LIMIT_REFRESH_MAX=30
+RATE_LIMIT_UPLOAD_MAX=5
+RATE_LIMIT_CHAT_MAX=15
+
+# RAG & LangGraph Agent Settings
+RETRIEVAL_TOP_K=4
+SIMILARITY_THRESHOLD=0.3
+MAX_RETRIEVAL_RETRIES=2
+ENABLE_QUERY_REWRITING=true
+ENABLE_ANSWER_GRADING=true
+
+# LangSmith Observability & Tracing (Optional)
+LANGCHAIN_TRACING_V2=false
+LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
+LANGCHAIN_API_KEY=
+LANGCHAIN_PROJECT=rag-agent-production
+REDACT_SENSITIVE_TRACES=true
+
+# LLM Request & Response Logging (For Docker inspection on non-prod environments)
+# Automatically disabled on preprod and production to prevent secret leakage and compliance violations.
+ENABLE_LLM_LOGGING=true
+LLM_LOG_ENVIRONMENTS=local,development,dev,stage,staging,test
+LLM_LOG_MAX_CHARS=10000
+LLM_LOG_FORMAT=text
+
 ```
 
 ---
@@ -257,7 +336,7 @@ pytest -v
 Test coverage includes:
 - **Parsers**: PDF, DOCX, TXT, MD, CSV, HTML sanitization, whitespace normalization, and empty file rejection.
 - **Chunker**: Recursive splitting, chunk IDs, and provenance metadata retention.
-- **Vector Store**: Chroma persistence, chunk indexing, similarity search with threshold and filters, document deletion.
+- **Vector Store**: Postgresql persistence, chunk indexing, similarity search with threshold and filters, document deletion.
 - **LLM Provider Factory**: Ollama, OpenAI, Anthropic adapters, error handling for missing keys.
 - **LangGraph Workflow**: Query validation, greeting bypass, query rewrite retry loop, grounding checks.
 - **API Endpoints**: Multipart file uploads, pagination, document deletion, re-indexing triggers.
@@ -313,7 +392,7 @@ All endpoints are hosted under `/api/v1/*` with full backward-compatibility alia
 - `POST /api/v1/documents/upload`: Upload documents (`multipart/form-data`).
 - `GET /api/v1/documents`: List indexed documents with status filter.
 - `GET /api/v1/documents/{id}/evidence`: Audit trail and chunk citations.
-- `DELETE /api/v1/documents/{id}`: Delete file, database records, and Chroma embeddings.
+- `DELETE /api/v1/documents/{id}`: Delete file, database records, and Postgresql embeddings.
 
 ### Chat & Streaming
 - `POST /api/v1/chat/message`: Standard JSON question answering.

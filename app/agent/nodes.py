@@ -480,6 +480,16 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
         }
 
     if intent == "greeting":
+        if state.get("stream_mode"):
+            return {
+                "answer": "",
+                "citations": [],
+                "documents": [],
+                "generation_grounded": True,
+                "needs_visualization": False,
+                "visualization": None,
+                "status_update": "Streaming greeting response.",
+            }
         try:
             greeting_messages = [SystemMessage(content=GREETING_SYSTEM_PROMPT)]
             if state.get("memory_context"):
@@ -511,6 +521,15 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
 
     if intent == "app_creation":
         app_name = state.get("suggested_app_name") or "Custom Application Project"
+        if state.get("stream_mode"):
+            return {
+                "answer": "",
+                "citations": [],
+                "generation_grounded": True,
+                "needs_visualization": False,
+                "visualization": None,
+                "status_update": f"Streaming application blueprint for {app_name}.",
+            }
         prompt_content = (
             f"You are a Principal Enterprise Solutions Architect and Technical Lead. The user wants to build and launch an application:\n\n"
             f"\"{query}\"\n\n"
@@ -596,6 +615,18 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
 
             # Generate sensible, high-quality output recursively from domain principles aligned with query meaning
             meaning_profile = analyze_query_meaning(query)
+            if state.get("stream_mode"):
+                return {
+                    "answer": "",
+                    "citations": [],
+                    "generation_grounded": False,
+                    "needs_visualization": False,
+                    "visualization": None,
+                    "semantic_intent": meaning_profile.intent,
+                    "semantic_intent_label": meaning_profile.intent_label,
+                    "meaning_query": meaning_profile.meaning_query,
+                    "status_update": f"Streaming sensible output aligned with {meaning_profile.intent_label} (no workspace documents provided).",
+                }
             logger.info(f"No grounded documents found; producing meaning-aligned ungrounded response ({meaning_profile.intent_label}) for query: '{query[:60]}'")
             ungrounded_prompt = build_meaning_aligned_ungrounded_prompt(query, meaning_profile)
             ungrounded_messages = [
@@ -706,6 +737,19 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
                     "execution_time_ms": 0.0,
                 }
 
+        if state.get("stream_mode"):
+            vis_payload = await _generate_visualization_artifact()
+            return {
+                "answer": "",
+                "needs_visualization": True,
+                "visualization": vis_payload,
+                "semantic_intent": meaning_profile.intent if 'meaning_profile' in locals() else state.get("semantic_intent"),
+                "semantic_intent_label": meaning_profile.intent_label if 'meaning_profile' in locals() else state.get("semantic_intent_label"),
+                "meaning_query": meaning_profile.meaning_query if 'meaning_profile' in locals() else state.get("meaning_query"),
+                "error": None,
+                "status_update": "Visualization synthesized; ready to stream explanation.",
+            }
+
         # Concurrently execute Track A (Textual synthesis) and Track B (Visual code generation & sandbox execution)
         text_task = model.ainvoke(messages)
         vis_task = _generate_visualization_artifact()
@@ -747,6 +791,17 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
             "meaning_query": meaning_profile.meaning_query if 'meaning_profile' in locals() else state.get("meaning_query"),
             "error": err_msg,
             "status_update": "Answer and visual representation synthesized successfully.",
+        }
+
+    if state.get("stream_mode"):
+        return {
+            "answer": "",
+            "needs_visualization": False,
+            "visualization": None,
+            "semantic_intent": meaning_profile.intent if 'meaning_profile' in locals() else state.get("semantic_intent"),
+            "semantic_intent_label": meaning_profile.intent_label if 'meaning_profile' in locals() else state.get("semantic_intent_label"),
+            "meaning_query": meaning_profile.meaning_query if 'meaning_profile' in locals() else state.get("meaning_query"),
+            "status_update": f"Streaming verified answer aligned with {meaning_profile.intent_label if 'meaning_profile' in locals() else 'query meaning'}.",
         }
 
     try:
