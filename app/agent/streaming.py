@@ -4,16 +4,20 @@ import asyncio
 import json
 import re
 from typing import Any, AsyncGenerator, Dict, List, Optional
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from app.services.guardrail_service import guardrail_service
 
 from app.agent.graph import rag_agent_app
-from app.agent.nodes import detect_visualization_need
+from app.agent.nodes import detect_visualization_need, format_chat_history_messages
 from app.agent.prompts import (
     GREETING_SYSTEM_PROMPT,
     GROUNDED_RAG_SYSTEM_PROMPT,
     GROUNDED_RAG_USER_PROMPT,
     UNGROUNDED_SENSIBLE_SYSTEM_PROMPT,
+    MeaningProfile,
+    analyze_query_meaning,
+    build_meaning_aligned_grounded_prompt,
+    build_meaning_aligned_ungrounded_prompt,
 )
 from app.agent.state import AgentState
 from app.core.logging import logger
@@ -28,6 +32,91 @@ def format_sse(event: str, data: Any) -> str:
     """Format data as a Server-Sent Event."""
     json_data = json.dumps(data)
     return f"event: {event}\ndata: {json_data}\n\n"
+
+
+MAX_STREAMING_CHARS = 8192
+
+
+def detect_repetition_loop(
+    text: str,
+    min_unit_len: int = 10,
+    max_unit_len: int = 250,
+    repeat_count: int = 3,
+) -> Optional[int]:
+    """Detect if the trailing part of text contains a degenerate repetition loop of a substring.
+
+    Returns the truncation index (cut point where repetition starts) if detected, or None.
+    """
+    if len(text) < min_unit_len * repeat_count:
+        return None
+
+    tail_len = min(len(text), max_unit_len * repeat_count + 50)
+    tail = text[-tail_len:]
+
+    for unit_len in range(min_unit_len, min(max_unit_len, len(tail) // repeat_count) + 1):
+        unit = tail[-unit_len:]
+        if len(set(unit.strip())) <= 1:
+            continue
+
+        is_loop = True
+        for r in range(1, repeat_count):
+            start_idx = -(r + 1) * unit_len
+            end_idx = -r * unit_len
+            slice_to_check = tail[start_idx:end_idx]
+            if slice_to_check != unit:
+                is_loop = False
+                break
+
+        if is_loop:
+            # Trailing repeat_count units are identical; scan backwards to find where repetition sequence started
+            pos = len(text) - (unit_len * repeat_count)
+            while pos >= unit_len and text[pos - unit_len : pos] == unit:
+                pos -= unit_len
+            return pos + unit_len
+
+    return None
+
+
+async def safe_stream_tokens(
+    chat_model: Any,
+    messages: List[Any],
+    max_chars: int = MAX_STREAMING_CHARS,
+) -> AsyncGenerator[str, None]:
+    """Safely stream tokens from chat model, enforcing character bounds and detecting degenerate repetition loops."""
+    accumulated = ""
+    check_counter = 0
+
+    try:
+        async for chunk in chat_model.astream(messages):
+            token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            if not token:
+                continue
+
+            accumulated += token
+            check_counter += 1
+
+            # Check for repetition loop periodically (every 3 tokens or after newline)
+            if check_counter % 3 == 0 or "\n" in token:
+                cut_idx = detect_repetition_loop(accumulated)
+                if cut_idx is not None:
+                    logger.warning(
+                        f"Degenerate repetition loop detected during streaming at char {len(accumulated)}. "
+                        f"Terminating stream to protect system resources."
+                    )
+                    break
+
+            # Hard ceiling check to prevent runaway generation
+            if len(accumulated) >= max_chars:
+                logger.warning(
+                    f"Maximum streaming character limit ({max_chars}) reached. Terminating stream."
+                )
+                yield token
+                break
+
+            yield token
+    except Exception as stream_err:
+        logger.error(f"Error during token streaming: {stream_err}")
+        raise
 
 
 async def stream_rag_agent(
@@ -45,15 +134,17 @@ async def stream_rag_agent(
 ) -> AsyncGenerator[str, None]:
     """Execute LangGraph RAG workflow and yield Server-Sent Events."""
     chat_history = chat_history or []
-    yield format_sse("status", {"message": "Analyzing query and intent..."})
+    yield format_sse("status", {"message": "Analyzing query meaning and semantic intent..."})
 
     initial_state: AgentState = {
         "query": query,
         "original_query": query,
+        "conversation_id": conversation_id,
         "chat_history": chat_history,
         "document_ids": document_ids,
         "user_id": user_id,
         "room_id": room_id,
+        "stream_mode": True,
         "memory_context": None,
         "consulted_memories": [],
         "provider": provider,
@@ -61,6 +152,10 @@ async def stream_rag_agent(
         "temperature": temperature,
         "top_k": top_k,
         "intent": "qa",
+        "semantic_intent": None,
+        "semantic_intent_label": None,
+        "meaning_query": None,
+        "meaning_profile": None,
         "documents": [],
         "citations": [],
         "retrieval_retry_count": 0,
@@ -79,7 +174,7 @@ async def stream_rag_agent(
     accumulated_answer: str = ""
 
     try:
-        yield format_sse("status", {"message": "Retrieving relevant context from indexed documents..."})
+        yield format_sse("status", {"message": "Thinking..."})
 
         # Run workflow up to retrieval & evaluation
         final_state = await rag_agent_app.ainvoke(initial_state)
@@ -100,6 +195,7 @@ async def stream_rag_agent(
         if intent == "guardrail_blocked":
             refusal_ans = final_state.get("answer", "Safety policy refusal: Prohibited inquiry blocked.")
             meta_payload = {
+                "conversation_id": conversation_id,
                 "response_type": "guardrail_violation",
                 "intent": "guardrail_blocked",
                 "guardrail_blocked": True,
@@ -164,22 +260,35 @@ async def stream_rag_agent(
         # Classify response style differentiator
         if intent == "greeting":
             response_type = "greeting"
+            generation_grounded = False
         elif is_app_create:
             response_type = "app_creation"
+            generation_grounded = False
         elif not documents or not is_relevant:
             response_type = "insufficient_info" if requires_doc else "ungrounded_sensible"
+            generation_grounded = False
         elif citations_list:
             response_type = "grounded"
+            generation_grounded = True
         else:
             response_type = "general"
+            generation_grounded = False
 
         consulted_memories = final_state.get("consulted_memories", [])
         is_admin_or_staff = user_role in ("admin", "staff", "staffs")
         visible_consulted_memories = consulted_memories if is_admin_or_staff else []
 
+        semantic_intent = final_state.get("semantic_intent")
+        semantic_intent_label = final_state.get("semantic_intent_label")
+        meaning_query = final_state.get("meaning_query")
+
         meta_payload = {
+            "conversation_id": conversation_id,
             "response_type": response_type,
             "intent": intent,
+            "semantic_intent": semantic_intent,
+            "semantic_intent_label": semantic_intent_label,
+            "meaning_query": meaning_query,
             "is_app_creation": is_app_create,
             "suggested_app_name": suggested_app_name,
             "communication_channels": ["Gmeet", "Teams", "Zoom", "others"],
@@ -196,7 +305,12 @@ async def stream_rag_agent(
         }
         yield format_sse("meta", meta_payload)
 
-        yield format_sse("status", {"message": "Synthesizing answer from verified evidence..."})
+        status_synthesis = (
+            f"Synthesizing {semantic_intent_label} answer aligned with query meaning..."
+            if semantic_intent_label and intent == "qa"
+            else "Synthesizing answer from verified evidence..."
+        )
+        yield format_sse("status", {"message": status_synthesis})
 
         chat_model = ModelFactory.get_chat_model(
             provider_name=provider,
@@ -238,10 +352,12 @@ async def stream_rag_agent(
             )
             app_messages = [
                 SystemMessage(content="You are an expert enterprise solution architect creating structured, actionable software blueprints for client project requests."),
-                HumanMessage(content=app_prompt),
             ]
-            async for chunk in chat_model.astream(app_messages):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            if memory_context:
+                app_messages.append(SystemMessage(content=memory_context))
+            app_messages.extend(format_chat_history_messages(chat_history, query))
+            app_messages.append(HumanMessage(content=app_prompt))
+            async for token in safe_stream_tokens(chat_model, app_messages):
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
 
@@ -249,10 +365,10 @@ async def stream_rag_agent(
             greeting_messages = [SystemMessage(content=GREETING_SYSTEM_PROMPT)]
             if memory_context:
                 greeting_messages.append(SystemMessage(content=memory_context))
+            greeting_messages.extend(format_chat_history_messages(chat_history, query))
             greeting_messages.append(HumanMessage(content=query))
 
-            async for chunk in chat_model.astream(greeting_messages):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            async for token in safe_stream_tokens(chat_model, greeting_messages):
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
 
@@ -265,22 +381,17 @@ async def stream_rag_agent(
                 for word in msg.split(" "):
                     yield format_sse("token", {"token": word + " "})
             else:
+                meaning_profile = analyze_query_meaning(query)
+                ungrounded_prompt = build_meaning_aligned_ungrounded_prompt(query, meaning_profile)
                 ungrounded_messages = [
-                    SystemMessage(content=UNGROUNDED_SENSIBLE_SYSTEM_PROMPT),
+                    SystemMessage(content=ungrounded_prompt),
                 ]
                 if memory_context:
                     ungrounded_messages.append(SystemMessage(content=memory_context))
-                for hist in chat_history[-4:]:
-                    r = hist.get("role")
-                    c = hist.get("content", "")
-                    if r == "user":
-                        ungrounded_messages.append(HumanMessage(content=c))
-                    elif r == "assistant":
-                        ungrounded_messages.append(SystemMessage(content=f"Previous assistant answer: {c}"))
+                ungrounded_messages.extend(format_chat_history_messages(chat_history, query))
                 ungrounded_messages.append(HumanMessage(content=f"User Query:\n{query}\n\nProvide a comprehensive, sensible, and structured response:"))
 
-                async for chunk in chat_model.astream(ungrounded_messages):
-                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                async for token in safe_stream_tokens(chat_model, ungrounded_messages):
                     accumulated_answer += token
                     yield format_sse("token", {"token": token})
 
@@ -298,8 +409,7 @@ async def stream_rag_agent(
                     content=f"User Query:\n{query}\n\nProvide the complete Python visualization program and clear explanation:"
                 ),
             ]
-            async for chunk in chat_model.astream(sample_messages):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            async for token in safe_stream_tokens(chat_model, sample_messages):
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
 
@@ -315,26 +425,29 @@ async def stream_rag_agent(
 
             context_str = "\n\n".join(formatted_contexts)
 
-            messages = [SystemMessage(content=GROUNDED_RAG_SYSTEM_PROMPT)]
+            meaning_profile = analyze_query_meaning(query)
+            grounded_prompt = build_meaning_aligned_grounded_prompt(query, meaning_profile)
+            messages = [SystemMessage(content=grounded_prompt)]
             if memory_context:
                 messages.append(SystemMessage(content=memory_context))
 
-            for hist in chat_history[-4:]:
-                if hist.get("role") == "user":
-                    messages.append(HumanMessage(content=hist.get("content", "")))
-                elif hist.get("role") == "assistant":
-                    messages.append(SystemMessage(content=f"Previous assistant answer: {hist.get('content', '')}"))
+            messages.extend(format_chat_history_messages(chat_history, query))
 
             user_prompt = GROUNDED_RAG_USER_PROMPT.format(query=query, context=context_str)
             messages.append(HumanMessage(content=user_prompt))
 
-            async for chunk in chat_model.astream(messages):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            async for token in safe_stream_tokens(chat_model, messages):
                 accumulated_answer += token
                 yield format_sse("token", {"token": token})
 
         # Emit visualization event if chart artifact was generated
         if visualization_data:
+            yield format_sse("visualization", visualization_data)
+
+        # Check if degenerate repetition occurred and trim trailing duplicate loops
+        cut_idx = detect_repetition_loop(accumulated_answer)
+        if cut_idx is not None:
+            accumulated_answer = accumulated_answer[:cut_idx].rstrip()
             yield format_sse("visualization", visualization_data)
 
         # Consolidate interaction into short-term / long-term memory
@@ -364,18 +477,17 @@ async def stream_rag_agent(
                     db.add(assistant_msg)
                     await db.commit()
 
-                    if user_id:
-                        try:
-                            await memory_manager.record_chat_turn_memory(
-                                user_id=user_id,
-                                room_id=room_id,
-                                conversation_id=conversation_id,
-                                query=query,
-                                answer=accumulated_answer,
-                                db=db,
-                            )
-                        except Exception as mem_err:
-                            logger.warning(f"Note during streaming chat STM/LTM persistence: {mem_err}")
+                    try:
+                        await memory_manager.record_chat_turn_memory(
+                            user_id=user_id,
+                            room_id=room_id,
+                            conversation_id=conversation_id,
+                            query=query,
+                            answer=accumulated_answer,
+                            db=db,
+                        )
+                    except Exception as mem_err:
+                        logger.warning(f"Note during streaming chat STM/LTM persistence: {mem_err}")
             except Exception as e:
                 logger.error(f"Failed to persist assistant message to database: {e}")
 
@@ -386,6 +498,9 @@ async def stream_rag_agent(
             "conversation_id": conversation_id,
             "response_type": response_type,
             "intent": intent,
+            "semantic_intent": semantic_intent,
+            "semantic_intent_label": semantic_intent_label,
+            "meaning_query": meaning_query,
             "is_app_creation": is_app_create,
             "suggested_app_name": suggested_app_name,
             "retrieval_retry_count": retrieval_retry_count,

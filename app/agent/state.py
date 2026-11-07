@@ -12,6 +12,7 @@ class AgentState(TypedDict):
 
     query: str
     original_query: str
+    conversation_id: Optional[str]
     chat_history: List[Dict[str, str]]
     document_ids: Optional[List[str]]
     provider: Optional[str]
@@ -36,3 +37,8 @@ class AgentState(TypedDict):
     visualization: Optional[Dict[str, Any]]
     is_app_creation: Optional[bool]
     suggested_app_name: Optional[str]
+    semantic_intent: Optional[str]
+    semantic_intent_label: Optional[str]
+    meaning_query: Optional[str]
+    meaning_profile: Optional[Dict[str, Any]]
+    stream_mode: Optional[bool]

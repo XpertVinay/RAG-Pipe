@@ -2872,6 +2872,13 @@
   color: #fcd34d;
 }
 
+.semantic-intent-pill {
+  background: rgba(14, 165, 233, 0.12);
+  border-color: rgba(14, 165, 233, 0.35);
+  color: #38bdf8;
+  font-weight: 500;
+}
+
 /* Inline Citations in Answer Text */
 .inline-citation {
   display: inline-flex;

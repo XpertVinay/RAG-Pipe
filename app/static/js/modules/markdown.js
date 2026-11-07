@@ -751,10 +751,10 @@
         meta.is_relevant === false
       ) {
         responseType = 'insufficient_info';
-      } else if (citations && citations.length > 0) {
+      } else if (citations && citations.length > 0 && meta.generation_grounded !== false) {
         responseType = 'grounded';
       } else {
-        responseType = 'general';
+        responseType = 'ungrounded_sensible';
       }
     }
 
@@ -772,6 +772,13 @@
         badgeText: 'GROUNDED ANSWER',
         avatarIcon: '🛡️',
         avatarClass: 'grounded',
+      },
+      ungrounded_sensible: {
+        badgeClass: 'general',
+        badgeIcon: '💡',
+        badgeText: 'DOMAIN SYNTHESIS',
+        avatarIcon: '💡',
+        avatarClass: '',
       },
       insufficient_info: {
         badgeClass: 'insufficient',
@@ -841,6 +848,14 @@
       badgesHtml += `
         <span class="meta-tag-pill" title="Query was automatically rewritten and re-retrieved">
           🔄 ${meta.retrieval_retry_count} retries
+        </span>
+      `;
+    }
+
+    if (meta.semantic_intent_label && meta.intent !== 'greeting' && meta.intent !== 'app_creation') {
+      badgesHtml += `
+        <span class="meta-tag-pill semantic-intent-pill" title="System prompt & similarity search dynamically aligned with user query meaning${meta.meaning_query ? ': ' + RAG.utils.escapeHtml(meta.meaning_query) : ''}">
+          🎯 ${RAG.utils.escapeHtml(meta.semantic_intent_label)}
         </span>
       `;
     }
@@ -1174,6 +1189,14 @@
       badgesHtml += `
         <span class="meta-tag-pill" title="Query was automatically rewritten and re-retrieved">
           🔄 ${meta.retrieval_retry_count} retries
+        </span>
+      `;
+    }
+
+    if (meta.semantic_intent_label && meta.intent !== 'greeting' && meta.intent !== 'app_creation') {
+      badgesHtml += `
+        <span class="meta-tag-pill semantic-intent-pill" title="System prompt & similarity search dynamically aligned with user query meaning${meta.meaning_query ? ': ' + RAG.utils.escapeHtml(meta.meaning_query) : ''}">
+          🎯 ${RAG.utils.escapeHtml(meta.semantic_intent_label)}
         </span>
       `;
     }

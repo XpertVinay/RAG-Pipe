@@ -108,9 +108,22 @@ class OllamaChatProvider(BaseChatProvider):
         self.base_url = get_effective_ollama_url(self.base_url)
         keep_alive = kwargs.pop("keep_alive", self.keep_alive)
         num_thread = kwargs.pop("num_thread", getattr(settings, "OLLAMA_NUM_THREADS", None))
+        repeat_penalty = kwargs.pop("repeat_penalty", getattr(settings, "OLLAMA_REPEAT_PENALTY", 1.18))
+        repeat_last_n = kwargs.pop("repeat_last_n", getattr(settings, "OLLAMA_REPEAT_LAST_N", 64))
+        num_predict = kwargs.pop("num_predict", getattr(settings, "OLLAMA_NUM_PREDICT", 2048))
+        top_p = kwargs.pop("top_p", getattr(settings, "OLLAMA_TOP_P", 0.9))
+
         extra_params: Dict[str, Any] = {}
         if num_thread is not None:
             extra_params["num_thread"] = num_thread
+        if repeat_penalty is not None:
+            extra_params["repeat_penalty"] = float(repeat_penalty)
+        if repeat_last_n is not None:
+            extra_params["repeat_last_n"] = int(repeat_last_n)
+        if num_predict is not None:
+            extra_params["num_predict"] = int(num_predict)
+        if top_p is not None:
+            extra_params["top_p"] = float(top_p)
         client_kwargs = dict(kwargs.pop("client_kwargs", {}))
         if "timeout" not in client_kwargs:
             client_kwargs["timeout"] = httpx.Timeout(self.timeout, connect=10.0)

@@ -104,12 +104,13 @@ def classify_response_type(
     documents: List[Any],
     is_relevant: bool,
     citations: List[Any],
+    requires_doc: bool = False,
 ) -> str:
     """Determine response classification tag based on RAG state."""
     if intent == "greeting":
         return "greeting"
     if not documents or not is_relevant:
-        return "insufficient_info"
+        return "insufficient_info" if requires_doc else "ungrounded_sensible"
     if citations:
         return "grounded"
     return "general"
