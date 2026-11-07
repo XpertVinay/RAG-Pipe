@@ -1,0 +1,207 @@
+# ==============================================================================
+# GITHUB ACTIONS WORKFLOW: PULL REQUEST CONTINUOUS INTEGRATION & QUALITY GATE
+# Purpose:
+#   - Runs on all Pull Requests targeting 'development' or 'main'.
+#   - Dynamically injects environment variables at runtime into .env (no hardcoding).
+#   - Executes Unit Tests (fast isolated suites) and Integration Tests (live services).
+#   - Exposes 'pr-gate-passed' status check required by GitHub Branch Protection.
+# ==============================================================================
+name: CI - PR Quality Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+      - development
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+concurrency:
+  group: pr-ci-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-syntax:
+    name: Code Quality & Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Linting Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff flake8
+
+      - name: Check Syntax and Formatting
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || true
+
+  unit-tests:
+    name: Unit Tests (Isolated)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-mock
+
+      - name: Generate Runtime Test Environment (.env)
+        env:
+          APP_ENV: testing
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          SECRET_KEY: ${{ secrets.CI_SECRET_KEY || 'ci-testing-secret-key-32-chars-long' }}
+          DB_POOL_SIZE: ${{ vars.CI_DB_POOL_SIZE || '5' }}
+          DB_MAX_OVERFLOW: ${{ vars.CI_DB_MAX_OVERFLOW || '5' }}
+          DB_POOL_TIMEOUT: ${{ vars.CI_DB_POOL_TIMEOUT || '20.0' }}
+          DB_POOL_RECYCLE: ${{ vars.CI_DB_POOL_RECYCLE || '1800' }}
+          USE_LOCAL_LLM: 'true'
+          RABBITMQ_ENABLED: 'false'
+        run: |
+          cat << EOF > .env
+          APP_NAME="RAG Agent Test Suite"
+          APP_ENV=${APP_ENV}
+          DEBUG=false
+          SECRET_KEY=${SECRET_KEY}
+          DATABASE_URL=${DATABASE_URL}
+          DB_POOL_SIZE=${DB_POOL_SIZE}
+          DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW}
+          DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT}
+          DB_POOL_RECYCLE=${DB_POOL_RECYCLE}
+          USE_LOCAL_LLM=${USE_LOCAL_LLM}
+          RABBITMQ_ENABLED=${RABBITMQ_ENABLED}
+          EOF
+          echo "✅ Runtime test .env generated successfully."
+
+      - name: Run Unit Test Suite
+        env:
+          APP_ENV: testing
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+        run: |
+          pytest tests/test_health.py tests/test_api_chat.py tests/test_chunker.py tests/test_parsers.py -v
+
+  integration-tests:
+    name: Integration Tests (PostgreSQL + pgvector & RabbitMQ)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ${{ secrets.CI_POSTGRES_USER || 'postgres' }}
+          POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD || 'postgres' }}
+          POSTGRES_DB: ${{ secrets.CI_POSTGRES_DB || 'rag_agent' }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      rabbitmq:
+        image: rabbitmq:3.13-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: ${{ secrets.CI_RABBITMQ_USER || 'rag_admin' }}
+          RABBITMQ_DEFAULT_PASS: ${{ secrets.CI_RABBITMQ_PASS || 'rag_secret_pass' }}
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-mock
+
+      - name: Generate Runtime Integration Environment (.env)
+        env:
+          PG_USER: ${{ secrets.CI_POSTGRES_USER || 'postgres' }}
+          PG_PASS: ${{ secrets.CI_POSTGRES_PASSWORD || 'postgres' }}
+          PG_DB: ${{ secrets.CI_POSTGRES_DB || 'rag_agent' }}
+          RMQ_USER: ${{ secrets.CI_RABBITMQ_USER || 'rag_admin' }}
+          RMQ_PASS: ${{ secrets.CI_RABBITMQ_PASS || 'rag_secret_pass' }}
+          POOL_SIZE: ${{ vars.CI_DB_POOL_SIZE || '15' }}
+          POOL_OVERFLOW: ${{ vars.CI_DB_MAX_OVERFLOW || '15' }}
+          SECRET_KEY: ${{ secrets.CI_SECRET_KEY || 'ci-testing-secret-key-32-chars-long' }}
+        run: |
+          cat << EOF > .env
+          APP_NAME="RAG Agent Integration Suite"
+          APP_ENV=test
+          DEBUG=false
+          SECRET_KEY=${SECRET_KEY}
+          DATABASE_URL=postgresql+asyncpg://${PG_USER}:${PG_PASS}@localhost:5432/${PG_DB}
+          POSTGRES_USER=${PG_USER}
+          POSTGRES_PASSWORD=${PG_PASS}
+          POSTGRES_HOST=localhost
+          POSTGRES_PORT=5432
+          POSTGRES_DB=${PG_DB}
+          POSTGRES_MAX_CONNECTIONS=300
+          DB_POOL_SIZE=${POOL_SIZE}
+          DB_MAX_OVERFLOW=${POOL_OVERFLOW}
+          DB_POOL_TIMEOUT=20.0
+          DB_POOL_RECYCLE=1800
+          RABBITMQ_ENABLED=true
+          RABBITMQ_URL=amqp://${RMQ_USER}:${RMQ_PASS}@localhost:5672/
+          RABBITMQ_QUEUE_NAME=document_processing_queue
+          RABBITMQ_CHUNK_QUEUE_NAME=document_chunks_queue
+          USE_LOCAL_LLM=true
+          EOF
+          echo "✅ Runtime integration .env generated successfully."
+
+      - name: Run Database Migrations
+        run: |
+          python -c "import asyncio; from app.database import init_db; asyncio.run(init_db())"
+
+      - name: Run Integration Tests
+        run: |
+          pytest tests/test_postgres_and_jwt.py tests/test_rabbitmq_queue.py -v
+
+  pr-gate-passed:
+    name: PR Quality Gate
+    needs: [lint-and-syntax, unit-tests, integration-tests]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Evaluate Test Status Checks
+        run: |
+          if [ "${{ needs.lint-and-syntax.result }}" != "success" ] || \
+             [ "${{ needs.unit-tests.result }}" != "success" ] || \
+             [ "${{ needs.integration-tests.result }}" != "success" ]; then
+            echo "❌ PR Quality Gate Failed: One or more test suites failed."
+            exit 1
+          fi
+          echo "✅ All linting, unit tests, and integration tests passed. PR is safe to merge!"

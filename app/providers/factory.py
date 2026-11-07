@@ -66,12 +66,26 @@ class ModelFactory:
             )
 
         logger.info(f"Instantiating chat model with provider='{name}', model='{model_name or 'default'}'")
-        return provider.get_chat_model(
+        chat_model = provider.get_chat_model(
             model_name=model_name,
             temperature=temperature,
             streaming=streaming,
             **kwargs,
         )
+
+        if settings.is_llm_logging_enabled:
+            from app.core.llm_logging import get_llm_logging_callback_handler
+            handler = get_llm_logging_callback_handler(provider=name, model=model_name)
+            current_callbacks = getattr(chat_model, "callbacks", None)
+            if current_callbacks is None:
+                chat_model.callbacks = [handler]
+            elif isinstance(current_callbacks, list):
+                if handler not in current_callbacks:
+                    chat_model.callbacks.append(handler)
+            elif hasattr(current_callbacks, "add_handler"):
+                current_callbacks.add_handler(handler)
+
+        return chat_model
 
     _cached_embeddings: Dict[str, Embeddings] = {}
 
@@ -104,42 +118,43 @@ class ModelFactory:
             cls._cached_embeddings[cache_key] = emb
         return emb
 
+    _providers_info_cache: Optional[Dict[str, List[ProviderInfo]]] = None
+    _providers_info_cache_time: float = 0.0
+
     @classmethod
-    async def get_providers_info(cls) -> Dict[str, List[ProviderInfo]]:
-        """Collect capabilities and health of all registered providers."""
+    async def get_providers_info(cls, force_refresh: bool = False, cache_ttl: float = 60.0) -> Dict[str, List[ProviderInfo]]:
+        """Collect capabilities and health of all registered providers concurrently with TTL caching."""
+        import asyncio
+        import time
+
+        now = time.time()
+        if not force_refresh and cls._providers_info_cache is not None and (now - cls._providers_info_cache_time < cache_ttl):
+            return cls._providers_info_cache
+
         cls._init_providers()
-        chat_info: List[ProviderInfo] = []
-        for name, provider in cls._chat_providers.items():
-            if name == "google":
-                continue
+
+        async def check_chat(name: str, provider: BaseChatProvider) -> ProviderInfo:
             try:
                 health = await provider.check_health()
                 models = await provider.list_available_models()
-                chat_info.append(
-                    ProviderInfo(
-                        name=name,
-                        configured=health.get("available", False) or bool(health.get("configured", False)),
-                        available=health.get("available", False),
-                        models=models,
-                        default_model=settings.DEFAULT_CHAT_MODEL if name == "ollama" else ("gemini-2.5-flash" if name == "gemini" else (models[0] if models else None)),
-                        note=health.get("message"),
-                    )
+                return ProviderInfo(
+                    name=name,
+                    configured=health.get("available", False) or bool(health.get("configured", False)),
+                    available=health.get("available", False),
+                    models=models,
+                    default_model=settings.DEFAULT_CHAT_MODEL if name == "ollama" else ("gemini-2.5-flash" if name == "gemini" else (models[0] if models else None)),
+                    note=health.get("message"),
                 )
             except Exception as e:
-                chat_info.append(
-                    ProviderInfo(
-                        name=name,
-                        configured=False,
-                        available=False,
-                        models=[],
-                        note=str(e),
-                    )
+                return ProviderInfo(
+                    name=name,
+                    configured=False,
+                    available=False,
+                    models=[],
+                    note=str(e),
                 )
 
-        embedding_info: List[ProviderInfo] = []
-        for name, provider in cls._embedding_providers.items():
-            if name == "google":
-                continue
+        async def check_embedding(name: str, provider: BaseEmbeddingProvider) -> ProviderInfo:
             try:
                 health = await provider.check_health()
                 if name == "ollama":
@@ -152,24 +167,31 @@ class ModelFactory:
                     emb_models = ["text-embedding-3-small"]
                     default_emb = "text-embedding-3-small"
 
-                embedding_info.append(
-                    ProviderInfo(
-                        name=name,
-                        configured=health.get("available", False) or bool(health.get("configured", False)),
-                        available=health.get("available", False),
-                        models=emb_models,
-                        default_model=default_emb,
-                    )
+                return ProviderInfo(
+                    name=name,
+                    configured=health.get("available", False) or bool(health.get("configured", False)),
+                    available=health.get("available", False),
+                    models=emb_models,
+                    default_model=default_emb,
                 )
             except Exception as e:
-                embedding_info.append(
-                    ProviderInfo(
-                        name=name,
-                        configured=False,
-                        available=False,
-                        models=[],
-                        note=str(e),
-                    )
+                return ProviderInfo(
+                    name=name,
+                    configured=False,
+                    available=False,
+                    models=[],
+                    note=str(e),
                 )
 
-        return {"chat": chat_info, "embedding": embedding_info}
+        chat_tasks = [check_chat(name, prov) for name, prov in cls._chat_providers.items() if name != "google"]
+        embedding_tasks = [check_embedding(name, prov) for name, prov in cls._embedding_providers.items() if name != "google"]
+
+        chat_results, embedding_results = await asyncio.gather(
+            asyncio.gather(*chat_tasks),
+            asyncio.gather(*embedding_tasks),
+        )
+
+        result = {"chat": list(chat_results), "embedding": list(embedding_results)}
+        cls._providers_info_cache = result
+        cls._providers_info_cache_time = now
+        return result

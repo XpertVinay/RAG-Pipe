@@ -253,18 +253,53 @@ async def test_document_revaluation_on_hash_change(test_db: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_memory_api_endpoints(client: AsyncClient):
-    """Test REST endpoints: GET /api/memory, POST /api/memory, GET /api/memory/stats, POST /api/memory/revaluate."""
-    # Register test user
-    reg_res = await client.post("/api/auth/register", json={
-        "email": "mem_user@test.local",
-        "username": "memuser",
+    """Test REST endpoints: GET /api/memory, POST /api/memory, GET /api/memory/stats, POST /api/memory/revaluate.
+    Verifies that admin & staff have access, while common users are rejected with 403 Forbidden.
+    """
+    # 1. Register test admin user
+    reg_admin = await client.post("/api/auth/register", json={
+        "email": "mem_admin@test.local",
+        "username": "memadmin",
         "password": "memPassword123",
-        "full_name": "Memory User",
+        "full_name": "Memory Admin",
+        "role": "admin",
     })
-    token = reg_res.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    assert reg_admin.status_code == 201
+    admin_token = reg_admin.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # 1. Create a memory item via API
+    # 2. Register test staff user
+    reg_staff = await client.post("/api/auth/register", json={
+        "email": "mem_staff@test.local",
+        "username": "memstaff",
+        "password": "memPassword123",
+        "full_name": "Memory Staff",
+        "role": "staff",
+    })
+    assert reg_staff.status_code == 201
+    staff_token = reg_staff.json()["access_token"]
+    staff_headers = {"Authorization": f"Bearer {staff_token}"}
+
+    # 3. Register common user (default role: user)
+    reg_common = await client.post("/api/auth/register", json={
+        "email": "mem_common@test.local",
+        "username": "memcommon",
+        "password": "memPassword123",
+        "full_name": "Common User",
+        "role": "user",
+    })
+    assert reg_common.status_code == 201
+    common_token = reg_common.json()["access_token"]
+    common_headers = {"Authorization": f"Bearer {common_token}"}
+
+    # 4. Verify common user CANNOT access memory endpoints (403 Forbidden)
+    forbidden_list = await client.get("/api/memory", headers=common_headers)
+    assert forbidden_list.status_code == 403
+
+    forbidden_stats = await client.get("/api/memory/stats", headers=common_headers)
+    assert forbidden_stats.status_code == 403
+
+    # 5. Create a memory item via Admin API
     payload = {
         "scope": "global",
         "memory_type": "short_term",
@@ -273,20 +308,26 @@ async def test_memory_api_endpoints(client: AsyncClient):
         "importance": 0.8,
         "ttl_seconds": 3600,
     }
-    create_res = await client.post("/api/memory", json=payload, headers=headers)
+    create_res = await client.post("/api/memory", json=payload, headers=admin_headers)
     assert create_res.status_code == 201
     created_data = create_res.json()
     assert created_data["key"] == "api_test_fact"
     assert created_data["is_expired"] is False
 
-    # 2. List memories
-    list_res = await client.get("/api/memory?scope=global", headers=headers)
+    # 6. Admin lists memories
+    list_res = await client.get("/api/memory?scope=global", headers=admin_headers)
     assert list_res.status_code == 200
     items = list_res.json()
     assert any(i["key"] == "api_test_fact" for i in items)
 
-    # 3. Get Distribution Stats
-    stats_res = await client.get("/api/memory/stats", headers=headers)
+    # 7. Staff lists memories
+    staff_list_res = await client.get("/api/memory?scope=global", headers=staff_headers)
+    assert staff_list_res.status_code == 200
+    staff_items = staff_list_res.json()
+    assert any(i["key"] == "api_test_fact" for i in staff_items)
+
+    # 8. Staff views Distribution Stats
+    stats_res = await client.get("/api/memory/stats", headers=staff_headers)
     assert stats_res.status_code == 200
     stats = stats_res.json()
     assert "global_short_term" in stats
@@ -296,14 +337,14 @@ async def test_memory_api_endpoints(client: AsyncClient):
     assert stats["total_memories"] >= 1
     assert stats["in_memory_l1_bytes"] > 0
 
-    # 4. Trigger revaluation scan
-    reval_res = await client.post("/api/memory/revaluate", json={}, headers=headers)
+    # 9. Trigger revaluation scan via Admin
+    reval_res = await client.post("/api/memory/revaluate", json={}, headers=admin_headers)
     assert reval_res.status_code == 200
     reval_data = reval_res.json()
     assert "scanned_count" in reval_data
 
-    # 5. Delete the test memory
+    # 10. Delete the test memory
     mem_id = created_data["id"]
-    del_res = await client.delete(f"/api/memory/{mem_id}", headers=headers)
+    del_res = await client.delete(f"/api/memory/{mem_id}", headers=admin_headers)
     assert del_res.status_code == 200
 

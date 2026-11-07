@@ -1,27 +1,24 @@
 """API endpoints for document upload, listing, details, deletion, and reprocessing."""
 
-import hashlib
-import re
-import shutil
+import asyncio
+import json
+import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse
-from pypdf import PdfReader
-from sqlalchemy import func, or_, select
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
-from app.core.auth import get_current_user, get_optional_user, utc_now
-from app.core.exceptions import EntityNotFoundError, FileValidationError
+from app.core.auth import get_current_user, get_optional_user
 from app.core.logging import logger
 from app.core.rate_limit import RateLimiter
-from app.core.security import validate_file_upload, verify_safe_path
 from app.database import get_db
+from app.services.event_broadcaster import event_broadcaster
 from app.ingestion.pipeline import ingestion_pipeline
-from app.models.document import Document, DocumentChunk, AuditLog
-from app.models.room import Room, RoomDocument
+from app.models.document import AuditLog, Document, DocumentChunk
 from app.models.user import User
 from app.schemas.document import (
     AuditLogResponse,
@@ -29,16 +26,26 @@ from app.schemas.document import (
     DocumentDetailResponse,
     DocumentListResponse,
     DocumentResponse,
+    DocumentShareRequest,
     DocumentUploadResult,
-    EvidenceHighlightLine,
     EvidenceLookupResponse,
 )
+from app.services.document_service import (
+    build_document_list_queries,
+    get_document_mime_type,
+    process_document_upload,
+    verify_document_access,
+    verify_document_deletion_access,
+)
+from app.config import get_settings
+from app.services.evidence_service import evidence_extractor
 
-router = APIRouter(prefix="/api/documents", tags=["documents"])
 settings = get_settings()
+router = APIRouter(prefix="/documents", tags=["documents"])
+document_upload_rate_limiter = RateLimiter(max_requests=getattr(settings, "RATE_LIMIT_UPLOAD_MAX", 15), window_seconds=60)
 
-document_upload_rate_limiter = RateLimiter(max_requests=15, window_seconds=60)
 
+from app.services.queue_service import queue_service
 
 @router.post(
     "/upload",
@@ -50,6 +57,7 @@ async def upload_documents(
     background_tasks: BackgroundTasks,
     request: Request,
     files: List[UploadFile] = File(...),
+    is_shared: bool = Query(False, description="Whether uploaded documents are public to all users"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -63,94 +71,53 @@ async def upload_documents(
     )
     user_agent = request.headers.get("user-agent", "")[:500]
 
+    any_duplicate_completed = False
+    any_duplicate_processing = False
+    docs_to_enqueue: List[str] = []
+
     for file in files:
         try:
-            # Read first chunk or entire file into memory to compute size and hash
-            content = await file.read()
-            content_length = len(content)
-
-            sanitized_name, extension = validate_file_upload(file, content_length, content_bytes=content)
-
-            if content_length == 0:
-                raise FileValidationError(f"File '{file.filename}' is empty.")
-
-            file_hash = hashlib.sha256(content).hexdigest()
-
-            # Save file to storage directory safely
-            doc_id = str(uuid.uuid4())
-            target_filename = f"{doc_id}_{sanitized_name}"
-            target_path = settings.UPLOAD_DIR / target_filename
-            safe_path = verify_safe_path(target_path, settings.UPLOAD_DIR)
-
-            with open(safe_path, "wb") as f:
-                f.write(content)
-
-            audit_meta = {
-                "uploader": {
-                    "id": current_user.id,
-                    "username": current_user.username,
-                    "email": current_user.email,
-                    "full_name": current_user.full_name,
-                    "role": current_user.role,
-                },
-                "client_ip": client_ip,
-                "user_agent": user_agent,
-                "uploaded_at": utc_now().isoformat(),
-            }
-
-            # Insert document row into database with full uploader identity & audit metadata
-            doc = Document(
-                id=doc_id,
-                user_id=current_user.id,
-                uploader_username=current_user.username,
-                uploader_email=current_user.email,
+            doc, should_enqueue, reason = await process_document_upload(
+                file=file,
+                current_user=current_user,
                 client_ip=client_ip,
                 user_agent=user_agent,
-                audit_metadata=audit_meta,
-                is_persistent_vector=True,
-                is_shared=True,
-                filename=sanitized_name,
-                file_type=extension,
-                file_size=content_length,
-                storage_path=str(safe_path),
-                file_hash=file_hash,
-                status="queued",
+                db=db,
+                is_shared=is_shared,
             )
-            db.add(doc)
-            await db.flush()
-
-            # Create immutable audit log record for document creation
-            audit_entry = AuditLog(
-                id=str(uuid.uuid4()),
-                user_id=current_user.id,
-                username=current_user.username,
-                user_email=current_user.email,
-                action="document_upload",
-                entity_type="document",
-                entity_id=doc_id,
-                client_ip=client_ip,
-                user_agent=user_agent,
-                details={
-                    "filename": sanitized_name,
-                    "file_size": content_length,
-                    "file_type": extension,
-                    "file_hash": file_hash,
-                },
-            )
-            db.add(audit_entry)
-
-            # Schedule background ingestion
-            background_tasks.add_task(ingestion_pipeline.process_document, doc_id)
-
+            if should_enqueue:
+                docs_to_enqueue.append(doc.id)
+            if reason == "duplicate_completed":
+                any_duplicate_completed = True
+            elif reason == "duplicate_processing":
+                any_duplicate_processing = True
             uploaded_docs.append(DocumentResponse.model_validate(doc))
-
         except Exception as e:
-            logger.warning(f"Upload failed for file '{file.filename}': {e}")
+            logger.warning(f"Upload failed for file '{file.filename}': {e}", exc_info=True)
             failed_files.append({"filename": file.filename or "unknown", "error": str(e)})
 
+    # CRITICAL: Commit database transaction BEFORE publishing to RabbitMQ
+    # so background worker immediately finds the committed document record in PostgreSQL!
     await db.commit()
 
-    message = f"Uploaded {len(uploaded_docs)} file(s) for indexing by @{current_user.username}."
+    for doc_id in docs_to_enqueue:
+        await queue_service.enqueue_document_job(doc_id, background_tasks=background_tasks)
+        await event_broadcaster.broadcast_document_status(
+            document_id=doc_id,
+            status="queued",
+            user_id=current_user.id,
+        )
+
+    if any_duplicate_completed and len(uploaded_docs) == 1:
+        message = f"File '{files[0].filename}' is already uploaded and indexed. Reused existing document (skipped duplicate embedding)."
+    elif any_duplicate_processing and len(uploaded_docs) == 1:
+        message = f"File '{files[0].filename}' is already actively being indexed by the background worker."
+    else:
+        message = f"Uploaded {len(uploaded_docs)} file(s) for indexing by @{current_user.username}."
+        if any_duplicate_completed:
+            message += " (Existing indexed file(s) reused to prevent duplicate vector embedding)"
+        if any_duplicate_processing:
+            message += " (Active background jobs monitored)"
     if failed_files:
         message += f" ({len(failed_files)} file(s) failed validation)"
 
@@ -171,39 +138,7 @@ async def list_documents(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents with per-user ownership and persistent shared filtering options."""
-    query = select(Document)
-    count_query = select(func.count(Document.id))
-
-    if status_filter:
-        query = query.where(Document.status == status_filter)
-        count_query = count_query.where(Document.status == status_filter)
-
-    if scope == "mine":
-        if current_user:
-            query = query.where(Document.user_id == current_user.id)
-            count_query = count_query.where(Document.user_id == current_user.id)
-        else:
-            query = query.where(Document.id == "__none__")
-            count_query = count_query.where(Document.id == "__none__")
-    elif scope == "shared":
-        if current_user:
-            query = query.where(Document.is_shared.is_(True))
-            count_query = count_query.where(Document.is_shared.is_(True))
-        else:
-            query = query.where(Document.id == "__none__")
-            count_query = count_query.where(Document.id == "__none__")
-    else:  # "all"
-        if current_user:
-            if getattr(current_user, "role", "user") == "admin":
-                pass
-            else:
-                query = query.where(or_(Document.user_id == current_user.id, Document.is_shared.is_(True), Document.user_id.is_(None)))
-                count_query = count_query.where(or_(Document.user_id == current_user.id, Document.is_shared.is_(True), Document.user_id.is_(None)))
-        else:
-            # Unauthenticated (logged out) visitor must NOT see user documents
-            query = query.where(Document.user_id.is_(None))
-            count_query = count_query.where(Document.user_id.is_(None))
-
+    query, count_query = build_document_list_queries(status_filter, scope, current_user)
     query = query.order_by(Document.created_at.desc()).offset(skip).limit(limit)
 
     total_res = await db.execute(count_query)
@@ -212,9 +147,11 @@ async def list_documents(
     results = await db.execute(query)
     docs = results.scalars().all()
 
+    doc_items = [DocumentResponse.model_validate(d) for d in docs]
     return DocumentListResponse(
         total=total,
-        items=[DocumentResponse.model_validate(d) for d in docs],
+        items=doc_items,
+        documents=doc_items,
     )
 
 
@@ -229,94 +166,123 @@ async def get_document_details(document_id: str, db: AsyncSession = Depends(get_
     return DocumentDetailResponse.model_validate(doc)
 
 
-async def verify_document_access(
-    doc: Document,
-    user: Optional[User],
-    db: AsyncSession,
-    action_label: str = "view this document",
-) -> None:
-    """Verify that user has read access to document, considering ownership, admin role, or shared room membership."""
-    if doc.user_id is None:
-        # Document was uploaded in an open/anonymous session
-        return
+# High-concurrency in-memory document metadata cache with bounded size and TTL
+_DOCUMENT_META_CACHE: Dict[str, Tuple[dict, float]] = {}
+_DOC_CACHE_MAX_SIZE = 5000
 
-    # 1. Check if the document belongs to a public room (where Room.user_id is NULL)
-    rd_pub = await db.execute(
-        select(Room)
-        .join(RoomDocument, Room.id == RoomDocument.room_id)
-        .where(
-            RoomDocument.document_id == doc.id,
-            Room.user_id.is_(None),
-        )
+
+def get_cached_doc_meta(doc_id: str) -> Optional[dict]:
+    """Retrieve document metadata from in-memory cache if still valid."""
+    entry = _DOCUMENT_META_CACHE.get(doc_id)
+    if entry:
+        meta, expires_at = entry
+        if time.time() < expires_at:
+            return meta
+        _DOCUMENT_META_CACHE.pop(doc_id, None)
+    return None
+
+
+def set_cached_doc_meta(doc: Document) -> None:
+    """Store document metadata in in-memory cache."""
+    ttl = float(getattr(settings, "DOC_META_CACHE_TTL_SECONDS", 120))
+    if len(_DOCUMENT_META_CACHE) > _DOC_CACHE_MAX_SIZE:
+        now = time.time()
+        expired = [k for k, (_, exp) in _DOCUMENT_META_CACHE.items() if now >= exp]
+        for k in expired:
+            _DOCUMENT_META_CACHE.pop(k, None)
+        if len(_DOCUMENT_META_CACHE) > _DOC_CACHE_MAX_SIZE:
+            _DOCUMENT_META_CACHE.clear()
+    _DOCUMENT_META_CACHE[doc.id] = (
+        {
+            "id": doc.id,
+            "filename": doc.filename,
+            "file_type": doc.file_type,
+            "storage_path": doc.storage_path,
+            "user_id": doc.user_id,
+            "is_shared": getattr(doc, "is_shared", False),
+        },
+        time.time() + ttl,
     )
-    if rd_pub.scalar_one_or_none() is not None:
-        return
 
-    # 2. Document is private: authentication is mandatory
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Authentication required to {action_label}.",
-        )
 
-    # 3. Direct owner or admin
-    if doc.user_id == user.id or getattr(user, "role", "user") == "admin":
-        return
-
-    # 4. Check if document belongs to a room owned by this user
-    rd_user = await db.execute(
-        select(Room)
-        .join(RoomDocument, Room.id == RoomDocument.room_id)
-        .where(
-            RoomDocument.document_id == doc.id,
-            Room.user_id == user.id,
-        )
-    )
-    if rd_user.scalar_one_or_none() is not None:
-        return
-
-    # Otherwise denied
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail=f"Permission denied to {action_label}.",
-    )
+def invalidate_doc_meta_cache(doc_id: str) -> None:
+    """Invalidate cached document metadata on modification or deletion."""
+    _DOCUMENT_META_CACHE.pop(doc_id, None)
 
 
 @router.get("/{document_id}/file")
 async def get_document_file(
     document_id: str,
+    request: Request,
     token: Optional[str] = Query(None),
     current_user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Serve the raw document file inline with proper content-type for previewing / landing on pages."""
-    res = await db.execute(select(Document).where(Document.id == document_id))
-    doc = res.scalar_one_or_none()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found.")
+    """Serve the raw document file inline with proper content-type, ETag, and high-concurrency connection release."""
+    meta = get_cached_doc_meta(document_id)
+    if meta is None:
+        res = await db.execute(select(Document).where(Document.id == document_id))
+        doc = res.scalar_one_or_none()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        set_cached_doc_meta(doc)
+        storage_path = doc.storage_path
+        filename = doc.filename
+        file_type = doc.file_type
+        await verify_document_access(doc, current_user, db, "view this document")
+    else:
+        storage_path = meta["storage_path"]
+        filename = meta["filename"]
+        file_type = meta["file_type"]
+        user_id = meta["user_id"]
+        is_shared = meta["is_shared"]
 
-    await verify_document_access(doc, current_user, db, "view this document")
+        # Fast in-memory permission check
+        has_access = False
+        if is_shared:
+            has_access = True
+        elif current_user and (user_id == current_user.id or getattr(current_user, "role", "user") == "admin"):
+            has_access = True
 
-    file_path = Path(doc.storage_path)
+        if not has_access:
+            # Fall back to DB check for room-level membership
+            res = await db.execute(select(Document).where(Document.id == document_id))
+            doc = res.scalar_one_or_none()
+            if not doc:
+                raise HTTPException(status_code=404, detail="Document not found.")
+            await verify_document_access(doc, current_user, db, "view this document")
+
+    # CRITICAL: Release database session immediately so the connection returns
+    # to the pool BEFORE file streaming begins!
+    if db.is_active:
+        await db.close()
+
+    file_path = Path(storage_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Document file not found on disk.")
 
-    mime_map = {
-        "pdf": "application/pdf",
-        "txt": "text/plain; charset=utf-8",
-        "md": "text/markdown; charset=utf-8",
-        "csv": "text/csv; charset=utf-8",
-        "html": "text/html; charset=utf-8",
-        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    }
-    media_type = mime_map.get(doc.file_type.lower().lstrip("."), "application/octet-stream")
+    # High-performance conditional request handling (HTTP 304 Not Modified)
+    stat = file_path.stat()
+    etag = f'"{stat.st_mtime_ns}-{stat.st_size}"'
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and if_none_match.strip('"') == etag.strip('"'):
+        return Response(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            headers={
+                "ETag": etag,
+                "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+            },
+        )
+
+    media_type = get_document_mime_type(file_type)
 
     return FileResponse(
         path=str(file_path),
         media_type=media_type,
         headers={
-            "Content-Disposition": f'inline; filename="{doc.filename}"',
-            "Cache-Control": "public, max-age=3600",
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+            "ETag": etag,
         },
     )
 
@@ -340,13 +306,7 @@ async def get_document_evidence(
 
     await verify_document_access(doc, current_user, db, "view this document evidence")
 
-    file_path = Path(doc.storage_path)
-    total_pages = 1
-    page_text = ""
-    chunk_content = None
-    chunk_index = None
-
-    # Retrieve chunk if specified
+    chunk_obj: Optional[DocumentChunk] = None
     if chunk_id:
         c_res = await db.execute(
             select(DocumentChunk).where(
@@ -368,101 +328,18 @@ async def get_document_evidence(
             except Exception:
                 chunk_obj = None
 
-        if chunk_obj:
-            chunk_content = chunk_obj.content
-            chunk_index = chunk_obj.chunk_index
-            if not page or page == 1:
-                page = chunk_obj.chunk_metadata.get("page", 1)
-
-    # Extract page text from physical file
-    if file_path.exists():
-        ext = doc.file_type.lower().lstrip(".")
-        if ext == "pdf":
-            try:
-                reader = PdfReader(str(file_path))
-                total_pages = max(len(reader.pages), 1)
-                target_page = min(max(page, 1), total_pages)
-                page = target_page
-                page_text = reader.pages[target_page - 1].extract_text() or ""
-            except Exception as e:
-                logger.warning(f"Error reading PDF page {page}: {e}")
-                page_text = ""
-        else:
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    page_text = f.read()
-            except Exception as e:
-                logger.warning(f"Error reading file {file_path}: {e}")
-                page_text = ""
-
-    # If page_text is empty, fallback to chunk content
-    if not page_text and chunk_content:
-        page_text = chunk_content
-
-    # Determine matched lines with scoring and highlighting
-    match_phrases = []
-    if chunk_content:
-        for s in re.split(r"[\n.]+", chunk_content):
-            s_clean = s.strip()
-            if len(s_clean) >= 15:
-                match_phrases.append(s_clean.lower())
-
-    query_tokens = [t.lower() for t in re.findall(r"\w+", query or "") if len(t) > 3]
-
-    raw_lines = page_text.split("\n")
-    highlight_lines: List[EvidenceHighlightLine] = []
-
-    for idx, line in enumerate(raw_lines, start=1):
-        line_clean = line.strip()
-        line_lower = line_clean.lower()
-        is_match = False
-        score = 0.0
-
-        if line_clean:
-            # 1. Exact or partial chunk phrase match
-            for phrase in match_phrases:
-                if phrase in line_lower or line_lower in phrase:
-                    is_match = True
-                    score = max(score, 0.95)
-                    break
-
-            # 2. Query token overlap
-            if query_tokens:
-                overlap = sum(1 for tok in query_tokens if tok in line_lower)
-                if overlap >= 2 or (len(query_tokens) == 1 and overlap == 1):
-                    is_match = True
-                    score = max(score, round(overlap / len(query_tokens), 2))
-
-        highlight_lines.append(
-            EvidenceHighlightLine(
-                line_number=idx,
-                text=line,
-                is_match=is_match,
-                score=score,
-            )
-        )
-
     active_token = token or request.query_params.get("token") or (
         request.headers.get("Authorization", "")[7:].strip()
         if request.headers.get("Authorization", "").startswith("Bearer ")
         else None
     )
-    token_qs = f"?token={active_token}" if active_token else ""
-    file_url = f"/api/documents/{doc.id}/file{token_qs}#page={page}"
 
-    return EvidenceLookupResponse(
-        document_id=doc.id,
-        filename=doc.filename,
-        file_type=doc.file_type,
+    return evidence_extractor.build_evidence_response(
+        doc=doc,
         page=page,
-        total_pages=total_pages,
-        page_text=page_text,
-        file_url=file_url,
-        chunk_id=chunk_id,
-        chunk_index=chunk_index,
-        chunk_content=chunk_content,
+        chunk_obj=chunk_obj,
         query=query,
-        highlight_lines=highlight_lines,
+        token=active_token,
     )
 
 
@@ -479,34 +356,8 @@ async def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
 
-    if doc.user_id is not None:
-        is_owner = current_user and doc.user_id == current_user.id
-        is_admin = current_user and getattr(current_user, "role", "user") == "admin"
+    await verify_document_deletion_access(doc, current_user, db)
 
-        # Check if the document belongs to a public room or a room owned by current_user
-        rd_res = await db.execute(
-            select(Room)
-            .join(RoomDocument, Room.id == RoomDocument.room_id)
-            .where(RoomDocument.document_id == doc.id)
-        )
-        rooms_linked = rd_res.scalars().all()
-        is_room_manager = any(
-            r.user_id is None or (current_user and r.user_id == current_user.id)
-            for r in rooms_linked
-        )
-
-        if not (is_owner or is_admin or is_room_manager):
-            if not current_user:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Authentication required to delete this document.",
-                )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied to delete this document.",
-            )
-
-    # Log audit event for document deletion
     try:
         audit_del = AuditLog(
             id=str(uuid.uuid4()),
@@ -530,6 +381,8 @@ async def delete_document(
     success = await ingestion_pipeline.delete_document(db, document_id, purge_vectors=purge_vectors)
     if not success:
         raise HTTPException(status_code=404, detail="Document not found.")
+
+    invalidate_doc_meta_cache(document_id)
 
     msg = (
         "Document and associated vectors completely deleted."
@@ -564,10 +417,25 @@ async def reprocess_document(
                 detail="Permission denied to reprocess this document.",
             )
 
+    # Prevent enqueuing duplicate job if document is already actively being processed by worker
+    if doc.status == "processing":
+        last_activity = doc.updated_at or doc.created_at
+        now = datetime.now(timezone.utc)
+        if last_activity:
+            if last_activity.tzinfo is None:
+                last_activity = last_activity.replace(tzinfo=timezone.utc)
+            timeout_sec = getattr(settings, "DOCUMENT_PROCESSING_TIMEOUT_SECONDS", 600)
+            elapsed = (now - last_activity).total_seconds()
+            if elapsed < timeout_sec:
+                return {
+                    "message": f"Document '{doc.filename}' is already actively being processed by the background worker ({int(elapsed)}s elapsed).",
+                    "document_id": document_id,
+                    "already_processing": True,
+                }
+
     doc.status = "queued"
     doc.error_message = None
 
-    # Log audit event for reprocess
     try:
         audit_rep = AuditLog(
             id=str(uuid.uuid4()),
@@ -584,10 +452,190 @@ async def reprocess_document(
         pass
 
     await db.commit()
+    queue_res = await queue_service.enqueue_document_job(document_id, background_tasks=background_tasks)
+    await event_broadcaster.broadcast_document_status(
+        document_id=doc.id,
+        status="queued",
+        filename=doc.filename,
+        user_id=doc.user_id,
+    )
+    return {
+        "message": f"Document re-ingestion queued via {queue_res.get('mechanism', 'queue')}.",
+        "document_id": document_id,
+        "queue_details": queue_res,
+    }
 
-    background_tasks.add_task(ingestion_pipeline.process_document, document_id)
 
-    return {"message": "Document re-ingestion queued.", "document_id": document_id}
+@router.get("/events/stream")
+async def stream_document_events(
+    request: Request,
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """Server-Sent Events (SSE) endpoint to push real-time document processing and chunking updates.
+
+    Eliminates repetitive interval polling from client browsers.
+    Supports JWT via Authorization Bearer header, URL query param (?token=...), or cookie.
+    """
+    queue = await event_broadcaster.subscribe()
+
+    async def event_generator():
+        try:
+            # Initial handshake event confirming SSE stream connection
+            init_payload = {
+                "status": "connected",
+                "user_id": current_user.id if current_user else None,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            yield f"event: connected\ndata: {json.dumps(init_payload)}\n\n"
+
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    # Filter events: if document is owned by a user, only send to that user unless shared
+                    event_user_id = event.get("user_id")
+                    if current_user and event_user_id and event_user_id != current_user.id:
+                        if not event.get("is_shared", False):
+                            continue
+
+                    yield f"event: document_status\ndata: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    # Keep-alive ping every 15s to maintain HTTP stream across proxies/gateways
+                    yield ": ping\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await event_broadcaster.unsubscribe(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/queue/status")
+async def get_queue_status():
+    """Retrieve RabbitMQ queue health, broker connectivity, and workload statistics."""
+    return await queue_service.check_health()
+
+
+@router.get("/readiness/check")
+async def check_documents_readiness(
+    room_id: Optional[str] = Query(None),
+    document_ids: Optional[str] = Query(None, description="Comma-separated list of document IDs"),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check readiness status of documents for LLM prompts (queued/processing vs completed)."""
+    from app.services.conversation_service import resolve_room_and_document_ids
+
+    doc_id_list = [d.strip() for d in document_ids.split(",") if d.strip()] if document_ids else None
+    _, resolved_doc_ids = await resolve_room_and_document_ids(
+        db, None, room_id, doc_id_list, user=current_user
+    )
+
+    if not resolved_doc_ids or resolved_doc_ids == ["__none__"]:
+        return {
+            "all_ready": True,
+            "total": 0,
+            "ready_count": 0,
+            "pending_count": 0,
+            "failed_count": 0,
+            "can_prompt": True,
+            "documents": [],
+            "message": "No documents attached to current scope. General LLM prompts ready.",
+        }
+
+    stmt = select(Document).where(Document.id.in_(resolved_doc_ids))
+    results = await db.execute(stmt)
+    docs = results.scalars().all()
+
+    # Automatically identify and recover stale / orphaned processing documents
+    timeout_sec = getattr(settings, "DOCUMENT_PROCESSING_TIMEOUT_SECONDS", 600)
+    now = datetime.now(timezone.utc)
+    has_stale = False
+
+    for d in docs:
+        last_activity = d.updated_at or d.created_at
+        if last_activity:
+            if last_activity.tzinfo is None:
+                last_activity = last_activity.replace(tzinfo=timezone.utc)
+            elapsed = (now - last_activity).total_seconds()
+
+            if d.status == "queued":
+                if elapsed > timeout_sec:
+                    d.status = "failed"
+                    d.error_message = (
+                        f"Document queuing timed out after {int(elapsed // 60)}m. Please click reprocess to retry."
+                    )
+                    has_stale = True
+                elif elapsed > 15:
+                    # Self-healing: if stuck in queued without a worker picking it up, re-enqueue
+                    d.updated_at = now
+                    has_stale = True
+                    logger.info(
+                        f"Auto-healing queued document {d.id} ({d.filename}): idle for {int(elapsed)}s. Re-dispatching to worker queue."
+                    )
+                    await queue_service.enqueue_document_job(d.id)
+            elif d.status == "processing":
+                if elapsed > timeout_sec:
+                    d.status = "failed"
+                    d.error_message = (
+                        f"Document processing timed out after {int(elapsed // 60)}m (exceeded {timeout_sec // 60}m limit) "
+                        "or worker was interrupted. Please click reprocess to retry."
+                    )
+                    has_stale = True
+                    logger.warning(
+                        f"Auto-recovered stale document {d.id} ({d.filename}): marked as failed after {int(elapsed)}s."
+                    )
+
+    if has_stale:
+        await db.commit()
+
+    total = len(docs)
+    ready = [d for d in docs if d.status == "completed"]
+    pending = [d for d in docs if d.status in ("queued", "processing")]
+    failed = [d for d in docs if d.status == "failed"]
+
+    all_ready = len(ready) == total and total > 0
+    can_prompt = len(ready) > 0 or total == 0
+
+    return {
+        "all_ready": all_ready,
+        "total": total,
+        "ready_count": len(ready),
+        "pending_count": len(pending),
+        "failed_count": len(failed),
+        "can_prompt": can_prompt,
+        "documents": [
+            {
+                "id": d.id,
+                "filename": d.filename,
+                "status": d.status,
+                "is_ready": d.status == "completed",
+                "chunk_count": d.chunk_count,
+                "error_message": d.error_message,
+            }
+            for d in docs
+        ],
+        "message": (
+            "All documents ready for LLM prompts."
+            if all_ready
+            else (
+                f"{len(pending)} document(s) currently being processed in RabbitMQ queue. LLM ready when completed."
+                if pending
+                else (
+                    f"{len(failed)} document(s) encountered indexing errors or timed out."
+                    if failed
+                    else "Ready."
+                )
+            )
+        ),
+    }
 
 
 @router.get("/{document_id}/audit", response_model=DocumentAuditTrailResponse)
@@ -620,3 +668,32 @@ async def get_document_audit_trail(
         uploaded_at=doc.created_at,
         events=[AuditLogResponse.model_validate(e) for e in events],
     )
+
+
+@router.patch("/{document_id}/share", response_model=DocumentResponse)
+async def toggle_document_share(
+    document_id: str,
+    share_req: DocumentShareRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle document public sharing (only owner or admin)."""
+    res = await db.execute(select(Document).where(Document.id == document_id))
+    doc = res.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    is_owner = doc.user_id == current_user.id
+    is_admin = getattr(current_user, "role", "user") == "admin"
+    if not (is_owner or is_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied: only document owner or admin can update sharing settings.",
+        )
+
+    doc.is_shared = share_req.is_shared
+    await db.commit()
+    await db.refresh(doc)
+    invalidate_doc_meta_cache(document_id)
+    return DocumentResponse.model_validate(doc)
+

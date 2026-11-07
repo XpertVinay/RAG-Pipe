@@ -9,7 +9,7 @@
       <button id="close-memory-modal-btn" class="modal-close">&times;</button>
     </div>
 
-    <form id="memory-form" style="display: flex; flex-direction: column; gap: 14px;">
+    <form id="memory-form" novalidate style="display: flex; flex-direction: column; gap: 14px;">
       <div class="form-group">
         <label for="mem-scope-select">Scope Distribution</label>
         <select id="mem-scope-select" class="form-control">
@@ -28,12 +28,12 @@
 
       <div class="form-group">
         <label for="mem-key-input">Semantic Key / Topic</label>
-        <input type="text" id="mem-key-input" class="form-control" placeholder="e.g., pref:language, doc_summary:q3" required>
+        <input type="text" id="mem-key-input" class="form-control" placeholder="e.g., pref:language, doc_summary:q3">
       </div>
 
       <div class="form-group">
         <label for="mem-content-input">Distilled Fact Context (Low Token / High Density)</label>
-        <textarea id="mem-content-input" class="form-control" rows="3" placeholder="Concise factual statement..." required></textarea>
+        <textarea id="mem-content-input" class="form-control" rows="3" placeholder="Concise factual statement..."></textarea>
       </div>
 
       <div class="form-group">
@@ -43,7 +43,7 @@
 
       <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
         <button type="button" id="cancel-memory-btn" class="btn btn-outline">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save to Memory</button>
+        <button type="submit" formnovalidate class="btn btn-primary">Save to Memory</button>
       </div>
     </form>
   </div>

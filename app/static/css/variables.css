@@ -1,44 +1,160 @@
-/* Modern Production RAG Agent Design System */
-:root {
+/* ==========================================================================
+   Modern Production RAG Agent Design System & Multi-Theme Tokens
+   Themes: Midnight Obsidian (Dark), Cyber Neon, Sunset Solar, Arctic Light
+   ========================================================================== */
+
+:root,
+[data-theme="dark"] {
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
-  /* Color Palette - Deep Dark Mode by default */
-  --bg-primary: #0b0f19;
-  --bg-secondary: #111827;
-  --bg-tertiary: #1f2937;
-  --bg-card: rgba(17, 24, 39, 0.75);
-  --bg-hover: rgba(31, 41, 55, 0.6);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(99, 102, 241, 0.6);
+  /* Midnight Obsidian Palette */
+  --bg-primary: #070a13;
+  --bg-secondary: #0d1322;
+  --bg-tertiary: #141c30;
+  --bg-card: rgba(13, 19, 34, 0.78);
+  --bg-hover: rgba(30, 42, 68, 0.65);
+  --border-color: rgba(255, 255, 255, 0.09);
+  --border-focus: rgba(99, 102, 241, 0.7);
 
-  --text-primary: #f3f4f6;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
+  /* High Contrast Typography */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
 
+  /* Accent & Glow */
   --accent-primary: #6366f1;
-  --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-  --accent-glow: rgba(99, 102, 241, 0.25);
+  --accent-secondary: #a855f7;
+  --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+  --accent-glow: rgba(99, 102, 241, 0.32);
   --accent-hover: #4f46e5;
+  --accent-subtle: rgba(99, 102, 241, 0.12);
 
   /* Status Colors */
   --status-completed: #10b981;
-  --status-processing: #3b82f6;
-  --status-queued: #f59e0b;
-  --status-failed: #ef4444;
+  --status-processing: #38bdf8;
+  --status-queued: #fbbf24;
+  --status-failed: #f43f5e;
 
+  /* Dimensions & Transitions */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-full: 9999px;
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 4px 12px 0 rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 20px var(--accent-glow);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 6px 18px 0 rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 14px 32px -4px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 25px var(--accent-glow);
 
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  --navbar-height: 60px;
+}
+
+/* --------------------------------------------------------------------------
+   Cyberpunk Neon Theme (OLED Black, Electric Cyan & Matrix Emerald)
+   -------------------------------------------------------------------------- */
+[data-theme="cyber"] {
+  --bg-primary: #020617;
+  --bg-secondary: #051323;
+  --bg-tertiary: #082138;
+  --bg-card: rgba(5, 19, 35, 0.85);
+  --bg-hover: rgba(6, 182, 212, 0.16);
+  --border-color: rgba(6, 182, 212, 0.22);
+  --border-focus: rgba(6, 182, 212, 0.8);
+
+  --text-primary: #f0fdf4;
+  --text-secondary: #99f6e4;
+  --text-muted: #5eead4;
+
+  --accent-primary: #06b6d4;
+  --accent-secondary: #10b981;
+  --accent-gradient: linear-gradient(135deg, #06b6d4 0%, #10b981 50%, #22c55e 100%);
+  --accent-glow: rgba(6, 182, 212, 0.4);
+  --accent-hover: #0891b2;
+  --accent-subtle: rgba(6, 182, 212, 0.14);
+
+  --status-completed: #22c55e;
+  --status-processing: #06b6d4;
+  --status-queued: #eab308;
+  --status-failed: #f43f5e;
+
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 20px 0 rgba(2, 6, 23, 0.7);
+  --shadow-lg: 0 16px 36px -4px rgba(2, 6, 23, 0.85);
+  --shadow-glow: 0 0 28px var(--accent-glow);
+}
+
+/* --------------------------------------------------------------------------
+   Sunset Solar Theme (Cosmic Nebula, Rose Gold & Amber)
+   -------------------------------------------------------------------------- */
+[data-theme="sunset"] {
+  --bg-primary: #0e0914;
+  --bg-secondary: #191024;
+  --bg-tertiary: #271738;
+  --bg-card: rgba(25, 16, 36, 0.85);
+  --bg-hover: rgba(244, 63, 94, 0.16);
+  --border-color: rgba(244, 63, 94, 0.22);
+  --border-focus: rgba(244, 63, 94, 0.75);
+
+  --text-primary: #fff1f2;
+  --text-secondary: #fecdd3;
+  --text-muted: #fda4af;
+
+  --accent-primary: #f43f5e;
+  --accent-secondary: #f59e0b;
+  --accent-gradient: linear-gradient(135deg, #f43f5e 0%, #fb923c 50%, #f59e0b 100%);
+  --accent-glow: rgba(244, 63, 94, 0.38);
+  --accent-hover: #e11d48;
+  --accent-subtle: rgba(244, 63, 94, 0.14);
+
+  --status-completed: #10b981;
+  --status-processing: #fb923c;
+  --status-queued: #f59e0b;
+  --status-failed: #f43f5e;
+
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 20px 0 rgba(14, 9, 20, 0.7);
+  --shadow-lg: 0 16px 36px -4px rgba(14, 9, 20, 0.85);
+  --shadow-glow: 0 0 28px var(--accent-glow);
+}
+
+/* --------------------------------------------------------------------------
+   Arctic Clarity Theme (Daylight, High-Contrast Crisp Black Text)
+   -------------------------------------------------------------------------- */
+[data-theme="light"] {
+  --bg-primary: #f1f5f9;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #e2e8f0;
+  --bg-card: #ffffff;
+  --bg-hover: #f1f5f9;
+  --border-color: rgba(15, 23, 42, 0.12);
+  --border-focus: rgba(37, 99, 235, 0.7);
+
+  /* Deep Charcoal & Ink for crisp readability (WCAG AAA) */
+  --text-primary: #090d16;
+  --text-secondary: #1e293b;
+  --text-muted: #475569;
+
+  /* Royal Cobalt & Ultramarine Accent */
+  --accent-primary: #2563eb;
+  --accent-secondary: #4f46e5;
+  --accent-gradient: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  --accent-glow: rgba(37, 99, 235, 0.22);
+  --accent-hover: #1d4ed8;
+  --accent-subtle: rgba(37, 99, 235, 0.08);
+
+  --status-completed: #059669;
+  --status-processing: #0284c7;
+  --status-queued: #d97706;
+  --status-failed: #dc2626;
+
+  --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 6px 16px -2px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 16px 32px -4px rgba(15, 23, 42, 0.12);
+  --shadow-glow: 0 0 25px var(--accent-glow);
 }
 
 *,
@@ -58,9 +174,10 @@ body {
   flex-direction: column;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
-/* Scrollbars */
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -71,12 +188,20 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.18);
   border-radius: var(--radius-full);
 }
 
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.2);
+}
+
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.32);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.38);
 }
 
 /* App Layout */
@@ -88,4 +213,3 @@ body {
   position: relative;
   overflow: hidden;
 }
-

@@ -1,0 +1,315 @@
+<!-- Enterprise Audit Trail & Business Risk Dashboard Modal (Super Admin & Admin Only) -->
+<div id="audit-risk-modal" class="modal-overlay">
+  <div class="modal-card audit-risk-modal-card">
+    
+    <!-- Modal Header -->
+    <div class="audit-modal-header">
+      <div class="audit-header-title">
+        <span style="font-size: 1.35rem;">🛡️</span>
+        <div>
+          <h3 id="audit-risk-modal-title">Business Risk &amp; Compliance Audit Center</h3>
+          <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">
+            Legal-grade audit logs, third-party failure telemetry &amp; cryptographic non-repudiation
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span id="header-risk-pill" class="risk-chip low">RISK: 5.0 (LOW)</span>
+        <button id="close-audit-risk-modal-btn" class="modal-close" type="button" aria-label="Close modal">&times;</button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="audit-risk-tabs">
+      <button class="audit-tab-btn active" id="audit-tab-btn-overview" data-target="panel-risk-overview">
+        <span>📊</span> <span>Risk &amp; Fluctuations</span>
+      </button>
+      <button class="audit-tab-btn" id="audit-tab-btn-logs" data-target="panel-risk-logs">
+        <span>📜</span> <span>Audit Trail Explorer</span>
+      </button>
+      <button class="audit-tab-btn" id="audit-tab-btn-compliance" data-target="panel-risk-compliance">
+        <span>⚖️</span> <span>Compliance &amp; Remarks</span>
+      </button>
+      <button class="audit-tab-btn" id="audit-tab-btn-backups" data-target="panel-risk-backups">
+        <span>💾</span> <span>Backups &amp; Integrity</span>
+      </button>
+    </div>
+
+    <!-- TAB 1: Business Risk & Fluctuations -->
+    <div id="panel-risk-overview" class="audit-tab-panel active">
+      <!-- Live Risk Gauge Banner -->
+      <div class="risk-score-banner">
+        <div class="risk-score-display">
+          <div id="risk-gauge-circle" class="risk-gauge-circle">5</div>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Overall Business Risk Index</span>
+              <span id="risk-level-tag" class="risk-chip low">LOW RISK</span>
+            </div>
+            <p id="risk-summary-text" style="margin: 4px 0 0; font-size: 0.8rem; color: var(--text-muted); max-width: 580px;">
+              System operates within normal parameters. Third-party providers, core retrieval, and new logic execution pipelines are healthy.
+            </p>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+          <button id="refresh-risk-metrics-btn" class="btn btn-outline" style="font-size: 0.76rem; padding: 5px 10px;">
+            🔄 Refresh Telemetry
+          </button>
+          <span id="risk-last-updated" style="font-size: 0.68rem; color: var(--text-muted);">Updated just now</span>
+        </div>
+      </div>
+
+      <!-- Fluctuation Cards Grid -->
+      <div class="fluctuation-grid">
+        <!-- Card 1: Core Logic Fluctuation -->
+        <div class="fluctuation-card">
+          <div class="fluctuation-title">
+            <span>CORE LOGIC</span>
+            <span>⚡</span>
+          </div>
+          <div class="fluctuation-value" id="card-core-rate">0.0%</div>
+          <div class="fluctuation-delta delta-neutral" id="card-core-delta">
+            <span>• 1h trend: 0.0% delta</span>
+          </div>
+          <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px;">
+            RAG retrieval, embeddings, database queries
+          </div>
+        </div>
+
+        <!-- Card 2: New Logic Fluctuation -->
+        <div class="fluctuation-card">
+          <div class="fluctuation-title">
+            <span>NEW / EXPERIMENTAL LOGIC</span>
+            <span>🤖</span>
+          </div>
+          <div class="fluctuation-value" id="card-new-rate">0.0%</div>
+          <div class="fluctuation-delta delta-neutral" id="card-new-delta">
+            <span>• 1h trend: 0.0% delta</span>
+          </div>
+          <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px;">
+            Multi-Agent workflows, decision maker, MCP tools
+          </div>
+        </div>
+
+        <!-- Card 3: Third-Party Failures -->
+        <div class="fluctuation-card">
+          <div class="fluctuation-title">
+            <span>THIRD-PARTY FAILURES</span>
+            <span>🌐</span>
+          </div>
+          <div class="fluctuation-value" id="card-tp-rate">0.0%</div>
+          <div class="fluctuation-delta delta-neutral" id="card-tp-delta">
+            <span>• 1h trend: 0.0% delta</span>
+          </div>
+          <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px;">
+            Ollama, OpenAI, Gemini, RabbitMQ, Razorpay
+          </div>
+        </div>
+
+        <!-- Card 4: Execution Exceptions -->
+        <div class="fluctuation-card">
+          <div class="fluctuation-title">
+            <span>EXCEPTIONS &amp; ERRORS</span>
+            <span>⚠️</span>
+          </div>
+          <div class="fluctuation-value" id="card-exc-count">0</div>
+          <div class="fluctuation-delta delta-neutral" id="card-exc-delta">
+            <span>• Unhandled: 0</span>
+          </div>
+          <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px;">
+            Handled fallbacks vs unhandled route exceptions
+          </div>
+        </div>
+      </div>
+
+      <!-- Actionable Super Admin Recommendations -->
+      <div class="risk-recommendations-box">
+        <h4><span>💡</span> System Super Admin Recommendations</h4>
+        <ul id="risk-recommendations-list" class="recommendations-list">
+          <li>Loading telemetry guidance...</li>
+        </ul>
+      </div>
+
+      <!-- Compliance & Distribution Summary -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px;">
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 16px;">
+          <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">
+            AUDIT RECORD RISK DISTRIBUTION
+          </div>
+          <div id="risk-dist-badges" style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <span class="risk-chip low">LOW: <strong id="dist-low-count">0</strong></span>
+            <span class="risk-chip medium">MED: <strong id="dist-med-count">0</strong></span>
+            <span class="risk-chip high">HIGH: <strong id="dist-high-count">0</strong></span>
+            <span class="risk-chip critical">CRIT: <strong id="dist-crit-count">0</strong></span>
+          </div>
+        </div>
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 16px;">
+          <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">
+            LEGAL COMPLIANCE POSTURE
+          </div>
+          <div id="comp-dist-badges" style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <span class="compliance-status-badge compliant">COMPLIANT: <strong id="comp-compliant-count">0</strong></span>
+            <span class="compliance-status-badge review-required">REVIEW: <strong id="comp-review-count">0</strong></span>
+            <span class="compliance-status-badge flagged">FLAGGED: <strong id="comp-flagged-count">0</strong></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Audit Trail Explorer -->
+    <div id="panel-risk-logs" class="audit-tab-panel">
+      <!-- Filter Bar -->
+      <div class="audit-filter-bar">
+        <input type="text" id="audit-filter-search" class="audit-filter-input" placeholder="Search event, error, actor..." style="flex: 1; min-width: 180px;">
+        <select id="audit-filter-category" class="audit-filter-select">
+          <option value="">All Categories</option>
+          <option value="core_logic">Core Logic</option>
+          <option value="new_logic">New / Experimental</option>
+          <option value="third_party_failure">Third-Party Failure</option>
+          <option value="exception_handling">Exception Handling</option>
+          <option value="security_auth">Security &amp; Auth</option>
+          <option value="audit_lifecycle">Audit Lifecycle</option>
+        </select>
+        <select id="audit-filter-risk" class="audit-filter-select">
+          <option value="">All Risk Levels</option>
+          <option value="LOW">Low</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="HIGH">High</option>
+          <option value="CRITICAL">Critical</option>
+        </select>
+        <select id="audit-filter-compliance" class="audit-filter-select">
+          <option value="">All Compliance</option>
+          <option value="COMPLIANT">Compliant</option>
+          <option value="REVIEW_REQUIRED">Review Required</option>
+          <option value="FLAGGED">Flagged</option>
+          <option value="REMEDIATED">Remediated</option>
+        </select>
+        <button id="audit-apply-filters-btn" class="btn btn-outline" style="font-size: 0.78rem; padding: 6px 12px;">
+          Filter
+        </button>
+        <button id="audit-export-csv-btn" class="btn btn-outline" style="font-size: 0.78rem; padding: 6px 12px;" title="Export CSV for regulatory review">
+          📥 Export CSV
+        </button>
+      </div>
+
+      <!-- Table Wrapper -->
+      <div class="audit-table-wrapper">
+        <table class="audit-table">
+          <thead>
+            <tr>
+              <th>Timestamp (UTC)</th>
+              <th>Category</th>
+              <th>Event Name</th>
+              <th>Status</th>
+              <th>Risk</th>
+              <th>Actor</th>
+              <th>Latency</th>
+              <th>Compliance Remark</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="audit-logs-table-body">
+            <tr>
+              <td colspan="9" style="text-align: center; padding: 24px; color: var(--text-muted);">
+                Loading audit trail records...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: var(--text-muted);">
+        <span id="audit-pagination-info">Showing 0 of 0 events</span>
+        <div style="display: flex; gap: 6px;">
+          <button id="audit-prev-page-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 8px;" disabled>
+            ← Previous
+          </button>
+          <button id="audit-next-page-btn" class="btn btn-outline" style="font-size: 0.72rem; padding: 4px 8px;" disabled>
+            Next →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: Compliance & Remarks Management -->
+    <div id="panel-risk-compliance" class="audit-tab-panel">
+      <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 10px; padding: 18px; margin-bottom: 20px;">
+        <h4 style="margin: 0 0 10px 0; font-size: 0.95rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+          <span>✍️</span> <span>Attach Up-To-Date Legal &amp; Compliance Remarks</span>
+        </h4>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 16px 0; line-height: 1.4;">
+          As Super Admin, annotate audit records with formal compliance codes (SOC2, GDPR, ISO27001), auditor remediation status, or incident sign-offs.
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div>
+            <label style="font-size: 0.76rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 4px;">
+              Select Audit Record ID:
+            </label>
+            <input type="text" id="remark-record-id" class="audit-filter-input" placeholder="Paste or select Record UUID..." style="width: 100%;">
+          </div>
+
+          <div>
+            <label style="font-size: 0.76rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 4px;">
+              Compliance Status:
+            </label>
+            <select id="remark-compliance-status" class="audit-filter-select" style="width: 100%;">
+              <option value="COMPLIANT">COMPLIANT (Audited &amp; Clean)</option>
+              <option value="REVIEW_REQUIRED">REVIEW_REQUIRED (Pending Investigation)</option>
+              <option value="FLAGGED">FLAGGED (Policy or SLA Violation)</option>
+              <option value="REMEDIATED">REMEDIATED (Fix verified by Admin)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size: 0.76rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 4px;">
+              Compliance Remark / Auditor Memo:
+            </label>
+            <textarea id="remark-text-input" rows="4" class="audit-filter-input" style="width: 100%; resize: vertical;" placeholder="Enter detailed compliance finding, risk mitigation remark, or legal justification..."></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+            <button id="save-compliance-remark-btn" class="btn btn-primary" style="font-size: 0.82rem; padding: 8px 16px;">
+              💾 Save Compliance Remark
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: Backups & Integrity Verification -->
+    <div id="panel-risk-backups" class="audit-tab-panel">
+      <!-- Legal Backup Action Header -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+        <div>
+          <h4 style="margin: 0; font-size: 0.95rem; color: var(--text-primary);">Legal Backup Archives &amp; Cryptographic Manifest</h4>
+          <p style="margin: 3px 0 0; font-size: 0.78rem; color: var(--text-muted);">
+            Automated tar.gz compression with SHA-256 non-repudiation and chain integrity
+          </p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button id="verify-chain-integrity-btn" class="btn btn-outline" style="font-size: 0.78rem; padding: 6px 12px;">
+            🔍 Verify Hash Chain
+          </button>
+          <button id="create-audit-backup-btn" class="btn btn-primary" style="font-size: 0.78rem; padding: 6px 14px;">
+            📦 Create Legal Backup Now
+          </button>
+        </div>
+      </div>
+
+      <!-- Verification Result Alert -->
+      <div id="integrity-result-box" style="display: none; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.82rem;">
+        <!-- Injected via JavaScript -->
+      </div>
+
+      <!-- Backups List -->
+      <div id="backups-cards-list">
+        <div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.82rem;">
+          Loading backup archives...
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

@@ -1,0 +1,1500 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} — {{ app_name }}{% endblock %}
+
+{% block body_class %}legal-page-body{% endblock %}
+
+{% block extra_head %}
+<!-- Legal Design System Styles -->
+<link rel="stylesheet" href="/static/css/legal.css?v=1.0">
+<style>
+  /* Inlined critical overrides for sticky sidebar and smooth scrolling */
+  html {
+    overflow-x: clip !important;
+    overflow-y: auto !important;
+    height: auto !important;
+    scroll-behavior: smooth;
+  }
+
+  body,
+  body.legal-page-body {
+    overflow: visible !important;
+    overflow-x: clip !important;
+    overflow-y: visible !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    position: static !important;
+    display: block !important;
+  }
+
+  .legal-page-wrapper {
+    overflow: visible !important;
+  }
+
+  .legal-main-container {
+    overflow: visible !important;
+  }
+
+  .legal-sidebar {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: 84px !important;
+    z-index: 30;
+    max-height: calc(100vh - 104px);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="legal-page-wrapper">
+  <!-- Top Sticky Navigation Bar -->
+  <nav class="legal-navbar" role="navigation" aria-label="Legal Center Navigation">
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <a href="/" class="legal-brand" title="Return to Workspaces &amp; Chat">
+        <span style="font-size: 1.3rem;">⚡</span>
+        <span>{{ app_name }}</span>
+      </a>
+      <span class="legal-brand-badge">Compliance &amp; Trust</span>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="legal-nav-actions">
+      {% include "components/theme_toggle.html" %}
+      <a href="/pricing" class="btn btn-outline" style="font-size: 0.78rem; padding: 6px 12px; text-decoration: none;"
+        title="View Subscriptions &amp; Pricing">
+        💎 Pricing
+      </a>
+      <button class="btn btn-outline" onclick="window.print()" style="font-size: 0.78rem; padding: 6px 12px;"
+        title="Print or Save as PDF">
+        🖨️ Print
+      </button>
+      <a href="/" class="btn btn-primary" style="font-size: 0.78rem; padding: 6px 14px; text-decoration: none;"
+        title="Open Chat Workspaces">
+        Launch App →
+      </a>
+    </div>
+  </nav>
+
+  <!-- Hero Header Banner -->
+  <header class="legal-hero">
+    <div class="legal-hero-badge">
+      <span>🛡️ Enterprise Data Privacy &amp; AI Safety Standards</span>
+    </div>
+    <h1 id="legal-hero-title">
+      {% if active_tab == 'privacy' %}Privacy Policy
+      {% elif active_tab == 'terms' %}Terms of Service
+      {% elif active_tab == 'refund' %}Refund Policy
+      {% elif active_tab == 'ai-policy' %}AI Usage &amp; AI Agent Policy
+      {% else %}Legal Center &amp; Policies{% endif %}
+    </h1>
+    <p id="legal-hero-desc">
+      {{ page_description }}
+    </p>
+    <div class="legal-meta-row">
+      <div class="legal-meta-item">
+        <span>📅 Effective Date:</span>
+        <strong style="color: #f1f5f9;">October 19, 2026</strong>
+      </div>
+      <div class="legal-meta-item">
+        <span>🏷️ Version:</span>
+        <strong style="color: #f1f5f9;">2.4 (Enterprise Edition)</strong>
+      </div>
+      <div class="legal-meta-item">
+        <span>🌐 Jurisdiction:</span>
+        <strong style="color: #f1f5f9;">Global / GDPR / CCPA / DPDP</strong>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Grid: Sidebar + Content -->
+  <main class="legal-main-container">
+    <!-- Left Sticky Sidebar -->
+    <aside class="legal-sidebar" aria-label="Legal Navigation and Highlights">
+      <!-- Search Filter -->
+      <div class="legal-sidebar-card" style="padding: 12px 14px;">
+        <input type="text" id="legal-section-search" placeholder="🔍 Filter clauses or keywords..."
+          style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--legal-card-border); color: #fff; padding: 7px 10px; border-radius: 6px; font-size: 0.78rem;"
+          oninput="filterLegalSections(this.value)">
+      </div>
+
+      <!-- Dynamic Table of Contents (TOC) -->
+      <div class="legal-sidebar-card">
+        <div class="sidebar-title">
+          <span>Table of Contents</span>
+          <span id="toc-indicator" style="font-size: 0.68rem; color: #818cf8;">4 Policies</span>
+        </div>
+
+        <!-- Privacy TOC -->
+        <ul class="legal-toc-list" id="toc-privacy" style="{% if active_tab != 'privacy' %}display: none;{% endif %}">
+          <li><a href="#privacy-s1" class="legal-toc-link"><span>01.</span> Scope &amp; Data Controller</a></li>
+          <li><a href="#privacy-s2" class="legal-toc-link"><span>02.</span> Zero Foundation Training Pledge</a></li>
+          <li><a href="#privacy-s3" class="legal-toc-link"><span>03.</span> Categories of Collected Data</a></li>
+          <li><a href="#privacy-s4" class="legal-toc-link"><span>04.</span> Ingestion &amp; Vector Embeddings</a></li>
+          <li><a href="#privacy-s5" class="legal-toc-link"><span>05.</span> Dual-Tier Memory &amp; Context</a></li>
+          <li><a href="#privacy-s6" class="legal-toc-link"><span>06.</span> Multi-Tenant Isolation &amp; Security</a>
+          </li>
+          <li><a href="#privacy-s7" class="legal-toc-link"><span>07.</span> Subprocessors &amp; LLM Providers</a></li>
+          <li><a href="#privacy-s8" class="legal-toc-link"><span>08.</span> Retention, Purge &amp; Deletion</a></li>
+          <li><a href="#privacy-s9" class="legal-toc-link"><span>09.</span> GDPR, CCPA &amp; Global Rights</a></li>
+          <li><a href="#privacy-s10" class="legal-toc-link"><span>10.</span> Data Protection Officer &amp; Inquiries</a>
+          </li>
+        </ul>
+
+        <!-- Terms TOC -->
+        <ul class="legal-toc-list" id="toc-terms" style="{% if active_tab != 'terms' %}display: none;{% endif %}">
+          <li><a href="#terms-s1" class="legal-toc-link"><span>01.</span> Acceptance &amp; Eligibility</a></li>
+          <li><a href="#terms-s2" class="legal-toc-link"><span>02.</span> Platform Architecture &amp; RAG Services</a>
+          </li>
+          <li><a href="#terms-s3" class="legal-toc-link"><span>03.</span> Accounts, Organizations &amp; RBAC</a></li>
+          <li><a href="#terms-s4" class="legal-toc-link"><span>04.</span> Intellectual Property &amp; Output Rights</a>
+          </li>
+          <li><a href="#terms-s5" class="legal-toc-link"><span>05.</span> Acceptable Use &amp; Prohibitions</a></li>
+          <li><a href="#terms-s6" class="legal-toc-link"><span>06.</span> Subscriptions, Mandates &amp; Razorpay</a>
+          </li>
+          <li><a href="#terms-s7" class="legal-toc-link"><span>07.</span> Rate Limits &amp; Fair Computing</a></li>
+          <li><a href="#terms-s8" class="legal-toc-link"><span>08.</span> Service Availability &amp; SLA</a></li>
+          <li><a href="#terms-s9" class="legal-toc-link"><span>09.</span> Disclaimers &amp; Probabilistic AI</a></li>
+          <li><a href="#terms-s10" class="legal-toc-link"><span>10.</span> Limitation of Liability</a></li>
+          <li><a href="#terms-s11" class="legal-toc-link"><span>11.</span> Termination &amp; Data Grace Period</a></li>
+          <li><a href="#terms-s12" class="legal-toc-link"><span>12.</span> Governing Law &amp; Arbitration</a></li>
+        </ul>
+
+        <!-- Refund TOC -->
+        <ul class="legal-toc-list" id="toc-refund" style="{% if active_tab != 'refund' %}display: none;{% endif %}">
+          <li><a href="#refund-s1" class="legal-toc-link"><span>01.</span> 14-Day Money-Back Guarantee</a></li>
+          <li><a href="#refund-s2" class="legal-toc-link"><span>02.</span> Eligibility Criteria</a></li>
+          <li><a href="#refund-s3" class="legal-toc-link"><span>03.</span> Ineligible Scenarios &amp; Overages</a></li>
+          <li><a href="#refund-s4" class="legal-toc-link"><span>04.</span> Subscription Cancellations</a></li>
+          <li><a href="#refund-s5" class="legal-toc-link"><span>05.</span> Step-by-Step Claim Workflow</a></li>
+          <li><a href="#refund-s6" class="legal-toc-link"><span>06.</span> Razorpay Settlement Timelines</a></li>
+          <li><a href="#refund-s7" class="legal-toc-link"><span>07.</span> Chargebacks &amp; Dispute Policy</a></li>
+        </ul>
+
+        <!-- AI Policy TOC -->
+        <ul class="legal-toc-list" id="toc-ai-policy"
+          style="{% if active_tab != 'ai-policy' %}display: none;{% endif %}">
+          <li><a href="#ai-s1" class="legal-toc-link"><span>01.</span> Principles &amp; Governance Scope</a></li>
+          <li><a href="#ai-s2" class="legal-toc-link"><span>02.</span> The Agent Collaborative Architecture</a></li>
+          <li><a href="#ai-s3" class="legal-toc-link"><span>03.</span> Human-in-the-Loop (HITL) Controls</a></li>
+          <li><a href="#ai-s4" class="legal-toc-link"><span>04.</span> Model Context Protocol &amp; Tool Safety</a></li>
+          <li><a href="#ai-s5" class="legal-toc-link"><span>05.</span> Grounding &amp; Hallucination Prevention</a></li>
+          <li><a href="#ai-s6" class="legal-toc-link"><span>06.</span> Dual-Tier Memory Ethical Rules</a></li>
+          <li><a href="#ai-s7" class="legal-toc-link"><span>07.</span> Strictly Prohibited AI Use Cases</a></li>
+          <li><a href="#ai-s8" class="legal-toc-link"><span>08.</span> Model Providers &amp; Audit Telemetry</a></li>
+        </ul>
+      </div>
+
+      <!-- Trust & Compliance Badges -->
+      <div class="legal-sidebar-card">
+        <div class="sidebar-title">Compliance Guarantees</div>
+        <div class="badge-stack">
+          <div class="badge-item">
+            <span style="font-size: 1.1rem;">🛡️</span>
+            <div>
+              <strong>Zero-Training Guarantee</strong>
+              <p>Customer proprietary documents never train foundation LLM models.</p>
+            </div>
+          </div>
+          <div class="badge-item">
+            <span style="font-size: 1.1rem;">🔒</span>
+            <div>
+              <strong>AES-256 &amp; TLS 1.3</strong>
+              <p>End-to-end vector encryption at rest and in transit.</p>
+            </div>
+          </div>
+          <div class="badge-item">
+            <span style="font-size: 1.1rem;">💳</span>
+            <div>
+              <strong>PCI-DSS Level 1 Gateway</strong>
+              <p>Tokenized payments handled strictly via Razorpay.</p>
+            </div>
+          </div>
+          <div class="badge-item">
+            <span style="font-size: 1.1rem;">⚖️</span>
+            <div>
+              <strong>GDPR &amp; CCPA Ready</strong>
+              <p>Full 1-click erasure and automated data portability.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contact DPO Box -->
+      <div class="contact-dpo-box">
+        <h4>Legal &amp; DPO Inquiries</h4>
+        <p style="color: #94a3b8; margin: 0; line-height: 1.5;">
+          Have questions regarding our enterprise privacy commitments, autonomous agents, or billing mandates?
+        </p>
+        <a href="mailto:privacy@ragagent.io" class="contact-email-btn">
+          ✉️ privacy@ragagent.io
+        </a>
+      </div>
+    </aside>
+
+    <!-- Right Main Content Panel -->
+    <article class="legal-content-card" id="legal-content-card">
+
+      <!-- ====================================================================
+           PANEL 1: PRIVACY POLICY
+           ==================================================================== -->
+      <div class="policy-panel {% if active_tab == 'privacy' %}active{% endif %}" id="panel-privacy">
+        <!-- Callout Banner -->
+        <div class="callout-box emerald">
+          <div class="callout-icon">🛡️</div>
+          <div class="callout-content">
+            <div class="callout-title">Enterprise Zero-Training Privacy Pledge</div>
+            <p>
+              Your documents, uploaded files, vector embeddings, chat queries, and conversation memory belong solely to
+              your organization.
+              <strong>We do NOT use, sell, or allow third parties to use customer data to train, retrain, or fine-tune
+                public foundation models</strong>
+              (including OpenAI, Anthropic, Google Gemini, or open-source foundation checkpoints).
+            </p>
+          </div>
+        </div>
+
+        <!-- Section 1 -->
+        <section class="policy-section" id="privacy-s1">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">01</span>
+              <h2>Scope &amp; Data Controller Information</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('privacy-s1')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            This Privacy Policy governs the collection, processing, storage, and protection of personal data and
+            proprietary document assets processed by <strong>{{ app_name }}</strong> (referred to herein as "RAG Agent",
+            "we", "us", or "our").
+            This policy applies to all users of our multi-tenant document ingestion workspaces, real-time
+            retrieval-augmented generation (RAG) chat interfaces, autonomous multi-agent workflows, Model Context
+            Protocol (MCP) tool executions, and subscription portals.
+          </p>
+          <p>
+            For the purposes of the European Union General Data Protection Regulation (GDPR) and the UK Data Protection
+            Act:
+          </p>
+          <ul>
+            <li><strong>Data Controller:</strong> For account identity, authentication credentials, billing records, and
+              system telemetry, RAG Agent Technologies Inc. acts as the Data Controller.</li>
+            <li><strong>Data Processor:</strong> For proprietary documents, text chunks, vector embeddings, and
+              workspace interactions uploaded or generated by organization members, RAG Agent acts as a Data Processor
+              on behalf of the customer organization (the Data Controller).</li>
+          </ul>
+        </section>
+
+        <!-- Section 2 -->
+        <section class="policy-section" id="privacy-s2">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">02</span>
+              <h2>Zero Foundation Model Training Pledge</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('privacy-s2')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Enterprises rely on RAG Agent to process sensitive internal documentation, confidential source code, legal
+            contracts, and proprietary intellectual property. We provide an unconditional, binding contractual
+            commitment:
+          </p>
+          <ul>
+            <li><strong>Zero Pre-Training &amp; Fine-Tuning:</strong> Customer data—including raw documents, chunked
+              text, semantic vectors, user queries, and agent deliberation traces—is strictly excluded from any model
+              training or fine-tuning datasets.</li>
+            <li><strong>Zero Data Retention with Third-Party Providers:</strong> When commercial foundation models
+              (e.g., OpenAI, Google Gemini, Anthropic Claude) are configured as generation or embedding providers,
+              requests are routed via enterprise endpoints governed by strict Zero Data Retention (ZDR) agreements.
+              Third-party providers are prohibited from logging prompt contents beyond transient stateless inference.
+            </li>
+            <li><strong>Air-Gapped Local Option:</strong> For organizations with maximum privacy mandates, RAG Agent
+              provides native support for 100% local, on-premise execution utilizing local Ollama models (such as
+              Qwen2.5 and Nomic-Embed-Text), ensuring zero outbound network transmission.</li>
+          </ul>
+        </section>
+
+        <!-- Section 3 -->
+        <section class="policy-section" id="privacy-s3">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">03</span>
+              <h2>Categories of Collected Data</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('privacy-s3')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            We process data strictly to the extent required to deliver grounded document intelligence and agentic task
+            execution:
+          </p>
+
+          <div class="legal-table-wrapper">
+            <table class="legal-table">
+              <thead>
+                <tr>
+                  <th>Data Category</th>
+                  <th>Examples &amp; Formats</th>
+                  <th>Processing Purpose</th>
+                  <th>Retention Standard</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Account Credentials</strong></td>
+                  <td>Email address, username, bcrypt salted hash, organization affiliation</td>
+                  <td>User authentication, RBAC authorization, and account security</td>
+                  <td>Duration of active account + 30 days grace</td>
+                </tr>
+                <tr>
+                  <td><strong>Uploaded Documents</strong></td>
+                  <td>PDF, DOCX, TXT, Markdown, CSV, HTML files uploaded to Rooms</td>
+                  <td>Text extraction, semantic parsing, and chunk generation</td>
+                  <td>Until deleted by user or room owner</td>
+                </tr>
+                <tr>
+                  <td><strong>Vector Embeddings</strong></td>
+                  <td>Dense high-dimensional vector arrays and chunk metadata</td>
+                  <td>Cosine similarity indexing and nearest-neighbor search via ChromaDB</td>
+                  <td>Purged immediately upon document deletion</td>
+                </tr>
+                <tr>
+                  <td><strong>Chat Sessions &amp; Citations</strong></td>
+                  <td>User queries, assistant streaming responses, citation coordinates</td>
+                  <td>Session persistence, conversation continuation, and audit trails</td>
+                  <td>Purged on demand via "Clear All Data"</td>
+                </tr>
+                <tr>
+                  <td><strong>Dual-Tier Memory</strong></td>
+                  <td>Working facts (STM) and persistent cross-room facts (LTM)</td>
+                  <td>Context continuity across multi-step agent reasoning</td>
+                  <td>User-managed via Memory Inspector</td>
+                </tr>
+                <tr>
+                  <td><strong>Billing Records</strong></td>
+                  <td>Razorpay subscription ID, invoice number, payment timestamp (no card numbers)</td>
+                  <td>Statutory tax compliance, invoice generation, subscription management</td>
+                  <td>7 years (statutory accounting requirement)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Section 4 -->
+        <section class="policy-section" id="privacy-s4">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">04</span>
+              <h2>Ingestion &amp; Vector Embeddings Processing</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('privacy-s4')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            When documents are submitted to a Room workspace, they undergo an automated ingestion lifecycle:
+          </p>
+          <ol>
+            <li><strong>Text Extraction &amp; Sanitization:</strong> Raw text is extracted, stripped of harmful scripts
+              or embedded macros, and split into chunks based on configurable size and overlap parameters (default 800
+              characters with 150-character overlap).</li>
+            <li><strong>Vector Generation:</strong> Each chunk is converted into a vector representation by your
+              designated embedding model.</li>
+            <li><strong>Database Storage:</strong> Embeddings and chunk references are saved directly into the isolated
+              ChromaDB vector store mapped to the specific Room ID and Organization ID.</li>
+          </ol>
+          <p>
+            No external service or unauthorized user can search or cross-reference your vector indices.
+          </p>
+        </section>
+
+        <!-- Section 5 -->
+        <section class="policy-section" id="privacy-s5">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">05</span>
+              <h2>Dual-Tier Memory &amp; Context Retention</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('privacy-s5')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Our architecture incorporates a two-tier memory system designed to provide context-aware responses without
+            compromising privacy:
+          </p>
+          <ul>
+            <li><strong>Short-Term Memory (STM):</strong> Transient conversational facts stored in ephemeral RAM cache,
+              scoped strictly to the active session. STM items decay automatically when a session ends.</li>
+            <li><strong>Long-Term Memory (LTM):</strong> Explicitly confirmed user preferences and enterprise domain
+              facts stored in the database. LTM access is governed by strict RBAC (accessible only to authorized Staff
+              and Admin accounts).</li>
+            <li><strong>Transparent Control:</strong> Authorized users can view, prune, revaluate, or delete every
+              individual memory fact in real time through the dedicated Memory Management Panel.</li>
+          </ul>
+        </section>
+
+        <!-- Section 6 -->
+        <section class="policy-section" id="privacy-s6">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">06</span>
+              <h2>Multi-Tenant Isolation &amp; Security Architecture</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('privacy-s6')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            We implement comprehensive technical and organizational safeguards:
+          </p>
+          <ul>
+            <li><strong>Encryption Standards:</strong> Data in transit is secured using modern TLS 1.3 protocol with
+              strict cipher suites. Data at rest (SQLite databases, ChromaDB vector stores, uploaded files) is encrypted
+              using industry-standard AES-256.</li>
+            <li><strong>Strict Workspace Partitioning:</strong> Every room workspace maintains cryptographic isolation.
+              Document queries enforce strict row-level security and room membership checks at the API middleware layer
+              prior to vector search execution.</li>
+            <li><strong>Sanitized Execution:</strong> Multi-agent autonomous code execution takes place in restricted
+              sandboxes preventing unauthorized system calls, directory traversal, or network escalation.</li>
+          </ul>
+        </section>
+
+        <!-- Section 7 -->
+        <section class="policy-section" id="privacy-s7">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">07</span>
+              <h2>Subprocessors &amp; LLM Service Providers</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('privacy-s7')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            To deliver multi-modal capabilities and secure payments, we engage selected sub-processors under rigorous
+            data protection agreements:
+          </p>
+          <ul>
+            <li><strong>Razorpay:</strong> Payment processing gateway for subscriptions and recurring billing. Razorpay
+              is certified PCI-DSS Level 1 compliant. RAG Agent never receives, stores, or logs raw payment card
+              credentials.</li>
+            <li><strong>Cloud Foundation Providers (Optional):</strong> When configured by your administrator, queries
+              may be dispatched to Google Cloud Platform (Gemini API), OpenAI Inc., or Anthropic PBC under enterprise
+              zero-data retention agreements.</li>
+            <li><strong>ChromaDB &amp; SQLite:</strong> Localized vector and relational persistence engines operating
+              within your designated environment boundaries.</li>
+          </ul>
+        </section>
+
+        <!-- Section 8 -->
+        <section class="policy-section" id="privacy-s8">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">08</span>
+              <h2>Data Retention, Purge &amp; Deletion Rights</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('privacy-s8')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            We adhere strictly to the principle of data minimization:
+          </p>
+          <ul>
+            <li><strong>Instant Self-Service Purge:</strong> You may at any time click the <em>"Clear All Data"</em>
+              button in Settings to permanently delete all conversation transcripts, session histories, and contextual
+              memory records.</li>
+            <li><strong>Document Deletion:</strong> Deleting a file from the Document Library immediately unlinks the
+              file, purges its vector embeddings from ChromaDB, and removes the physical file from the storage
+              directory.</li>
+            <li><strong>Account Termination:</strong> Upon account closure, all associated rooms, documents, embeddings,
+              and credentials undergo complete cryptographic erasure within 30 days.</li>
+          </ul>
+        </section>
+
+        <!-- Section 9 -->
+        <section class="policy-section" id="privacy-s9">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">09</span>
+              <h2>GDPR, CCPA/CPRA &amp; Global Privacy Rights</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('privacy-s9')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Regardless of your geographical location, RAG Agent provides comprehensive data rights:
+          </p>
+          <ul>
+            <li><strong>Right to Access &amp; Portability:</strong> You may request an export of your account data,
+              document catalog, and chat logs in structured JSON format.</li>
+            <li><strong>Right to Rectification:</strong> You may update erroneous profile information or re-index
+              updated document versions.</li>
+            <li><strong>Right to Erasure ("Right to be Forgotten"):</strong> You have the absolute right to demand
+              complete deletion of your personal records and indexed assets.</li>
+            <li><strong>Right to Restrict or Object:</strong> You may opt out of telemetry logging and disable automated
+              memory extraction.</li>
+          </ul>
+        </section>
+
+        <!-- Section 10 -->
+        <section class="policy-section" id="privacy-s10">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">10</span>
+              <h2>Data Protection Officer &amp; Inquiries</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('privacy-s10')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            For privacy inquiries, Data Subject Access Requests (DSAR), or Data Processing Agreements (DPA), please
+            reach our Data Protection Officer:
+          </p>
+          <div class="callout-box" style="margin-top: 14px;">
+            <div class="callout-icon">📧</div>
+            <div class="callout-content">
+              <div class="callout-title">Office of the Data Protection Officer</div>
+              <p>
+                Email: <a href="mailto:privacy@ragagent.io"
+                  style="color: #818cf8; text-decoration: underline;">privacy@ragagent.io</a><br>
+                Address: Legal &amp; Compliance Dept, RAG Agent Technologies Inc.<br>
+                Response Turnaround: Within 48 business hours
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+
+      <!-- ====================================================================
+           PANEL 2: TERMS OF SERVICE
+           ==================================================================== -->
+      <div class="policy-panel {% if active_tab == 'terms' %}active{% endif %}" id="panel-terms">
+        <div class="callout-box">
+          <div class="callout-icon">📜</div>
+          <div class="callout-content">
+            <div class="callout-title">Binding Agreement &amp; Enterprise License</div>
+            <p>
+              By accessing or using the RAG Agent platform, you confirm your acceptance of these Terms of Service.
+              Customers retain 100% intellectual property ownership of uploaded documents and generated agent outputs.
+            </p>
+          </div>
+        </div>
+
+        <!-- Section 1 -->
+        <section class="policy-section" id="terms-s1">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">01</span>
+              <h2>Acceptance of Terms &amp; Eligibility</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s1')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            These Terms of Service ("Terms") constitute a legally binding agreement between you (individually or on
+            behalf of the entity you represent) and RAG Agent Technologies Inc. ("RAG Agent", "we", "us").
+            By creating an account, uploading documents, running autonomous agents, or paying for a subscription, you
+            represent that:
+          </p>
+          <ul>
+            <li>You are at least 18 years of age or the legal age of majority in your jurisdiction.</li>
+            <li>You have full corporate power and legal authority to bind your organization to these Terms.</li>
+            <li>Your use of the services complies with all applicable export controls, cybersecurity regulations, and
+              data privacy laws.</li>
+          </ul>
+        </section>
+
+        <!-- Section 2 -->
+        <section class="policy-section" id="terms-s2">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">02</span>
+              <h2>Platform Architecture &amp; RAG Services</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s2')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            RAG Agent provides an enterprise-grade document ingestion and conversational retrieval platform featuring:
+          </p>
+          <ul>
+            <li>Multi-tenant room workspaces for group-scoped document sharing and contextual inquiry.</li>
+            <li>Document parsing for PDF, DOCX, TXT, CSV, MD, and HTML files with automated chunking and vector
+              embedding generation.</li>
+            <li>Real-time Server-Sent Events (SSE) streaming answers with verifiable source chunk citations.</li>
+            <li>A agent autonomous collaborative system (Decision Maker, Researcher, Task Generator, Task Executor,
+              Validator, Deployer).</li>
+            <li>Model Context Protocol (MCP) tool calling and sandboxed computational executions.</li>
+          </ul>
+        </section>
+
+        <!-- Section 3 -->
+        <section class="policy-section" id="terms-s3">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">03</span>
+              <h2>Accounts, Organizations &amp; RBAC Governance</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s3')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Users are responsible for safeguarding account credentials, API keys, and session tokens. You agree to
+            notify us immediately of any unauthorized access to your account.
+          </p>
+          <p>
+            The platform enforces Role-Based Access Control (RBAC):
+          </p>
+          <ul>
+            <li><strong>Admin:</strong> Possesses full control over organization settings, member invitations, team
+              billing, audit logs, and memory management.</li>
+            <li><strong>Staff:</strong> Authorized to revaluate document memory, review audit traces, and manage
+              workspace documents.</li>
+            <li><strong>Member:</strong> Permitted to upload documents, participate in assigned room chats, and run
+              multi-agent workflows.</li>
+            <li><strong>Viewer:</strong> Read-only access to room chats and verified citation references.</li>
+          </ul>
+        </section>
+
+        <!-- Section 4 -->
+        <section class="policy-section" id="terms-s4">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">04</span>
+              <h2>Intellectual Property &amp; Output Ownership</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s4')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            We respect intellectual property rights and maintain clear delineations:
+          </p>
+          <ul>
+            <li><strong>Customer Materials:</strong> You retain 100% sole ownership, copyright, and trade secret rights
+              in all files, documents, text excerpts, and prompts you upload or provide to the platform.</li>
+            <li><strong>AI Output Ownership:</strong> As between you and RAG Agent, you own all rights, title, and
+              interest in and to the synthesis, reports, answers, and artifacts generated by the agent based on your
+              inputs, to the fullest extent permitted by applicable law.</li>
+            <li><strong>Platform Intellectual Property:</strong> RAG Agent retains all rights, title, and interest in
+              our proprietary algorithms, agent coordination graphs, UI designs, codebases, APIs, and documentation.
+            </li>
+          </ul>
+        </section>
+
+        <!-- Section 5 -->
+        <section class="policy-section" id="terms-s5">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">05</span>
+              <h2>Acceptable Use &amp; Prohibitions</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s5')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            You agree not to engage in any prohibited activities, including but not limited to:
+          </p>
+          <ul>
+            <li>Reverse engineering, decompiling, or attempting to discover the source code of non-open components or
+              model weights.</li>
+            <li>Uploading files containing malware, rootkits, viruses, or obfuscated malicious payloads.</li>
+            <li>Attempting to break out of the Python execution sandbox or executing unauthorized command-line system
+              operations.</li>
+            <li>Bypassing multi-tenant room isolation or accessing workspaces without explicit invite tokens.</li>
+            <li>Generating deceptive deepfakes, automated phishing campaigns, hate speech, or malicious exploits.</li>
+            <li>Automating high-volume query flooding that degrades platform availability for other tenants.</li>
+          </ul>
+        </section>
+
+        <!-- Section 6 -->
+        <section class="policy-section" id="terms-s6">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">06</span>
+              <h2>Subscriptions, Mandates &amp; Razorpay Payments</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s6')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Paid plans (including Pro and Enterprise tiers) are offered on monthly and annual billing cycles:
+          </p>
+          <ul>
+            <li><strong>Recurring Billing Mandates:</strong> Paid subscriptions utilize automated recurring billing
+              handled securely via Razorpay. By upgrading to a paid tier, you authorize recurring debits until
+              cancelled.</li>
+            <li><strong>Taxes:</strong> All fees are exclusive of applicable Goods &amp; Services Tax (GST), Value Added
+              Tax (VAT), or sales taxes, which will be charged where required by local statutory law.</li>
+            <li><strong>Price Modifications:</strong> We reserve the right to revise subscription prices upon at least
+              30 days advance written notice prior to your next renewal cycle.</li>
+          </ul>
+        </section>
+
+        <!-- Section 7 -->
+        <section class="policy-section" id="terms-s7">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">07</span>
+              <h2>Rate Limits &amp; Fair Computing</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s7')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            To ensure optimal responsiveness, accounts are subject to tier-based fair usage policies:
+          </p>
+          <ul>
+            <li>File upload caps (default 25MB per document; customizable for Enterprise tiers).</li>
+            <li>Concurrent vector ingestion limits to prevent queue starvation.</li>
+            <li>Rate limits on streaming LLM token generation per minute. Excessive programmatic loops may trigger
+              temporary throttles.</li>
+          </ul>
+        </section>
+
+        <!-- Section 8 -->
+        <section class="policy-section" id="terms-s8">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">08</span>
+              <h2>Service Availability &amp; SLA</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s8')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            We target a 99.9% uptime Service Level Agreement (SLA) for paid enterprise tiers, excluding scheduled
+            maintenance.
+            Scheduled maintenance is conducted during low-traffic windows with at least 48 hours advance notice posted
+            in the system dashboard.
+          </p>
+        </section>
+
+        <!-- Section 9 -->
+        <section class="policy-section" id="terms-s9">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">09</span>
+              <h2>Disclaimers &amp; Probabilistic AI Outputs</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s9')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            <strong>Important Regulatory Notice on Generative AI:</strong>
+          </p>
+          <div class="callout-box amber">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-content">
+              <div class="callout-title">Probabilistic Nature of Large Language Models</div>
+              <p>
+                RAG Agent employs retrieval grounding and citation validation to minimize hallucinations.
+                However, outputs from Large Language Models are inherently probabilistic.
+                The service is provided "AS IS" and "AS AVAILABLE".
+                Outputs should not be solely relied upon for high-risk legal, medical, life-safety, structural
+                engineering, or investment decisions without independent verification by qualified human professionals.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 10 -->
+        <section class="policy-section" id="terms-s10">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">10</span>
+              <h2>Limitation of Liability</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s10')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            To the maximum extent permitted by applicable law:
+          </p>
+          <ul>
+            <li>Neither party shall be liable for indirect, punitive, special, exemplary, incidental, or consequential
+              damages (including loss of profits, goodwill, data, or business disruption).</li>
+            <li>RAG Agent's aggregate total liability arising out of or related to these Terms shall not exceed the
+              total fees paid by customer to RAG Agent in the twelve (12) months preceding the event giving rise to
+              liability.</li>
+          </ul>
+        </section>
+
+        <!-- Section 11 -->
+        <section class="policy-section" id="terms-s11">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">11</span>
+              <h2>Termination &amp; Data Grace Period</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s11')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            You may terminate your account at any time via the billing portal.
+            Upon termination, customer maintains a 30-day grace period during which all workspace documents,
+            transcripts, and memory data may be exported. Following the grace period, all data is permanently purged.
+          </p>
+        </section>
+
+        <!-- Section 12 -->
+        <section class="policy-section" id="terms-s12">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">12</span>
+              <h2>Governing Law &amp; Arbitration</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('terms-s12')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            These Terms shall be governed by and construed in accordance with the laws of Delaware, USA (or the
+            applicable regional entity jurisdiction for international enterprise contracts), without regard to conflict
+            of laws principles.
+            Any unresolved disputes shall be settled through binding individual arbitration under the rules of the
+            American Arbitration Association (AAA).
+          </p>
+        </section>
+      </div>
+
+
+      <!-- ====================================================================
+           PANEL 3: REFUND POLICY
+           ==================================================================== -->
+      <div class="policy-panel {% if active_tab == 'refund' %}active{% endif %}" id="panel-refund">
+        <div class="callout-box teal">
+          <div class="callout-icon">💳</div>
+          <div class="callout-content">
+            <div class="callout-title">14-Day Hassle-Free Satisfaction Guarantee</div>
+            <p>
+              We want you to experience our grounded document retrieval and autonomous multi-agent system with complete
+              confidence.
+              First-time subscribers are entitled to a full 100% refund within 14 calendar days of plan initiation.
+            </p>
+          </div>
+        </div>
+
+        <!-- Section 1 -->
+        <section class="policy-section" id="refund-s1">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">01</span>
+              <h2>14-Day Money-Back Guarantee</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('refund-s1')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            If you upgrade to our Pro subscription tier and determine within 14 calendar days that the platform does not
+            meet your business requirements, you may request a complete refund of your initial subscription payment.
+            No interrogation, no convoluted hurdles.
+          </p>
+        </section>
+
+        <!-- Section 2 -->
+        <section class="policy-section" id="refund-s2">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">02</span>
+              <h2>Eligibility Criteria for Refunds</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('refund-s2')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Refund requests will be promptly honored under any of the following circumstances:
+          </p>
+          <ul>
+            <li><strong>First-Time Subscription Window:</strong> Request filed within 14 calendar days of the initial
+              subscription charge.</li>
+            <li><strong>Verified Service Disruptions:</strong> Platform downtime or core ingestion failures exceeding
+              our 99.9% SLA threshold during a billing cycle.</li>
+            <li><strong>Technical Incompatibility:</strong> Inability of the platform to index supported file formats
+              (.pdf, .docx, .txt, .csv) due to verified backend bugs.</li>
+            <li><strong>Billing Anomalies:</strong> Duplicate charges, incorrect plan assignment, or billing errors
+              resulting from gateway synchronization anomalies.</li>
+            <li><strong>Annual Plans:</strong> Annual plans cancelled within 30 days of renewal are eligible for a
+              prorated refund for all unused months.</li>
+          </ul>
+        </section>
+
+        <!-- Section 3 -->
+        <section class="policy-section" id="refund-s3">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">03</span>
+              <h2>Ineligible Scenarios &amp; Overages</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('refund-s3')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Refunds will not be granted under the following conditions:
+          </p>
+          <ul>
+            <li><strong>Excessive Quota Depletion:</strong> Accounts that have consumed more than 80% of allocated
+              monthly LLM token quotas prior to filing a refund claim.</li>
+            <li><strong>Terms of Service Violations:</strong> Accounts suspended or terminated as a result of malicious
+              hacking attempts, automated abuse, or illegal material uploads.</li>
+            <li><strong>Requests Past the Guarantee Window:</strong> Standard monthly renewals requested after the
+              expiration of the 14-day window.</li>
+            <li><strong>Repeated Cycles:</strong> Customers who previously claimed a refund and subsequently subscribed
+              again under the same organization or billing credentials.</li>
+          </ul>
+        </section>
+
+        <!-- Section 4 -->
+        <section class="policy-section" id="refund-s4">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">04</span>
+              <h2>Subscription Cancellations &amp; Mandate Halting</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('refund-s4')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            You can cancel your recurring subscription at any moment without penalty:
+          </p>
+          <ol>
+            <li>Navigate to the <a href="/pricing" style="color: #818cf8; text-decoration: underline;">Plans &amp;
+                Pricing Page</a>.</li>
+            <li>Locate your active subscription banner and select <em>"Cancel Subscription / Stop Recurring
+                Mandate"</em>.</li>
+            <li>Upon cancellation, your card will never be charged again. You retain full access to Pro features until
+              the conclusion of your current paid billing period.</li>
+          </ol>
+        </section>
+
+        <!-- Section 5 -->
+        <section class="policy-section" id="refund-s5">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">05</span>
+              <h2>Step-by-Step Refund Claim Workflow</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('refund-s5')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            To submit a refund request, follow these straightforward steps:
+          </p>
+          <div class="callout-box" style="margin-top: 14px;">
+            <div class="callout-icon">📩</div>
+            <div class="callout-content">
+              <div class="callout-title">How to File a Claim</div>
+              <p>
+                Email <a href="mailto:refunds@ragagent.io"
+                  style="color: #818cf8; text-decoration: underline;">refunds@ragagent.io</a> from your registered
+                account email with:<br>
+                1. <strong>Invoice Number</strong> (e.g. INV-2026-XXXX or Razorpay Payment ID)<br>
+                2. <strong>Account Username / Organization Name</strong><br>
+                3. <strong>Brief Reason for Refund</strong> (optional feedback to help us improve)<br>
+                <em>Our billing desk reviews and responds to all requests within 24–48 business hours.</em>
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 6 -->
+        <section class="policy-section" id="refund-s6">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">06</span>
+              <h2>Razorpay Settlement Timelines</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('refund-s6')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Once our billing desk approves your refund:
+          </p>
+          <ul>
+            <li>The refund command is dispatched immediately to the <strong>Razorpay Payment Gateway</strong>.</li>
+            <li>Funds are routed back exclusively to the original payment instrument (Credit Card, Debit Card, UPI,
+              NetBanking).</li>
+            <li><strong>Settlement Timing:</strong> Most domestic banks credit the funds within <strong>5 to 7 business
+                days</strong>. UPI refunds often settle within 24 to 48 hours.</li>
+          </ul>
+        </section>
+
+        <!-- Section 7 -->
+        <section class="policy-section" id="refund-s7">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">07</span>
+              <h2>Chargebacks &amp; Dispute Policy</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('refund-s7')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            We strongly encourage reaching out to our billing desk prior to filing formal bank chargebacks.
+            Direct refund processing via Razorpay is significantly faster (5–7 days) compared to bank dispute workflows,
+            which can take 60–90 days.
+            We are committed to fair and prompt resolution of all genuine billing inquiries.
+          </p>
+        </section>
+      </div>
+
+
+      <!-- ====================================================================
+           PANEL 4: AI USAGE AND AI AGENT POLICY
+           ==================================================================== -->
+      <div class="policy-panel {% if active_tab == 'ai-policy' %}active{% endif %}" id="panel-ai-policy">
+        <div class="callout-box">
+          <div class="callout-icon">🤖</div>
+          <div class="callout-content">
+            <div class="callout-title">Autonomous AI Governance &amp; Safety Framework</div>
+            <p>
+              This policy defines the engineering guardrails, ethical boundaries, and human oversight controls governing
+              our agent collaborative team, Model Context Protocol (MCP) tool executions, and retrieval-grounded
+              generation.
+            </p>
+          </div>
+        </div>
+
+        <!-- Section 1 -->
+        <section class="policy-section" id="ai-s1">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">01</span>
+              <h2>Principles &amp; Governance Scope</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('ai-s1')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            At RAG Agent, our mission is to empower teams with grounded, verifiable intelligence.
+            Our AI architecture is governed by four fundamental pillars:
+          </p>
+          <ol>
+            <li><strong>Grounded Truth Over Hallucination:</strong> Models must justify assertions using verifiable
+              citations from indexed documents. If source documents do not contain the answer, the model must explicitly
+              state insufficient evidence.</li>
+            <li><strong>Human Agency &amp; Oversight:</strong> Autonomous agents must never perform destructive actions
+              without human confirmation.</li>
+            <li><strong>Zero Data Contamination:</strong> Proprietary context is ephemeral and isolated; it is never
+              absorbed into public model weights.</li>
+            <li><strong>Transparent Tool Execution:</strong> Every step taken by autonomous agents—including search
+              queries, script executions, and API calls—must be logged in the inspection audit trail.</li>
+          </ol>
+        </section>
+
+        <!-- Section 2 -->
+        <section class="policy-section" id="ai-s2">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">02</span>
+              <h2>The Agent Collaborative Architecture</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('ai-s2')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Our multi-agent system orchestrates a cooperative team of specialized autonomous agents.
+            Each agent operates under explicit behavioral constraints:
+          </p>
+
+          <div class="legal-table-wrapper">
+            <table class="legal-table">
+              <thead>
+                <tr>
+                  <th>Agent Role</th>
+                  <th>Core Responsibility</th>
+                  <th>Safety Constraint &amp; Guardrail</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>0. Decision Maker</strong></td>
+                  <td>Evaluates user prompt intent, assesses query complexity, determines appropriate execution graph,
+                    and assigns sub-tasks.</td>
+                  <td>Enforces organizational scope; rejects prompts violating acceptable use.</td>
+                </tr>
+                <tr>
+                  <td><strong>1. Researcher</strong></td>
+                  <td>Reformulates natural language queries into dense semantic search vectors to extract relevant
+                    document chunks from ChromaDB.</td>
+                  <td>Constrained strictly to documents present in the active room workspace.</td>
+                </tr>
+                <tr>
+                  <td><strong>2. Task Generator</strong></td>
+                  <td>Deconstructs multi-step objectives into directed acyclic graphs (DAGs) of atomic, verifiable
+                    subtasks.</td>
+                  <td>Limits workflow recursion depth to prevent runaway computational cycles.</td>
+                </tr>
+                <tr>
+                  <td><strong>3. Task Executor</strong></td>
+                  <td>Performs calculations, data transformations, and sandboxed script executions.</td>
+                  <td>Runs in sandboxed Python environments with no raw system privilege.</td>
+                </tr>
+                <tr>
+                  <td><strong>4. Validator</strong></td>
+                  <td>Cross-references proposed responses against retrieved citation chunks, computing hallucination
+                    risk scores.</td>
+                  <td>Mandates citation anchors; rejects ungrounded extrapolations.</td>
+                </tr>
+                <tr>
+                  <td><strong>5. Deployer</strong></td>
+                  <td>Synthesizes the validated answer, formats markdown and citations, and commits verified context to
+                    memory.</td>
+                  <td>Applies privacy filters to strip PII before writing to long-term memory.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Section 3 -->
+        <section class="policy-section" id="ai-s3">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">03</span>
+              <h2>Human-in-the-Loop (HITL) Controls</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('ai-s3')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Autonomous execution is subject to human-in-the-loop safeguards:
+          </p>
+          <ul>
+            <li><strong>Confirmation Gates:</strong> Actions that modify system state, overwrite stored files, or invoke
+              external paid APIs require explicit confirmation via UI dialog prompts.</li>
+            <li><strong>Emergency Stop Button:</strong> Users can abort running multi-agent workflows at any instant via
+              the real-time cancellation control.</li>
+            <li><strong>Audit Logs:</strong> Every reasoning step, tool invocation, and decision rationale is logged in
+              the Workflow Inspector for post-execution review.</li>
+          </ul>
+        </section>
+
+        <!-- Section 4 -->
+        <section class="policy-section" id="ai-s4">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">04</span>
+              <h2>Model Context Protocol (MCP) &amp; Tool Safety</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('ai-s4')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            When utilizing Model Context Protocol (MCP) tools for external integrations:
+          </p>
+          <ul>
+            <li><strong>Least Privilege:</strong> MCP connectors are configured with minimal required scopes (e.g.
+              read-only file access by default).</li>
+            <li><strong>Payload Sanitization:</strong> All tool inputs and returned data undergo structural validation
+              to mitigate indirect prompt injection attacks.</li>
+            <li><strong>Execution Isolation:</strong> Script executions take place in isolated sandboxes with strict
+              resource caps on memory, CPU, and execution timeout.</li>
+          </ul>
+        </section>
+
+        <!-- Section 5 -->
+        <section class="policy-section" id="ai-s5">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">05</span>
+              <h2>Grounding &amp; Hallucination Prevention</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('ai-s5')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            We mandate strict grounding standards across all generation pipelines:
+          </p>
+          <ul>
+            <li><strong>Source Attribution:</strong> Responses must explicitly link statements to specific document
+              chunk IDs. Users can click any citation pill to inspect the verbatim source text.</li>
+            <li><strong>Insufficient Evidence Protocol:</strong> If the retrieved document context does not contain
+              sufficient factual evidence to substantiate an answer, the model is strictly prompted to declare: <em>"The
+                indexed documents do not provide sufficient information to answer this query."</em></li>
+          </ul>
+        </section>
+
+        <!-- Section 6 -->
+        <section class="policy-section" id="ai-s6">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">06</span>
+              <h2>Dual-Tier Memory Ethical Rules</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('ai-s6')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Our two-tier memory system operates under transparent governance:
+          </p>
+          <ul>
+            <li><strong>Automated PII Scrubbing:</strong> Personal identifiers (e.g., social security numbers, credit
+              card numbers, personal health identifiers) are automatically redacted before facts are committed to
+              Long-Term Memory.</li>
+            <li><strong>Memory Inspection &amp; Purge:</strong> Organization members can view, edit, or delete any
+              extracted memory fact at any time in the Memory Tab.</li>
+            <li><strong>No Cross-Tenant Sharing:</strong> Memory items are strictly scoped to the tenant organization
+              and are never shared across organization boundaries.</li>
+          </ul>
+        </section>
+
+        <!-- Section 7 -->
+        <section class="policy-section" id="ai-s7">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">07</span>
+              <h2>Strictly Prohibited AI Use Cases</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('ai-s7')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            The following activities are strictly prohibited when using RAG Agent:
+          </p>
+          <ul>
+            <li>Developing autonomous cyber weapons, malware, or vulnerability exploitation frameworks.</li>
+            <li>Deploying models for fully automated legal sentencing, high-stakes medical diagnosis, or credit
+              worthiness decisions without human oversight.</li>
+            <li>Generating non-consensual deepfakes, synthetic CSAM, or targeted harassment materials.</li>
+            <li>Conducting biometric mass surveillance or facial identification harvesting.</li>
+          </ul>
+        </section>
+
+        <!-- Section 8 -->
+        <section class="policy-section" id="ai-s8">
+          <div class="section-header">
+            <div class="section-num-title">
+              <span class="section-num">08</span>
+              <h2>Model Providers &amp; Audit Telemetry</h2>
+            </div>
+            <button class="copy-anchor-btn" onclick="copyAnchorLink('ai-s8')"
+              title="Copy link to this section">🔗</button>
+          </div>
+          <p>
+            Users are always informed which foundation model is executing their query (e.g., Ollama Qwen2.5, Google
+            Gemini, OpenAI GPT-4o, or Anthropic Claude).
+            The active model is permanently displayed in the navigation header badge.
+            Detailed telemetry—including token consumption, latency, and step logs—is provided in real time to ensure
+            total transparency.
+          </p>
+        </section>
+      </div>
+
+    </article>
+  </main>
+
+  <!-- Legal Footer -->
+  <footer class="legal-footer">
+    <div class="legal-footer-inner">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 1.2rem;">⚡</span>
+        <strong style="color: #fff;">{{ app_name }}</strong>
+        <span style="color: #64748b; font-size: 0.82rem;">| Legal &amp; AI Compliance Center</span>
+      </div>
+
+      <div class="legal-footer-links">
+        <a href="/privacy" class="legal-footer-link" onclick="switchLegalTab('privacy', true); return false;">Privacy
+          Policy</a>
+        <a href="/terms" class="legal-footer-link" onclick="switchLegalTab('terms', true); return false;">Terms of
+          Service</a>
+        <a href="/refund" class="legal-footer-link" onclick="switchLegalTab('refund', true); return false;">Refund
+          Policy</a>
+        <a href="/ai-policy" class="legal-footer-link" onclick="switchLegalTab('ai-policy', true); return false;">AI
+          &amp; Agent Policy</a>
+        <a href="/pricing" class="legal-footer-link">Pricing &amp; Plans</a>
+        <a href="/" class="legal-footer-link">App Dashboard</a>
+      </div>
+
+      <div class="legal-footer-copy">
+        &copy; 2026 {{ app_name }} Technologies Inc. All rights reserved.
+      </div>
+    </div>
+  </footer>
+</div>
+
+<!-- Simple Notification Toast Helper -->
+<div id="legal-toast"
+  style="position: fixed; bottom: 24px; right: 24px; background: rgba(18, 24, 38, 0.95); border: 1px solid var(--legal-accent); color: #fff; padding: 12px 18px; border-radius: 8px; font-size: 0.82rem; display: none; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+  <span id="legal-toast-msg">Link copied to clipboard!</span>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Tab metadata mapping
+  const LEGAL_TABS = {
+    'privacy': {
+      title: 'Privacy Policy',
+      desc: 'Our commitments to enterprise data privacy, document non-training guarantees, and multi-tenant security.',
+      url: '/privacy'
+    },
+    'terms': {
+      title: 'Terms of Service',
+      desc: 'Terms and conditions governing the use of the RAG Agent multi-tenant intelligence and retrieval platform.',
+      url: '/terms'
+    },
+    'refund': {
+      title: 'Refund Policy',
+      desc: 'Details regarding our 14-day satisfaction guarantee, recurring mandate cancellations, and Razorpay refund procedures.',
+      url: '/refund'
+    },
+    'ai-policy': {
+      title: 'AI Usage & AI Agent Policy',
+      desc: 'Standards and safety guardrails governing our agent autonomous architecture, tool executions, and RAG grounding.',
+      url: '/ai-policy'
+    }
+  };
+
+  // Switch Active Legal Tab
+  function switchLegalTab(tabId, pushHistory = true) {
+    if (!LEGAL_TABS[tabId]) return;
+
+    // Update Tab Buttons
+    document.querySelectorAll('.legal-nav-tab').forEach(btn => {
+      btn.classList.remove('active');
+      btn.setAttribute('aria-selected', 'false');
+    });
+    const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+    if (activeBtn) {
+      activeBtn.classList.add('active');
+      activeBtn.setAttribute('aria-selected', 'true');
+    }
+
+    // Update Panels
+    document.querySelectorAll('.policy-panel').forEach(panel => {
+      panel.classList.remove('active');
+    });
+    const activePanel = document.getElementById(`panel-${tabId}`);
+    if (activePanel) {
+      activePanel.classList.add('active');
+    }
+
+    // Update TOCs
+    document.querySelectorAll('.legal-toc-list').forEach(toc => {
+      toc.style.display = 'none';
+    });
+    const activeToc = document.getElementById(`toc-${tabId}`);
+    if (activeToc) {
+      activeToc.style.display = 'flex';
+    }
+
+    // Update Hero Text & Document Title
+    const meta = LEGAL_TABS[tabId];
+    const heroTitle = document.getElementById('legal-hero-title');
+    const heroDesc = document.getElementById('legal-hero-desc');
+    if (heroTitle) heroTitle.textContent = meta.title;
+    if (heroDesc) heroDesc.textContent = meta.desc;
+    document.title = `${meta.title} — {{ app_name }}`;
+
+    // Update URL without page reload
+    if (pushHistory && window.location.pathname !== meta.url) {
+      window.history.pushState({ tabId: tabId }, meta.title, meta.url);
+    }
+
+    // Scroll to top of content
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Rebind Scroll-Spy
+    setupScrollSpy();
+  }
+
+  // Handle browser back / forward navigation
+  window.addEventListener('popstate', (e) => {
+    const path = window.location.pathname;
+    let target = 'privacy';
+    if (path.includes('terms')) target = 'terms';
+    else if (path.includes('refund')) target = 'refund';
+    else if (path.includes('ai')) target = 'ai-policy';
+    switchLegalTab(target, false);
+  });
+
+  // Copy Section Anchor Link
+  function copyAnchorLink(sectionId) {
+    const activeTab = document.querySelector('.legal-nav-tab.active')?.id.replace('tab-btn-', '') || 'privacy';
+    const baseUrl = window.location.origin + LEGAL_TABS[activeTab].url;
+    const fullUrl = `${baseUrl}#${sectionId}`;
+
+    navigator.clipboard.writeText(fullUrl).then(() => {
+      showToast('Anchor link copied to clipboard!');
+    }).catch(() => {
+      showToast('Link: ' + fullUrl);
+    });
+  }
+
+  // Toast helper
+  function showToast(message) {
+    const toast = document.getElementById('legal-toast');
+    const msg = document.getElementById('legal-toast-msg');
+    if (!toast || !msg) return;
+    msg.textContent = message;
+    toast.style.display = 'block';
+    setTimeout(() => {
+      toast.style.display = 'none';
+    }, 2800);
+  }
+
+  // Section Filter Keyword Search
+  function filterLegalSections(query) {
+    const q = query.toLowerCase().trim();
+    const activePanel = document.querySelector('.policy-panel.active');
+    if (!activePanel) return;
+
+    const sections = activePanel.querySelectorAll('.policy-section');
+    sections.forEach(sec => {
+      const text = sec.innerText.toLowerCase();
+      if (!q || text.includes(q)) {
+        sec.style.display = 'block';
+      } else {
+        sec.style.display = 'none';
+      }
+    });
+  }
+
+  // Dynamic Scroll-Spy for Table of Contents
+  function setupScrollSpy() {
+    const activePanel = document.querySelector('.policy-panel.active');
+    if (!activePanel) return;
+
+    const sections = activePanel.querySelectorAll('.policy-section');
+    const activeTabId = activePanel.id.replace('panel-', '');
+    const tocList = document.getElementById(`toc-${activeTabId}`);
+    if (!tocList) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocList.querySelectorAll('.legal-toc-link').forEach(link => {
+            if (link.getAttribute('href') === `#${id}`) {
+              link.classList.add('active');
+            } else {
+              link.classList.remove('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+
+    sections.forEach(sec => observer.observe(sec));
+  }
+
+  // Deep Link Handling on initial page load
+  document.addEventListener('DOMContentLoaded', () => {
+    // Check hash for specific section anchor
+    const hash = window.location.hash;
+    if (hash) {
+      if (hash.startsWith('#privacy')) switchLegalTab('privacy', false);
+      else if (hash.startsWith('#terms')) switchLegalTab('terms', false);
+      else if (hash.startsWith('#refund')) switchLegalTab('refund', false);
+      else if (hash.startsWith('#ai')) switchLegalTab('ai-policy', false);
+
+      setTimeout(() => {
+        const el = document.querySelector(hash);
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 200);
+    } else {
+      setupScrollSpy();
+    }
+  });
+</script>
+{% endblock %}

@@ -14,20 +14,23 @@
 
     <!-- Sign In Tab Form -->
     <div id="auth-panel-signin">
-      <form id="login-form">
+      <form id="login-form" novalidate>
         <div class="form-group">
           <label for="login-username">Username or Email</label>
-          <input type="text" id="login-username" class="form-control" placeholder="admin or you@example.com" required>
+          <input type="text" id="login-username" class="form-control" placeholder="admin or you@example.com" autocomplete="username">
         </div>
         <div class="form-group">
           <label for="login-password">Password</label>
-          <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
+          <input type="password" id="login-password" class="form-control" placeholder="••••••••" autocomplete="current-password">
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
-          <button type="button" class="btn btn-outline" id="demo-login-btn" title="Sign in with instant demo user">
-            ⚡ Quick Demo Login
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 20px;">
+          <button type="button" class="btn btn-outline" id="demo-login-btn" title="Sign in with instant common demo user (No memory access)">
+            ⚡ Demo User
           </button>
-          <button type="submit" class="btn btn-primary" id="login-submit-btn">
+          <button type="button" class="btn btn-outline" id="demo-staff-btn" style="border-color: rgba(99, 102, 241, 0.5); color: #818cf8;" title="Sign in with instant staff demo user (Memory access enabled)">
+            🛡️ Demo Staff
+          </button>
+          <button type="submit" formnovalidate class="btn btn-primary" id="login-submit-btn" style="margin-left: auto;">
             Sign In
           </button>
         </div>
@@ -36,27 +39,44 @@
 
     <!-- Register Tab Form -->
     <div id="auth-panel-register" style="display: none;">
-      <form id="register-form">
+      <!-- Active Invitation Banner (shown when ?invite=<token> is present) -->
+      <div id="reg-invite-banner" style="display: none; background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 0.82rem; font-weight: 600; color: var(--accent-primary);">
+            🎉 Organization Invite Active
+          </span>
+          <span id="invite-role-badge" class="badge-pill" style="font-size: 0.7rem; background: var(--accent-primary); color: #fff; text-transform: uppercase;"></span>
+        </div>
+        <p id="invite-desc-text" style="font-size: 0.76rem; color: var(--text-muted); margin: 4px 0 0 0;"></p>
+      </div>
+
+      <form id="register-form" novalidate>
         <div class="form-group">
           <label for="reg-email">Email Address</label>
-          <input type="email" id="reg-email" class="form-control" placeholder="you@company.com" required>
+          <input type="text" inputmode="email" autocomplete="email" id="reg-email" class="form-control" placeholder="you@company.com">
         </div>
         <div class="form-group">
           <label for="reg-username">Username</label>
-          <input type="text" id="reg-username" class="form-control" placeholder="johndoe" required>
+          <input type="text" id="reg-username" class="form-control" placeholder="johndoe" autocomplete="username">
         </div>
         <div class="form-group">
           <label for="reg-fullname">Full Name (Optional)</label>
-          <input type="text" id="reg-fullname" class="form-control" placeholder="John Doe">
+          <input type="text" id="reg-fullname" class="form-control" placeholder="John Doe" autocomplete="name">
         </div>
         <div class="form-group">
           <label for="reg-password">Password</label>
-          <input type="password" id="reg-password" class="form-control" placeholder="Minimum 6 characters" minlength="6" required>
+          <input type="password" id="reg-password" class="form-control" placeholder="Minimum 6 characters" autocomplete="new-password">
         </div>
         <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
-          <button type="submit" class="btn btn-primary">
+          <button type="submit" formnovalidate class="btn btn-primary">
             Create Account
           </button>
+        </div>
+        <div style="margin-top: 14px; font-size: 0.72rem; color: var(--text-muted); text-align: center; line-height: 1.5;">
+          By creating an account, you agree to our
+          <a href="/terms" target="_blank" style="color: #818cf8; text-decoration: underline;">Terms of Service</a>,
+          <a href="/privacy" target="_blank" style="color: #818cf8; text-decoration: underline;">Privacy Policy</a>, and
+          <a href="/ai-policy" target="_blank" style="color: #818cf8; text-decoration: underline;">AI Agent Policy</a>.
         </div>
       </form>
     </div>

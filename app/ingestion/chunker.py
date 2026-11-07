@@ -34,7 +34,7 @@ class DocumentChunker:
         user_id: Optional[str] = None,
         uploader_username: Optional[str] = None,
         is_persistent: bool = True,
-        is_shared: bool = True,
+        is_shared: bool = False,
     ) -> List[LCDocument]:
         """Split parsed pages into LangChain Document chunks with complete provenance metadata."""
         chunks: List[LCDocument] = []

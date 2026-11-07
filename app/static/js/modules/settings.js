@@ -28,6 +28,10 @@
       if (embeddingModelInput) embeddingModelInput.value = s.default_embedding_model;
       if (topkSlider) topkSlider.value = s.retrieval_top_k;
       if (topkVal) topkVal.textContent = s.retrieval_top_k;
+      const themeSelect = document.getElementById('theme-select');
+      if (themeSelect && window.ThemeManager) {
+        themeSelect.value = window.ThemeManager.getMode();
+      }
     } catch (e) {
       console.warn('Failed to load settings:', e);
     }
@@ -46,20 +50,69 @@
     const topkVal = document.getElementById('topk-val');
     const providerBadge = document.getElementById('provider-badge');
 
-    openSettingsBtn?.addEventListener('click', () => settingsModal?.classList.add('active'));
-    closeSettingsBtn?.addEventListener('click', () => settingsModal?.classList.remove('active'));
+    const resetSettingsErrors = () => {
+      if (RAG.validator) {
+        if (modelInput) RAG.validator.clearError(modelInput);
+        if (embeddingModelInput) RAG.validator.clearError(embeddingModelInput);
+      }
+      settingsModal?.classList.remove('active');
+    };
+
+    openSettingsBtn?.addEventListener('click', () => {
+      document.querySelectorAll('.profile-dropdown-menu.show, .room-dropdown-menu.show, .theme-menu.show').forEach((m) => {
+        m.classList.remove('show');
+      });
+      document.getElementById('auth-user-btn')?.setAttribute('aria-expanded', 'false');
+      document.getElementById('room-dropdown-btn')?.setAttribute('aria-expanded', 'false');
+
+      if (RAG.validator) {
+        if (modelInput) RAG.validator.clearError(modelInput);
+        if (embeddingModelInput) RAG.validator.clearError(embeddingModelInput);
+      }
+      settingsModal?.classList.add('active');
+    });
+    closeSettingsBtn?.addEventListener('click', resetSettingsErrors);
+
+    if (RAG.validator) {
+      if (modelInput) RAG.validator.attachLiveValidation(modelInput, RAG.validator.validateModelName);
+      if (embeddingModelInput) RAG.validator.attachLiveValidation(embeddingModelInput, RAG.validator.validateModelName);
+    }
 
     topkSlider?.addEventListener('input', (e) => {
       if (topkVal) topkVal.textContent = e.target.value;
     });
 
     saveSettingsBtn?.addEventListener('click', async () => {
+      const chatModelVal = modelInput?.value.trim() || '';
+      const embedModelVal = embeddingModelInput?.value.trim() || '';
+
+      // JavaScript Input Validation
+      if (RAG.validator) {
+        const chatModelErr = RAG.validator.validateModelName(chatModelVal);
+        if (chatModelErr) {
+          RAG.validator.showError(modelInput, chatModelErr);
+          modelInput?.focus();
+          return;
+        } else if (modelInput) {
+          RAG.validator.clearError(modelInput);
+        }
+
+        const embedModelErr = RAG.validator.validateModelName(embedModelVal);
+        if (embedModelErr) {
+          RAG.validator.showError(embeddingModelInput, embedModelErr);
+          embeddingModelInput?.focus();
+          return;
+        } else if (embeddingModelInput) {
+          RAG.validator.clearError(embeddingModelInput);
+        }
+      }
+
       try {
         const updated = await API.updateSettings({
           default_chat_provider: providerSelect.value,
-          default_chat_model: modelInput.value.trim() || undefined,
+          default_chat_model: chatModelVal || undefined,
           default_embedding_provider: embeddingProviderSelect?.value || undefined,
-          default_embedding_model: embeddingModelInput?.value.trim() || undefined,
+          default_embedding_model: embedModelVal || undefined,
           retrieval_top_k: parseInt(topkSlider.value, 10),
         });
         if (RAG.state.activeSettings) {
@@ -72,7 +125,7 @@
         if (providerBadge) {
           providerBadge.textContent = `${updated.active_chat_provider.toUpperCase()} / ${updated.active_chat_model}`;
         }
-        settingsModal?.classList.remove('active');
+        resetSettingsErrors();
         RAG.utils.showToast('Settings saved successfully', 'success');
       } catch (e) {
         RAG.utils.showToast(e.message, 'error');

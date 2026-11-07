@@ -6,10 +6,10 @@
       <button id="close-room-btn" class="modal-close">&times;</button>
     </div>
 
-    <form id="create-room-form">
+    <form id="create-room-form" novalidate>
       <div class="form-group">
         <label for="room-name-input">Room Name</label>
-        <input type="text" id="room-name-input" class="form-control" placeholder="e.g. JavaScript Frameworks Deep Dive" required>
+        <input type="text" id="room-name-input" class="form-control" placeholder="e.g. JavaScript Frameworks Deep Dive">
       </div>
 
       <div class="form-group">
@@ -24,9 +24,14 @@
         </div>
       </div>
 
+      <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+        <input type="checkbox" id="create-room-public" style="cursor: pointer; width: auto;">
+        <label for="create-room-public" style="margin: 0; cursor: pointer; font-size: 0.82rem; color: var(--text-secondary);">🌐 Make Public (accessible to all authorized users)</label>
+      </div>
+
       <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
         <button type="button" class="btn btn-outline" id="cancel-room-btn">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="save-room-btn">Create Room</button>
+        <button type="submit" formnovalidate class="btn btn-primary" id="save-room-btn">Create Room</button>
       </div>
     </form>
   </div>
