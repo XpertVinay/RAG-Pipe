@@ -1,4 +1,12 @@
-"""Prompt templates with strict anti-injection boundaries and grounding rules."""
+"""Prompt templates with strict anti-injection boundaries, grounding rules, and meaning-aligned synthesizer."""
+
+from app.agent.meaning import (
+    MeaningProfile,
+    analyze_query_meaning,
+    build_meaning_aligned_grounded_prompt,
+    build_meaning_aligned_ungrounded_prompt,
+    extract_meaning_query,
+)
 
 GREETING_SYSTEM_PROMPT = """You are a polite, helpful AI assistant.
 Respond warmly, courteously, and concisely to the user's greeting or pleasantry.

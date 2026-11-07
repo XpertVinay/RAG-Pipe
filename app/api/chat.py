@@ -433,11 +433,18 @@ async def ask_query(
     if is_app_create:
         response_type = "app_creation"
 
+    semantic_intent = final_state.get("semantic_intent")
+    semantic_intent_label = final_state.get("semantic_intent_label")
+    meaning_query = final_state.get("meaning_query")
+
     meta_payload = {
         "provider": request.provider,
         "model": request.model,
         "response_type": response_type,
         "intent": intent,
+        "semantic_intent": semantic_intent,
+        "semantic_intent_label": semantic_intent_label,
+        "meaning_query": meaning_query,
         "is_app_creation": is_app_create,
         "suggested_app_name": suggested_app_name,
         "communication_channels": ["Gmeet", "Teams", "Zoom", "others"],

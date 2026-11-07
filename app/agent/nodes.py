@@ -16,6 +16,10 @@ from app.agent.prompts import (
     UNGROUNDED_SENSIBLE_SYSTEM_PROMPT,
     VISUALIZATION_CODE_SYSTEM_PROMPT,
     VISUALIZATION_INTENT_SYSTEM_PROMPT,
+    MeaningProfile,
+    analyze_query_meaning,
+    build_meaning_aligned_grounded_prompt,
+    build_meaning_aligned_ungrounded_prompt,
 )
 from app.agent.sandbox import execute_code_safely, extract_python_code
 from app.agent.state import AgentState
@@ -133,17 +137,28 @@ async def validate_and_classify_query(state: AgentState) -> Dict[str, Any]:
 
     needs_vis = False if (is_greeting or is_app_create) else detect_visualization_need(query)
 
+    # Perform semantic meaning and intent analysis
+    meaning_profile = analyze_query_meaning(query)
+
     return {
         "original_query": query,
         "query": query,
         "intent": intent,
+        "semantic_intent": meaning_profile.intent if intent == "qa" else intent,
+        "semantic_intent_label": meaning_profile.intent_label if intent == "qa" else ("Greeting" if intent == "greeting" else "App Creation"),
+        "meaning_query": meaning_profile.meaning_query,
+        "meaning_profile": meaning_profile.to_dict(),
         "is_app_creation": is_app_create,
         "suggested_app_name": suggested_name,
         "needs_visualization": needs_vis,
         "status_update": (
             "Application creation request recognized."
             if is_app_create
-            else ("Question validated." if intent == "qa" else "Processing greeting...")
+            else (
+                f"Analyzed query meaning: '{meaning_profile.intent_label}'."
+                if intent == "qa"
+                else "Processing greeting..."
+            )
         ),
     }
 
@@ -178,20 +193,45 @@ async def load_memory_context(state: AgentState) -> Dict[str, Any]:
 
 
 async def retrieve_documents(state: AgentState) -> Dict[str, Any]:
-    """Retrieve relevant document chunks from the vector store."""
+    """Retrieve relevant document chunks from the vector store using meaning-based similarity search."""
     query = state["query"]
+    meaning_query = state.get("meaning_query") or query
     top_k = state.get("top_k", 4)
     doc_filter = state.get("document_ids")
+    intent_label = state.get("semantic_intent_label") or "Semantic Search"
 
-    logger.info(f"LangGraph node: Retrieving for query='{query[:40]}' with top_k={top_k}")
+    logger.info(
+        f"LangGraph node: Meaning-based retrieval for query='{query[:40]}' (meaning='{meaning_query[:40]}') with top_k={top_k}"
+    )
 
     try:
+        # Perform similarity search using the extracted meaning query
         results = vector_store.similarity_search_with_score(
-            query=query,
+            query=meaning_query,
             k=top_k,
             similarity_threshold=0.25,
             document_ids=doc_filter,
         )
+
+        # If meaning query differs from raw query and results are sparse, also search with raw query and merge
+        if len(results) < top_k and meaning_query.strip().lower() != query.strip().lower():
+            raw_results = vector_store.similarity_search_with_score(
+                query=query,
+                k=top_k,
+                similarity_threshold=0.25,
+                document_ids=doc_filter,
+            )
+            seen_chunk_ids = {
+                (doc.metadata or {}).get("chunk_id", str(id(doc))): score
+                for doc, score in results
+            }
+            for raw_doc, raw_score in raw_results:
+                cid = (raw_doc.metadata or {}).get("chunk_id", str(id(raw_doc)))
+                if cid not in seen_chunk_ids:
+                    results.append((raw_doc, raw_score))
+                    seen_chunk_ids[cid] = raw_score
+            results.sort(key=lambda x: x[1], reverse=True)
+            results = results[:top_k]
 
         documents: List[LCDocument] = []
         citations: List[Citation] = []
@@ -210,10 +250,17 @@ async def retrieve_documents(state: AgentState) -> Dict[str, Any]:
                 )
             )
 
+        status_msg = (
+            f"Retrieved {len(documents)} document chunk(s) via meaning-based similarity search ({intent_label})."
+            if documents
+            else "No matching document chunks found above similarity threshold."
+        )
+
         return {
             "documents": documents,
             "citations": citations,
-            "status_update": f"Retrieved {len(documents)} relevant document chunks.",
+            "meaning_query": meaning_query,
+            "status_update": status_msg,
         }
     except Exception as e:
         logger.error(f"Error during retrieval node: {e}", exc_info=True)
@@ -445,10 +492,12 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
                     "status_update": "Specific documentation required to answer this inquiry.",
                 }
 
-            # Generate sensible, high-quality output recursively from domain principles
-            logger.info(f"No grounded documents found; producing sensible ungrounded response for query: '{query[:60]}'")
+            # Generate sensible, high-quality output recursively from domain principles aligned with query meaning
+            meaning_profile = analyze_query_meaning(query)
+            logger.info(f"No grounded documents found; producing meaning-aligned ungrounded response ({meaning_profile.intent_label}) for query: '{query[:60]}'")
+            ungrounded_prompt = build_meaning_aligned_ungrounded_prompt(query, meaning_profile)
             ungrounded_messages = [
-                SystemMessage(content=UNGROUNDED_SENSIBLE_SYSTEM_PROMPT),
+                SystemMessage(content=ungrounded_prompt),
             ]
             if state.get("memory_context"):
                 ungrounded_messages.append(SystemMessage(content=state["memory_context"]))
@@ -472,7 +521,10 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
                     "generation_grounded": True,
                     "needs_visualization": False,
                     "visualization": None,
-                    "status_update": "Generated sensible output from domain principles (no workspace documents provided).",
+                    "semantic_intent": meaning_profile.intent,
+                    "semantic_intent_label": meaning_profile.intent_label,
+                    "meaning_query": meaning_profile.meaning_query,
+                    "status_update": f"Generated sensible output from domain principles aligned with {meaning_profile.intent_label} (no workspace documents provided).",
                 }
             except Exception as e:
                 logger.error(f"Error generating sensible ungrounded output: {e}")
@@ -514,9 +566,11 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
 
         context_str = "\n\n".join(formatted_contexts)
 
-        # Build prompt messages
+        # Build meaning-aligned prompt messages in direct correspondence with user query meaning
+        meaning_profile = analyze_query_meaning(query)
+        grounded_system_prompt = build_meaning_aligned_grounded_prompt(query, meaning_profile)
         messages = [
-            SystemMessage(content=GROUNDED_RAG_SYSTEM_PROMPT),
+            SystemMessage(content=grounded_system_prompt),
         ]
 
         # Incorporate retrieved low-memory context (Global & User-Specific, STM & LTM)
@@ -599,6 +653,9 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
             "answer": answer,
             "needs_visualization": True,
             "visualization": vis_payload,
+            "semantic_intent": meaning_profile.intent if 'meaning_profile' in locals() else state.get("semantic_intent"),
+            "semantic_intent_label": meaning_profile.intent_label if 'meaning_profile' in locals() else state.get("semantic_intent_label"),
+            "meaning_query": meaning_profile.meaning_query if 'meaning_profile' in locals() else state.get("meaning_query"),
             "error": err_msg,
             "status_update": "Answer and visual representation synthesized successfully.",
         }
@@ -623,7 +680,10 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
             "answer": answer,
             "needs_visualization": False,
             "visualization": None,
-            "status_update": "Answer generated from verified context.",
+            "semantic_intent": meaning_profile.intent if 'meaning_profile' in locals() else state.get("semantic_intent"),
+            "semantic_intent_label": meaning_profile.intent_label if 'meaning_profile' in locals() else state.get("semantic_intent_label"),
+            "meaning_query": meaning_profile.meaning_query if 'meaning_profile' in locals() else state.get("meaning_query"),
+            "status_update": f"Answer generated from verified context aligned with {meaning_profile.intent_label if 'meaning_profile' in locals() else 'query meaning'}.",
         }
     except Exception as e:
         logger.error(f"Generation error in RAG agent: {e}", exc_info=True)

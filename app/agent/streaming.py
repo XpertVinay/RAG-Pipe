@@ -14,6 +14,10 @@ from app.agent.prompts import (
     GROUNDED_RAG_SYSTEM_PROMPT,
     GROUNDED_RAG_USER_PROMPT,
     UNGROUNDED_SENSIBLE_SYSTEM_PROMPT,
+    MeaningProfile,
+    analyze_query_meaning,
+    build_meaning_aligned_grounded_prompt,
+    build_meaning_aligned_ungrounded_prompt,
 )
 from app.agent.state import AgentState
 from app.core.logging import logger
@@ -45,7 +49,7 @@ async def stream_rag_agent(
 ) -> AsyncGenerator[str, None]:
     """Execute LangGraph RAG workflow and yield Server-Sent Events."""
     chat_history = chat_history or []
-    yield format_sse("status", {"message": "Analyzing query and intent..."})
+    yield format_sse("status", {"message": "Analyzing query meaning and semantic intent..."})
 
     initial_state: AgentState = {
         "query": query,
@@ -61,6 +65,10 @@ async def stream_rag_agent(
         "temperature": temperature,
         "top_k": top_k,
         "intent": "qa",
+        "semantic_intent": None,
+        "semantic_intent_label": None,
+        "meaning_query": None,
+        "meaning_profile": None,
         "documents": [],
         "citations": [],
         "retrieval_retry_count": 0,
@@ -177,9 +185,16 @@ async def stream_rag_agent(
         is_admin_or_staff = user_role in ("admin", "staff", "staffs")
         visible_consulted_memories = consulted_memories if is_admin_or_staff else []
 
+        semantic_intent = final_state.get("semantic_intent")
+        semantic_intent_label = final_state.get("semantic_intent_label")
+        meaning_query = final_state.get("meaning_query")
+
         meta_payload = {
             "response_type": response_type,
             "intent": intent,
+            "semantic_intent": semantic_intent,
+            "semantic_intent_label": semantic_intent_label,
+            "meaning_query": meaning_query,
             "is_app_creation": is_app_create,
             "suggested_app_name": suggested_app_name,
             "communication_channels": ["Gmeet", "Teams", "Zoom", "others"],
@@ -196,7 +211,12 @@ async def stream_rag_agent(
         }
         yield format_sse("meta", meta_payload)
 
-        yield format_sse("status", {"message": "Synthesizing answer from verified evidence..."})
+        status_synthesis = (
+            f"Synthesizing {semantic_intent_label} answer aligned with query meaning..."
+            if semantic_intent_label and intent == "qa"
+            else "Synthesizing answer from verified evidence..."
+        )
+        yield format_sse("status", {"message": status_synthesis})
 
         chat_model = ModelFactory.get_chat_model(
             provider_name=provider,
@@ -265,8 +285,10 @@ async def stream_rag_agent(
                 for word in msg.split(" "):
                     yield format_sse("token", {"token": word + " "})
             else:
+                meaning_profile = analyze_query_meaning(query)
+                ungrounded_prompt = build_meaning_aligned_ungrounded_prompt(query, meaning_profile)
                 ungrounded_messages = [
-                    SystemMessage(content=UNGROUNDED_SENSIBLE_SYSTEM_PROMPT),
+                    SystemMessage(content=ungrounded_prompt),
                 ]
                 if memory_context:
                     ungrounded_messages.append(SystemMessage(content=memory_context))
@@ -315,7 +337,9 @@ async def stream_rag_agent(
 
             context_str = "\n\n".join(formatted_contexts)
 
-            messages = [SystemMessage(content=GROUNDED_RAG_SYSTEM_PROMPT)]
+            meaning_profile = analyze_query_meaning(query)
+            grounded_prompt = build_meaning_aligned_grounded_prompt(query, meaning_profile)
+            messages = [SystemMessage(content=grounded_prompt)]
             if memory_context:
                 messages.append(SystemMessage(content=memory_context))
 
@@ -386,6 +410,9 @@ async def stream_rag_agent(
             "conversation_id": conversation_id,
             "response_type": response_type,
             "intent": intent,
+            "semantic_intent": semantic_intent,
+            "semantic_intent_label": semantic_intent_label,
+            "meaning_query": meaning_query,
             "is_app_creation": is_app_create,
             "suggested_app_name": suggested_app_name,
             "retrieval_retry_count": retrieval_retry_count,

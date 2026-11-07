@@ -845,6 +845,14 @@
       `;
     }
 
+    if (meta.semantic_intent_label && meta.intent !== 'greeting' && meta.intent !== 'app_creation') {
+      badgesHtml += `
+        <span class="meta-tag-pill semantic-intent-pill" title="System prompt & similarity search dynamically aligned with user query meaning${meta.meaning_query ? ': ' + RAG.utils.escapeHtml(meta.meaning_query) : ''}">
+          🎯 ${RAG.utils.escapeHtml(meta.semantic_intent_label)}
+        </span>
+      `;
+    }
+
     badgesHtml += `</div>`;
 
     let citationsHtml = '';
@@ -1174,6 +1182,14 @@
       badgesHtml += `
         <span class="meta-tag-pill" title="Query was automatically rewritten and re-retrieved">
           🔄 ${meta.retrieval_retry_count} retries
+        </span>
+      `;
+    }
+
+    if (meta.semantic_intent_label && meta.intent !== 'greeting' && meta.intent !== 'app_creation') {
+      badgesHtml += `
+        <span class="meta-tag-pill semantic-intent-pill" title="System prompt & similarity search dynamically aligned with user query meaning${meta.meaning_query ? ': ' + RAG.utils.escapeHtml(meta.meaning_query) : ''}">
+          🎯 ${RAG.utils.escapeHtml(meta.semantic_intent_label)}
         </span>
       `;
     }
