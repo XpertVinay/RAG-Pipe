@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -425,7 +426,13 @@ async def ask_query(
     generation_grounded = final_state.get("generation_grounded", True)
     consulted_memories = final_state.get("consulted_memories", [])
 
-    response_type = classify_response_type(intent, documents, is_relevant, citations)
+    requires_doc_patterns = [
+        r"\b(secret code|confidential code|passcode|nda|contract clause|my invoice|my bill|my statement|uploaded file|attached document|page \d+|section \d+)\b",
+        r"\b(what is the secret|what's the secret|read the attached|summarize the attached|in the uploaded)\b",
+    ]
+    requires_doc = any(re.search(pat, request.message.lower()) for pat in requires_doc_patterns)
+    response_type = classify_response_type(intent, documents, is_relevant, citations, requires_doc=requires_doc)
+    generation_grounded = bool(documents and is_relevant and citations)
 
     user_role = getattr(current_user, "role", "user") if current_user else "user"
     is_admin_or_staff = user_role in ("admin", "staff", "staffs")

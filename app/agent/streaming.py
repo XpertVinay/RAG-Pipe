@@ -174,14 +174,19 @@ async def stream_rag_agent(
         # Classify response style differentiator
         if intent == "greeting":
             response_type = "greeting"
+            generation_grounded = False
         elif is_app_create:
             response_type = "app_creation"
+            generation_grounded = False
         elif not documents or not is_relevant:
             response_type = "insufficient_info" if requires_doc else "ungrounded_sensible"
+            generation_grounded = False
         elif citations_list:
             response_type = "grounded"
+            generation_grounded = True
         else:
             response_type = "general"
+            generation_grounded = False
 
         consulted_memories = final_state.get("consulted_memories", [])
         is_admin_or_staff = user_role in ("admin", "staff", "staffs")

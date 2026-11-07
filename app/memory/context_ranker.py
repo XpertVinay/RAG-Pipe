@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.meaning import is_anaphoric_query
 from app.models.memory import MemoryItem, MemoryScope, MemoryType
 
 
@@ -56,20 +57,34 @@ class MemoryContextRanker:
         tokens = [t.lower() for t in re.findall(r"\w+", query) if len(t) > 2]
         scored_memories: List[Tuple[float, MemoryItem]] = []
         conv_prefix = (conversation_id or "")[:8] if conversation_id else None
+        is_anaphoric = is_anaphoric_query(query)
 
         for mem in candidates:
             mem_text = f"{mem.key} {mem.content}".lower()
             overlap_score = sum(1.0 for token in tokens if token in mem_text)
+
+            is_ltm_pref = (
+                mem.memory_type == MemoryType.LONG_TERM.value
+                or mem.key.startswith("user_pref:")
+                or mem.key.startswith("pref_")
+            )
+            is_conv_match = bool(conv_prefix and conv_prefix in mem.key)
+
+            # Reject topic-specific STM if zero token overlap and query is not an anaphoric follow-up
+            if overlap_score == 0 and not is_ltm_pref:
+                if not (is_conv_match and is_anaphoric):
+                    continue
 
             # Boost user-specific over global for personalization
             user_boost = 1.3 if mem.scope == MemoryScope.USER_SPECIFIC.value else 1.0
             # Boost short-term for recent context immediacy
             type_boost = 1.2 if mem.memory_type == MemoryType.SHORT_TERM.value else 1.0
             # Boost active conversation thread context
-            conv_boost = 1.5 if (conv_prefix and conv_prefix in mem.key) else 1.0
+            conv_boost = 1.5 if is_conv_match else 1.0
 
             final_score = (overlap_score + (mem.importance * 2.0)) * user_boost * type_boost * conv_boost
-            scored_memories.append((final_score, mem))
+            if final_score > 0.0:
+                scored_memories.append((final_score, mem))
 
         scored_memories.sort(key=lambda x: x[0], reverse=True)
         return [m for _, m in scored_memories[:top_k]]

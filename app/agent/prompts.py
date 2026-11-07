@@ -1,11 +1,14 @@
 """Prompt templates with strict anti-injection boundaries, grounding rules, and meaning-aligned synthesizer."""
 
 from app.agent.meaning import (
+    COMMON_STOPWORDS,
     MeaningProfile,
     analyze_query_meaning,
     build_meaning_aligned_grounded_prompt,
     build_meaning_aligned_ungrounded_prompt,
     extract_meaning_query,
+    is_anaphoric_query,
+    is_topic_shift,
 )
 
 GREETING_SYSTEM_PROMPT = """You are a polite, helpful AI assistant.
@@ -41,9 +44,10 @@ GROUNDED_RAG_USER_PROMPT = """Question: {query}
 
 Answer based solely on the context above:"""
 
-QUERY_REWRITE_SYSTEM_PROMPT = """You are a search query optimizer. Given a conversation history and a user's latest query, formulate an improved, standalone search query optimized for semantic vector retrieval.
-Do NOT answer the question. Only output the reformulated query without quotes or preamble.
-If the query is already clear and self-contained, output it unchanged."""
+QUERY_REWRITE_SYSTEM_PROMPT = """You are a search query optimizer for vector retrieval. Given a conversation history and a user's latest query:
+1. If the latest query introduces a NEW or DIFFERENT topic, output the query UNCHANGED. Do NOT incorporate past conversation topics.
+2. If the query is an anaphoric follow-up (e.g. using 'it', 'they', 'the second one'), resolve the reference into a clear, standalone search query.
+3. Do NOT answer the question. Only output the reformulated search query without quotes or preamble."""
 
 GRADE_DOCUMENTS_SYSTEM_PROMPT = """You are a relevance evaluator assessing whether a retrieved document chunk contains information relevant to answering a user query.
 Analyze the document text and the query.

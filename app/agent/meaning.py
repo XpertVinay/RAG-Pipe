@@ -343,6 +343,9 @@ def build_meaning_aligned_grounded_prompt(
 2. If the context does not contain enough information to fully or accurately answer the question, clearly state: "The provided documents do not contain sufficient information to answer this question."
 3. Do NOT extrapolate, hallucinate, assume facts, or invent external references.
 4. When stating facts, reference the document name or section naturally.
+
+### TOPIC INTEGRITY & FOCUS DIRECTIVE:
+Focus exclusively on the latest user question. If prior conversation turns or memories discussed an unrelated topic, do NOT bring or mention those past topics into this answer unless explicitly requested by the user.
 """
 
 
@@ -369,7 +372,74 @@ Note: No specific workspace or proprietary documents were provided or retrieved 
 - Do not invent non-existent document citations.
 - Clearly mention that the response is formulated from general domain principles and that the user may optionally upload workspace documents to ground the answer with proprietary specifications.
 
+### TOPIC INTEGRITY & FOCUS DIRECTIVE:
+Focus exclusively on answering the latest user inquiry. If prior conversation turns or memory context discussed an unrelated topic, do NOT mention, carry over, or blend those past topics into this response unless explicitly asked by the user.
+
 ### MANDATORY ETHICAL & LEGAL GUARDRAILS:
 1. Under NO circumstances provide answers, code, or instructions that are ILLEGAL, DANGEROUS, or UNETHICAL.
 2. If a user asks for prohibited activities, strictly refuse and caution that repeated violations will restrict access.
 """
+
+
+COMMON_STOPWORDS = {
+    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are",
+    "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but",
+    "by", "can", "could", "did", "do", "does", "doing", "down", "during", "each", "few", "for",
+    "from", "further", "had", "has", "have", "having", "he", "her", "here", "hers", "herself",
+    "him", "himself", "his", "how", "i", "if", "in", "into", "is", "it", "its", "itself", "just",
+    "me", "more", "most", "my", "myself", "no", "nor", "not", "now", "of", "off", "on", "once",
+    "only", "or", "other", "our", "ours", "ourselves", "out", "over", "own", "s", "same", "she",
+    "should", "so", "some", "such", "t", "than", "that", "the", "their", "theirs", "them",
+    "themselves", "then", "there", "these", "they", "this", "those", "through", "to", "too",
+    "under", "until", "up", "very", "was", "we", "were", "what", "when", "where", "which",
+    "while", "who", "whom", "why", "will", "with", "would", "you", "your", "yours", "yourself",
+}
+
+ANAPHORIC_PATTERNS = [
+    r"\b(it|its|they|them|their|this|that|these|those)\b",
+    r"\b(the\s+former|the\s+latter|the\s+first\s+one|the\s+second\s+one|the\s+third\s+one|the\s+last\s+one|the\s+previous|the\s+above)\b",
+    r"\b(tell\s+me\s+more|explain\s+more|elaborate|clarify|give\s+(an?\s+)?example|show\s+(an?\s+)?example)\b",
+    r"\b(what\s+about|how\s+about|and\s+also|what\s+else)\b",
+    r"^(why|how\s+come|why\s+so|why\s+is\s+that|why\s+not)[\s\?\.]*$",
+]
+
+
+def is_anaphoric_query(query: str) -> bool:
+    """Detect if query is an anaphoric follow-up referencing prior conversational entities."""
+    if not query:
+        return False
+    q_clean = query.strip().lower()
+    words = [w for w in re.findall(r"\w+", q_clean)]
+    if len(words) <= 3 and any(
+        w in ("why", "how", "and", "benefits", "more", "examples", "example", "difference") for w in words
+    ):
+        return True
+    return any(re.search(pat, q_clean) for pat in ANAPHORIC_PATTERNS)
+
+
+def is_topic_shift(query: str, chat_history: Optional[List[Dict[str, str]]]) -> bool:
+    """Detect if query introduces a completely new topic with zero overlap with prior turns."""
+    if not chat_history or not query:
+        return False
+    if is_anaphoric_query(query):
+        return False
+
+    q_tokens = set(
+        t.lower()
+        for t in re.findall(r"\w+", query)
+        if len(t) > 2 and t.lower() not in COMMON_STOPWORDS
+    )
+    if not q_tokens:
+        return False
+
+    history_text = " ".join(
+        h.get("content", "") for h in chat_history[-4:]
+    )
+    h_tokens = set(
+        t.lower()
+        for t in re.findall(r"\w+", history_text)
+        if len(t) > 2 and t.lower() not in COMMON_STOPWORDS
+    )
+
+    # If the user query has content words and none exist in recent history, it is a topic shift
+    return len(q_tokens.intersection(h_tokens)) == 0

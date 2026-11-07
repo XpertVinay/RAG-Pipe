@@ -751,10 +751,10 @@
         meta.is_relevant === false
       ) {
         responseType = 'insufficient_info';
-      } else if (citations && citations.length > 0) {
+      } else if (citations && citations.length > 0 && meta.generation_grounded !== false) {
         responseType = 'grounded';
       } else {
-        responseType = 'general';
+        responseType = 'ungrounded_sensible';
       }
     }
 
@@ -772,6 +772,13 @@
         badgeText: 'GROUNDED ANSWER',
         avatarIcon: '🛡️',
         avatarClass: 'grounded',
+      },
+      ungrounded_sensible: {
+        badgeClass: 'general',
+        badgeIcon: '💡',
+        badgeText: 'DOMAIN SYNTHESIS',
+        avatarIcon: '💡',
+        avatarClass: '',
       },
       insufficient_info: {
         badgeClass: 'insufficient',

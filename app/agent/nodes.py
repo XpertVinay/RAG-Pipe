@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.documents import Document as LCDocument
 
 from app.agent.prompts import (
+    COMMON_STOPWORDS,
     GREETING_SYSTEM_PROMPT,
     GRADE_DOCUMENTS_SYSTEM_PROMPT,
     GROUNDED_RAG_SYSTEM_PROMPT,
@@ -20,6 +21,8 @@ from app.agent.prompts import (
     analyze_query_meaning,
     build_meaning_aligned_grounded_prompt,
     build_meaning_aligned_ungrounded_prompt,
+    is_anaphoric_query,
+    is_topic_shift,
 )
 from app.agent.sandbox import execute_code_safely, extract_python_code
 from app.agent.state import AgentState
@@ -316,8 +319,17 @@ async def grade_documents(state: AgentState) -> Dict[str, Any]:
             "status_update": "No matching document chunks found in knowledge base.",
         }
 
-    # If documents exist, check relevance
-    query = state["query"]
+    # Evaluate relevance against the user's ORIGINAL query, not a potentially drifted rewritten query
+    original_query = state.get("original_query") or state.get("query", "")
+    query = original_query
+
+    # Extract salient content words from original query
+    q_content_tokens = [
+        t.lower()
+        for t in re.findall(r"\w+", query)
+        if len(t) > 2 and t.lower() not in COMMON_STOPWORDS
+    ]
+
     model = ModelFactory.get_chat_model(
         provider_name=state.get("provider"),
         model_name=state.get("model"),
@@ -330,6 +342,18 @@ async def grade_documents(state: AgentState) -> Dict[str, Any]:
     # Fast evaluation on top chunks (up to 4)
     chunks_to_grade = documents[: min(len(documents), 4)]
     for idx, doc in enumerate(chunks_to_grade):
+        doc_text = doc.page_content[:600].lower()
+        has_token_overlap = (
+            any(t in doc_text for t in q_content_tokens)
+            if q_content_tokens
+            else True
+        )
+
+        # If substantive query terms share zero overlap with chunk, reject chunk
+        if q_content_tokens and len(q_content_tokens) >= 2 and not has_token_overlap:
+            logger.info(f"Grading chunk {idx} rejected: 0 token overlap with query '{query[:40]}'")
+            continue
+
         try:
             prompt = [
                 SystemMessage(content=GRADE_DOCUMENTS_SYSTEM_PROMPT),
@@ -344,9 +368,10 @@ async def grade_documents(state: AgentState) -> Dict[str, Any]:
                 relevant_indices.add(idx)
         except Exception as e:
             logger.warning(f"Grading chunk skipped due to error: {e}")
-            # On grading failure/timeout, keep document optimistically
-            relevant_docs.append(doc)
-            relevant_indices.add(idx)
+            # On grading failure/timeout, only keep document if it has token overlap
+            if has_token_overlap:
+                relevant_docs.append(doc)
+                relevant_indices.add(idx)
 
     is_relevant = len(relevant_docs) > 0
     filtered_citations = [
@@ -365,9 +390,28 @@ async def rewrite_query(state: AgentState) -> Dict[str, Any]:
     """Reformulate user query to improve vector retrieval in subsequent pass, leveraging conversation history."""
     retry_count = state.get("retrieval_retry_count", 0) + 1
     query = state.get("query", "")
+    original_query = state.get("original_query") or query
     chat_history = state.get("chat_history", [])
 
     logger.info(f"LangGraph node: Rewriting query for retry #{retry_count}")
+
+    history_items = list(chat_history)
+    if (
+        history_items
+        and history_items[-1].get("role") == "user"
+        and history_items[-1].get("content", "").strip() == original_query.strip()
+    ):
+        history_items = history_items[:-1]
+
+    # Detect topic shift: If the query introduces a new topic with zero overlap with past turns,
+    # preserve original query to prevent context bleed (e.g. JavaScript topic bleeding into India's constitution)
+    if is_topic_shift(original_query, history_items):
+        logger.info(f"Topic shift detected for query: '{original_query[:50]}' -> preserving query without history blending")
+        return {
+            "query": original_query,
+            "retrieval_retry_count": retry_count,
+            "status_update": f"Refined search query for new topic (attempt {retry_count}).",
+        }
 
     try:
         model = ModelFactory.get_chat_model(
@@ -376,15 +420,8 @@ async def rewrite_query(state: AgentState) -> Dict[str, Any]:
             temperature=0.2,
             streaming=False,
         )
-        history_items = list(chat_history)
-        if (
-            history_items
-            and history_items[-1].get("role") == "user"
-            and history_items[-1].get("content", "").strip() == query.strip()
-        ):
-            history_items = history_items[:-1]
 
-        prompt_content = f"Original Query: {query}\nRewrite for semantic search:"
+        prompt_content = f"Original Query: {original_query}\nRewrite for semantic search:"
         if history_items:
             history_lines = []
             for h in history_items[-6:]:
@@ -393,8 +430,12 @@ async def rewrite_query(state: AgentState) -> Dict[str, Any]:
             history_text = "\n".join(history_lines)
             prompt_content = (
                 f"Conversation History:\n{history_text}\n\n"
-                f"Original User Query: {query}\n\n"
-                f"Rewrite this query into a clear, standalone semantic search query incorporating necessary context from the conversation history:"
+                f"Original User Query: {original_query}\n\n"
+                f"Instructions:\n"
+                f"- If the query is an anaphoric follow-up (e.g. uses 'it', 'they', 'the second one'), resolve pronouns using the history.\n"
+                f"- If the query is already standalone, output it as is.\n"
+                f"- Do NOT add unrelated keywords from prior topics.\n\n"
+                f"Reformulated standalone search query:"
             )
 
         prompt = [
@@ -403,10 +444,10 @@ async def rewrite_query(state: AgentState) -> Dict[str, Any]:
         ]
         resp = await model.ainvoke(prompt)
         rewritten = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
-        new_query = rewritten if rewritten else query
+        new_query = rewritten if rewritten else original_query
     except Exception as e:
         logger.warning(f"Query rewrite failed, falling back to original: {e}")
-        new_query = query
+        new_query = original_query
 
     return {
         "query": new_query,
@@ -549,7 +590,7 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
                 return {
                     "answer": "The provided documents do not contain sufficient information to answer this question. Please upload relevant files or verify the query.",
                     "citations": [],
-                    "generation_grounded": True,
+                    "generation_grounded": False,
                     "status_update": "Specific documentation required to answer this inquiry.",
                 }
 
@@ -572,7 +613,7 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
                 return {
                     "answer": ans,
                     "citations": [],
-                    "generation_grounded": True,
+                    "generation_grounded": False,
                     "needs_visualization": False,
                     "visualization": None,
                     "semantic_intent": meaning_profile.intent,
@@ -585,7 +626,7 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
                 return {
                     "answer": f"Unable to generate response: {str(e)}",
                     "citations": [],
-                    "generation_grounded": True,
+                    "generation_grounded": False,
                     "status_update": "Failed to generate ungrounded response.",
                 }
         context_str = (

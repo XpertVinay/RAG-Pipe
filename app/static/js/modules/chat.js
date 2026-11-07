@@ -484,6 +484,9 @@
         if (meta.response_type === 'grounded') {
           avatarEl.textContent = '🛡️';
           avatarEl.className = 'message-avatar grounded';
+        } else if (meta.response_type === 'ungrounded_sensible') {
+          avatarEl.textContent = '💡';
+          avatarEl.className = 'message-avatar';
         } else if (meta.response_type === 'insufficient_info') {
           avatarEl.textContent = '⚠️';
           avatarEl.className = 'message-avatar insufficient_info';
