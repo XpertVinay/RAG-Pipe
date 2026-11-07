@@ -599,6 +599,9 @@ async def stream_query(
                 s_db.add(msg)
                 await s_db.commit()
 
+        if db.is_active:
+            await db.close()
+
         return StreamingResponse(
             stream_guardrail_refusal(),
             media_type="text/event-stream",
@@ -646,6 +649,9 @@ async def stream_query(
                 s_db.add(msg)
                 await s_db.commit()
 
+        if db.is_active:
+            await db.close()
+
         return StreamingResponse(
             stream_pending_queue(),
             media_type="text/event-stream",
@@ -658,6 +664,10 @@ async def stream_query(
 
     active_doc_ids = readiness["ready_doc_ids"] if readiness["has_scoped_docs"] else doc_ids
     history = await get_recent_chat_history(db, conv_id, limit=10)
+
+    # CRITICAL: Release database session before streaming begins to prevent connection pool exhaustion
+    if db.is_active:
+        await db.close()
 
     return StreamingResponse(
         stream_rag_agent(

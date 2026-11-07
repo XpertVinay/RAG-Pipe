@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 import time
 from typing import Optional
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -24,6 +24,7 @@ from app.core.exceptions import (
     validation_exception_handler,
 )
 from app.core.logging import logger
+from app.core.rate_limit import RateLimiter
 from app.core.tracing import configure_langsmith_tracing
 from app.database import init_db
 from app.services.mandate_scheduler import (
@@ -32,6 +33,9 @@ from app.services.mandate_scheduler import (
 )
 
 settings = get_settings()
+
+# Moderate Rate Limiter for Public UI & Landing Routes (DDoS/Replay shield)
+public_rate_limiter = RateLimiter(max_requests=getattr(settings, "RATE_LIMIT_PUBLIC_MAX", 120), window_seconds=60)
 
 
 @asynccontextmanager
@@ -201,7 +205,7 @@ _CACHED_PRICING_HTML: Optional[str] = None
 _PRICING_CACHE_TIME: float = 0.0
 
 
-@app.get("/", response_class=HTMLResponse, tags=["ui"])
+@app.get("/", response_class=HTMLResponse, tags=["ui"], dependencies=[Depends(public_rate_limiter)])
 async def render_dashboard(request: Request):
     """Render the main server-side Jinja2 dashboard with in-memory response caching."""
     global _CACHED_DASHBOARD_HTML, _DASHBOARD_CACHE_TIME
@@ -227,7 +231,7 @@ async def render_dashboard(request: Request):
     )
 
 
-@app.get("/pricing", response_class=HTMLResponse, tags=["ui"])
+@app.get("/pricing", response_class=HTMLResponse, tags=["ui"], dependencies=[Depends(public_rate_limiter)])
 async def render_pricing_page(request: Request):
     """Render the dedicated Plan and Pricing page with in-memory response caching."""
     global _CACHED_PRICING_HTML, _PRICING_CACHE_TIME

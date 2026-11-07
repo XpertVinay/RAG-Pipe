@@ -33,12 +33,14 @@ class Settings(BaseSettings):
     ID_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # Rate Limiting Settings
-    RATE_LIMIT_LOGIN_MAX: int = 100
-    RATE_LIMIT_REGISTER_MAX: int = 100
-    RATE_LIMIT_REFRESH_MAX: int = 200
-    RATE_LIMIT_UPLOAD_MAX: int = 15
-    RATE_LIMIT_CHAT_MAX: int = 60
+    # Rate Limiting Settings (Tiered: Moderate for Public, Strictly Low for Protected)
+    RATE_LIMIT_PUBLIC_MAX: int = 120
+    RATE_LIMIT_API_MAX: int = 60
+    RATE_LIMIT_LOGIN_MAX: int = 10
+    RATE_LIMIT_REGISTER_MAX: int = 5
+    RATE_LIMIT_REFRESH_MAX: int = 30
+    RATE_LIMIT_UPLOAD_MAX: int = 5
+    RATE_LIMIT_CHAT_MAX: int = 15
 
     # Memory Cache & Expiration Settings
     MEMORY_L1_MAX_ITEMS: int = 512
@@ -73,8 +75,11 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "rag_agent"
-    DB_POOL_SIZE: int = 50
-    DB_MAX_OVERFLOW: int = 50
+    POSTGRES_MAX_CONNECTIONS: int = 300
+    POSTGRES_SHARED_BUFFERS: str = "256MB"
+    POSTGRES_WORK_MEM: str = "16MB"
+    DB_POOL_SIZE: int = 15
+    DB_MAX_OVERFLOW: int = 15
     DB_POOL_TIMEOUT: float = 20.0
     DB_POOL_RECYCLE: int = 1800
     AUTH_USER_CACHE_TTL_SECONDS: int = 60

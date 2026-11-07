@@ -6,6 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Qu
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.auth import get_current_user, get_optional_user
 from app.core.logging import logger
 from app.core.rate_limit import RateLimiter
@@ -49,7 +50,8 @@ from app.services.room_service import (
 )
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
-room_upload_rate_limiter = RateLimiter(max_requests=15, window_seconds=60)
+settings = get_settings()
+room_upload_rate_limiter = RateLimiter(max_requests=getattr(settings, "RATE_LIMIT_UPLOAD_MAX", 5), window_seconds=60)
 
 
 @router.post("", response_model=RoomDetailResponse, status_code=status.HTTP_201_CREATED)

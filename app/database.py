@@ -29,10 +29,10 @@ else:
         settings.DATABASE_URL,
         echo=False,
         future=True,
-        pool_size=getattr(settings, "DB_POOL_SIZE", 50),
-        max_overflow=getattr(settings, "DB_MAX_OVERFLOW", 50),
-        pool_timeout=getattr(settings, "DB_POOL_TIMEOUT", 20.0),
-        pool_recycle=getattr(settings, "DB_POOL_RECYCLE", 1800),
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_timeout=settings.DB_POOL_TIMEOUT,
+        pool_recycle=settings.DB_POOL_RECYCLE,
         pool_pre_ping=True,
     )
 

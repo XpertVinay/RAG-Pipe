@@ -53,9 +53,10 @@ services:
       - CHUNK_PARTITION_SIZE_MB=${CHUNK_PARTITION_SIZE_MB:-3.0}
       - CHUNK_PARTITION_THRESHOLD_MB=${CHUNK_PARTITION_THRESHOLD_MB:-1.0}
       - WORKERS=${WORKERS:-4}
-      - DB_POOL_SIZE=${DB_POOL_SIZE:-50}
-      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-50}
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-15}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-15}
       - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-20.0}
+      - DB_POOL_RECYCLE=${DB_POOL_RECYCLE:-1800}
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,8 +87,18 @@ services:
     environment:
       - ENABLE_LB_DEBUG_HEADERS=${ENABLE_LB_DEBUG_HEADERS:-false}
       - PROXY_PORT=${PROXY_PORT:-8181}
+      - RATE_LIMIT_PUBLIC_RATE=${RATE_LIMIT_PUBLIC_RATE:-20r/s}
+      - RATE_LIMIT_PUBLIC_BURST=${RATE_LIMIT_PUBLIC_BURST:-30}
+      - RATE_LIMIT_API_RATE=${RATE_LIMIT_API_RATE:-10r/s}
+      - RATE_LIMIT_API_BURST=${RATE_LIMIT_API_BURST:-15}
+      - RATE_LIMIT_AUTH_RATE=${RATE_LIMIT_AUTH_RATE:-5r/s}
+      - RATE_LIMIT_AUTH_BURST=${RATE_LIMIT_AUTH_BURST:-10}
+      - RATE_LIMIT_STREAM_RATE=${RATE_LIMIT_STREAM_RATE:-5r/s}
+      - RATE_LIMIT_STREAM_BURST=${RATE_LIMIT_STREAM_BURST:-10}
+      - RATE_LIMIT_DEVICE_STREAM_MAX_CONNS=${RATE_LIMIT_DEVICE_STREAM_MAX_CONNS:-3}
+      - RATE_LIMIT_IP_STREAM_FLOOD=${RATE_LIMIT_IP_STREAM_FLOOD:-100}
       - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
-      - NGINX_ENVSUBST_FILTER=ENABLE_LB_DEBUG_HEADERS|PROXY_PORT
+      - NGINX_ENVSUBST_FILTER=ENABLE_LB_DEBUG_HEADERS|PROXY_PORT|RATE_LIMIT_PUBLIC_RATE|RATE_LIMIT_PUBLIC_BURST|RATE_LIMIT_API_RATE|RATE_LIMIT_API_BURST|RATE_LIMIT_AUTH_RATE|RATE_LIMIT_AUTH_BURST|RATE_LIMIT_STREAM_RATE|RATE_LIMIT_STREAM_BURST|RATE_LIMIT_DEVICE_STREAM_MAX_CONNS|RATE_LIMIT_IP_STREAM_FLOOD
     volumes:
       - ./nginx/templates:/etc/nginx/templates:ro
     depends_on:
@@ -143,9 +154,10 @@ services:
       - CHUNK_PARTITION_SIZE_MB=${CHUNK_PARTITION_SIZE_MB:-3.0}
       - CHUNK_PARTITION_THRESHOLD_MB=${CHUNK_PARTITION_THRESHOLD_MB:-1.0}
       - WORKERS=${WORKERS:-4}
-      - DB_POOL_SIZE=${DB_POOL_SIZE:-50}
-      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-50}
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-15}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-15}
       - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-20.0}
+      - DB_POOL_RECYCLE=${DB_POOL_RECYCLE:-1800}
     healthcheck:
       test: [ "CMD-SHELL", "python -c 'import sys; sys.exit(0)'" ]
       interval: 30s
@@ -170,7 +182,7 @@ services:
     image: pgvector/pgvector:pg16
     container_name: rag-postgres
     restart: unless-stopped
-    command: postgres -c max_connections=300 -c shared_buffers=256MB -c work_mem=16MB -c checkpoint_completion_target=0.9
+    command: postgres -c max_connections=${POSTGRES_MAX_CONNECTIONS:-300} -c shared_buffers=${POSTGRES_SHARED_BUFFERS:-256MB} -c work_mem=${POSTGRES_WORK_MEM:-16MB} -c checkpoint_completion_target=0.9
     # Secured within internal bridge network; inaccessible to public/host
     expose:
       - "5432"

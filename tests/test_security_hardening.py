@@ -50,6 +50,42 @@ async def test_rate_limiter_blocks_excessive_requests():
 
 
 @pytest.mark.asyncio
+async def test_identity_aware_rate_limiting_shared_ip_vpn():
+    """Verify that multiple verified devices on the same corporate VPN IP do not block each other."""
+    limiter = RateLimiter(max_requests=2, window_seconds=60)
+
+    class MockClient:
+        host = "203.0.113.50"  # Shared Corporate Egress IP
+
+    class MockDeviceRequest:
+        def __init__(self, device_id: str):
+            self.client = MockClient()
+            self.headers = {"X-Device-ID": device_id}
+
+    req_alice = MockDeviceRequest("device_alice_12345")
+    req_bob = MockDeviceRequest("device_bob_67890")
+
+    # Alice makes 2 requests (her limit)
+    limiter(req_alice)
+    limiter(req_alice)
+
+    # Alice's 3rd request is blocked with 429
+    with pytest.raises(Exception) as exc_alice:
+        limiter(req_alice)
+    assert exc_alice.value.status_code == 429
+    assert exc_alice.value.headers.get("X-RateLimit-Scope") == "device"
+
+    # Bob is on the SAME IP, but has a different verified device ID: Bob is NOT blocked!
+    limiter(req_bob)
+    limiter(req_bob)
+
+    # Bob's 3rd request is blocked
+    with pytest.raises(Exception) as exc_bob:
+        limiter(req_bob)
+    assert exc_bob.value.status_code == 429
+
+
+@pytest.mark.asyncio
 async def test_refresh_token_rotation_and_replay_detection(client: AsyncClient):
     """Verify refresh token rotation and immediate invalidation on replay attempts."""
     # 1. Register User

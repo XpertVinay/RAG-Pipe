@@ -17,6 +17,12 @@
     if (!headers['X-API-Version']) {
       headers['X-API-Version'] = API.API_VERSION;
     }
+    if (API.getOrCreateDeviceId && !headers['X-Device-ID']) {
+      headers['X-Device-ID'] = API.getOrCreateDeviceId();
+    }
+    if (API.getDeviceFingerprint && !headers['X-Device-Fingerprint']) {
+      headers['X-Device-Fingerprint'] = API.getDeviceFingerprint();
+    }
 
     const res = await fetch(url, { ...options, headers });
 

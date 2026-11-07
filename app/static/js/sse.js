@@ -36,6 +36,12 @@ class SSEClient {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
+    if (window.API?.getOrCreateDeviceId) {
+      headers['X-Device-ID'] = window.API.getOrCreateDeviceId();
+    }
+    if (window.API?.getDeviceFingerprint) {
+      headers['X-Device-Fingerprint'] = window.API.getDeviceFingerprint();
+    }
 
     try {
       const response = await fetch('/api/chat/stream', {
