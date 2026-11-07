@@ -17,9 +17,10 @@ class MemoryContextRanker:
         user_id: Optional[str] = None,
         room_id: Optional[str] = None,
         document_ids: Optional[List[str]] = None,
+        conversation_id: Optional[str] = None,
         limit: int = 30,
     ):
-        """Construct SQLAlchemy query for candidate memories matching global and user/room scopes."""
+        """Construct SQLAlchemy query for candidate memories matching global, user/room, and conversation scopes."""
         conditions = [
             MemoryItem.scope == MemoryScope.GLOBAL.value,
         ]
@@ -31,6 +32,9 @@ class MemoryContextRanker:
             conditions.append(MemoryItem.room_id == room_id)
         if document_ids:
             conditions.append(MemoryItem.document_id.in_(document_ids))
+        if conversation_id:
+            conv_prefix = (conversation_id or "")[:8]
+            conditions.append(MemoryItem.key.like(f"%{conv_prefix}%"))
 
         return (
             select(MemoryItem)
@@ -45,11 +49,13 @@ class MemoryContextRanker:
         cls,
         candidates: List[MemoryItem],
         query: str,
+        conversation_id: Optional[str] = None,
         top_k: int = 4,
     ) -> List[MemoryItem]:
-        """Score candidate memories based on token overlap, importance, and recency boosts."""
+        """Score candidate memories based on token overlap, importance, conversation match, and recency boosts."""
         tokens = [t.lower() for t in re.findall(r"\w+", query) if len(t) > 2]
         scored_memories: List[Tuple[float, MemoryItem]] = []
+        conv_prefix = (conversation_id or "")[:8] if conversation_id else None
 
         for mem in candidates:
             mem_text = f"{mem.key} {mem.content}".lower()
@@ -59,8 +65,10 @@ class MemoryContextRanker:
             user_boost = 1.3 if mem.scope == MemoryScope.USER_SPECIFIC.value else 1.0
             # Boost short-term for recent context immediacy
             type_boost = 1.2 if mem.memory_type == MemoryType.SHORT_TERM.value else 1.0
+            # Boost active conversation thread context
+            conv_boost = 1.5 if (conv_prefix and conv_prefix in mem.key) else 1.0
 
-            final_score = (overlap_score + (mem.importance * 2.0)) * user_boost * type_boost
+            final_score = (overlap_score + (mem.importance * 2.0)) * user_boost * type_boost * conv_boost
             scored_memories.append((final_score, mem))
 
         scored_memories.sort(key=lambda x: x[0], reverse=True)

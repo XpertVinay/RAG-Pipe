@@ -222,6 +222,7 @@ class MemoryManager:
         user_id: Optional[str] = None,
         room_id: Optional[str] = None,
         document_ids: Optional[List[str]] = None,
+        conversation_id: Optional[str] = None,
         top_k: int = 4,
         max_tokens_budget: int = 250,
         db: Optional[AsyncSession] = None,
@@ -235,6 +236,7 @@ class MemoryManager:
                 user_id=user_id,
                 room_id=room_id,
                 document_ids=document_ids,
+                conversation_id=conversation_id,
                 limit=30,
             )
             res = await session.execute(stmt)
@@ -249,7 +251,9 @@ class MemoryManager:
         if not candidates:
             return "", []
 
-        top_candidates = self.ranker.score_candidates(candidates, query=query, top_k=top_k)
+        top_candidates = self.ranker.score_candidates(
+            candidates, query=query, conversation_id=conversation_id, top_k=top_k
+        )
         return self.ranker.format_context_string(top_candidates, max_tokens_budget=max_tokens_budget)
 
     async def consolidate_interaction(

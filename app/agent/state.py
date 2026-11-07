@@ -12,6 +12,7 @@ class AgentState(TypedDict):
 
     query: str
     original_query: str
+    conversation_id: Optional[str]
     chat_history: List[Dict[str, str]]
     document_ids: Optional[List[str]]
     provider: Optional[str]

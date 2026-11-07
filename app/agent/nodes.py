@@ -3,7 +3,7 @@
 import asyncio
 import re
 from typing import Any, Dict, List, Optional
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.documents import Document as LCDocument
 
 from app.agent.prompts import (
@@ -88,6 +88,36 @@ def detect_visualization_need(query: str) -> bool:
     return any(re.search(rf"\b{re.escape(kw)}\b", q_lower) for kw in VISUALIZATION_KEYWORDS)
 
 
+def format_chat_history_messages(
+    chat_history: Optional[List[Dict[str, str]]],
+    current_query: str,
+    max_turns: int = 8,
+) -> List[Any]:
+    """Format prior dialogue turns into alternating HumanMessage and AIMessage objects, avoiding duplication."""
+    if not chat_history:
+        return []
+    history_items = list(chat_history)
+    # If the history contains the current query at the very end, trim it off so it's not duplicated
+    if (
+        history_items
+        and history_items[-1].get("role") == "user"
+        and history_items[-1].get("content", "").strip() == current_query.strip()
+    ):
+        history_items = history_items[:-1]
+
+    msgs: List[Any] = []
+    for h in history_items[-max_turns:]:
+        role = h.get("role")
+        content = h.get("content", "")
+        if not content:
+            continue
+        if role == "user":
+            msgs.append(HumanMessage(content=content))
+        elif role == "assistant":
+            msgs.append(AIMessage(content=content))
+    return msgs
+
+
 async def validate_and_classify_query(state: AgentState) -> Dict[str, Any]:
     """Validate user query and identify greeting vs app creation vs document retrieval intent."""
     query = state.get("query", "").strip()
@@ -164,11 +194,12 @@ async def validate_and_classify_query(state: AgentState) -> Dict[str, Any]:
 
 
 async def load_memory_context(state: AgentState) -> Dict[str, Any]:
-    """Retrieve relevant short-term and long-term memory context (Global and User-Specific)."""
+    """Retrieve relevant short-term and long-term memory context (Global, User-Specific, and Active Thread)."""
     query = state.get("query", "")
     user_id = state.get("user_id")
     room_id = state.get("room_id")
     document_ids = state.get("document_ids")
+    conversation_id = state.get("conversation_id")
 
     try:
         mem_context, consulted = await memory_manager.retrieve_context(
@@ -176,6 +207,7 @@ async def load_memory_context(state: AgentState) -> Dict[str, Any]:
             user_id=user_id,
             room_id=room_id,
             document_ids=document_ids,
+            conversation_id=conversation_id,
             top_k=4,
             max_tokens_budget=250,
         )
@@ -330,9 +362,10 @@ async def grade_documents(state: AgentState) -> Dict[str, Any]:
 
 
 async def rewrite_query(state: AgentState) -> Dict[str, Any]:
-    """Reformulate user query to improve vector retrieval in subsequent pass."""
+    """Reformulate user query to improve vector retrieval in subsequent pass, leveraging conversation history."""
     retry_count = state.get("retrieval_retry_count", 0) + 1
     query = state.get("query", "")
+    chat_history = state.get("chat_history", [])
 
     logger.info(f"LangGraph node: Rewriting query for retry #{retry_count}")
 
@@ -343,9 +376,30 @@ async def rewrite_query(state: AgentState) -> Dict[str, Any]:
             temperature=0.2,
             streaming=False,
         )
+        history_items = list(chat_history)
+        if (
+            history_items
+            and history_items[-1].get("role") == "user"
+            and history_items[-1].get("content", "").strip() == query.strip()
+        ):
+            history_items = history_items[:-1]
+
+        prompt_content = f"Original Query: {query}\nRewrite for semantic search:"
+        if history_items:
+            history_lines = []
+            for h in history_items[-6:]:
+                role_label = "User" if h.get("role") == "user" else "Assistant"
+                history_lines.append(f"{role_label}: {h.get('content', '')[:200]}")
+            history_text = "\n".join(history_lines)
+            prompt_content = (
+                f"Conversation History:\n{history_text}\n\n"
+                f"Original User Query: {query}\n\n"
+                f"Rewrite this query into a clear, standalone semantic search query incorporating necessary context from the conversation history:"
+            )
+
         prompt = [
             SystemMessage(content=QUERY_REWRITE_SYSTEM_PROMPT),
-            HumanMessage(content=f"Original Query: {query}\nRewrite for semantic search:"),
+            HumanMessage(content=prompt_content),
         ]
         resp = await model.ainvoke(prompt)
         rewritten = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
@@ -386,10 +440,13 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
 
     if intent == "greeting":
         try:
-            resp = await model.ainvoke([
-                SystemMessage(content=GREETING_SYSTEM_PROMPT),
-                HumanMessage(content=query),
-            ])
+            greeting_messages = [SystemMessage(content=GREETING_SYSTEM_PROMPT)]
+            if state.get("memory_context"):
+                greeting_messages.append(SystemMessage(content=state["memory_context"]))
+            greeting_messages.extend(format_chat_history_messages(state.get("chat_history", []), query))
+            greeting_messages.append(HumanMessage(content=query))
+
+            resp = await model.ainvoke(greeting_messages)
             answer = resp.content if hasattr(resp, "content") else str(resp)
             return {
                 "answer": answer,
@@ -441,10 +498,14 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
             f"💼 *A project request has been initialized on the Projects table. Fill out your contact details below to initiate a consultation call (via Google Meet, Teams, or Zoom) accompanied by the complete conversation transcripts.*"
         )
         try:
-            resp = await model.ainvoke([
+            app_messages = [
                 SystemMessage(content="You are an expert enterprise solution architect creating structured, actionable software blueprints for client project requests."),
-                HumanMessage(content=prompt_content),
-            ])
+            ]
+            if state.get("memory_context"):
+                app_messages.append(SystemMessage(content=state["memory_context"]))
+            app_messages.extend(format_chat_history_messages(state.get("chat_history", []), query))
+            app_messages.append(HumanMessage(content=prompt_content))
+            resp = await model.ainvoke(app_messages)
             ans = resp.content if hasattr(resp, "content") else str(resp)
             return {
                 "answer": ans,
@@ -502,14 +563,7 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
             if state.get("memory_context"):
                 ungrounded_messages.append(SystemMessage(content=state["memory_context"]))
 
-            for hist in state.get("chat_history", [])[-4:]:
-                role = hist.get("role")
-                content = hist.get("content", "")
-                if role == "user":
-                    ungrounded_messages.append(HumanMessage(content=content))
-                elif role == "assistant":
-                    ungrounded_messages.append(SystemMessage(content=f"Previous assistant answer: {content}"))
-
+            ungrounded_messages.extend(format_chat_history_messages(state.get("chat_history", []), query))
             ungrounded_messages.append(HumanMessage(content=f"User Query:\n{query}\n\nProvide a comprehensive, sensible, and structured response:"))
 
             try:
@@ -577,14 +631,8 @@ async def generate_grounded_answer(state: AgentState) -> Dict[str, Any]:
         if state.get("memory_context"):
             messages.append(SystemMessage(content=state["memory_context"]))
 
-        # Incorporate recent chat history if available
-        for hist in state.get("chat_history", [])[-4:]:
-            role = hist.get("role")
-            content = hist.get("content", "")
-            if role == "user":
-                messages.append(HumanMessage(content=content))
-            elif role == "assistant":
-                messages.append(SystemMessage(content=f"Previous assistant answer: {content}"))
+        # Incorporate recent chat history dialogue turns
+        messages.extend(format_chat_history_messages(state.get("chat_history", []), query))
 
         user_prompt = GROUNDED_RAG_USER_PROMPT.format(query=query, context=context_str)
         messages.append(HumanMessage(content=user_prompt))

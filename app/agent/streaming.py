@@ -4,11 +4,11 @@ import asyncio
 import json
 import re
 from typing import Any, AsyncGenerator, Dict, List, Optional
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from app.services.guardrail_service import guardrail_service
 
 from app.agent.graph import rag_agent_app
-from app.agent.nodes import detect_visualization_need
+from app.agent.nodes import detect_visualization_need, format_chat_history_messages
 from app.agent.prompts import (
     GREETING_SYSTEM_PROMPT,
     GROUNDED_RAG_SYSTEM_PROMPT,
@@ -54,6 +54,7 @@ async def stream_rag_agent(
     initial_state: AgentState = {
         "query": query,
         "original_query": query,
+        "conversation_id": conversation_id,
         "chat_history": chat_history,
         "document_ids": document_ids,
         "user_id": user_id,
@@ -108,6 +109,7 @@ async def stream_rag_agent(
         if intent == "guardrail_blocked":
             refusal_ans = final_state.get("answer", "Safety policy refusal: Prohibited inquiry blocked.")
             meta_payload = {
+                "conversation_id": conversation_id,
                 "response_type": "guardrail_violation",
                 "intent": "guardrail_blocked",
                 "guardrail_blocked": True,
@@ -190,6 +192,7 @@ async def stream_rag_agent(
         meaning_query = final_state.get("meaning_query")
 
         meta_payload = {
+            "conversation_id": conversation_id,
             "response_type": response_type,
             "intent": intent,
             "semantic_intent": semantic_intent,
@@ -258,8 +261,11 @@ async def stream_rag_agent(
             )
             app_messages = [
                 SystemMessage(content="You are an expert enterprise solution architect creating structured, actionable software blueprints for client project requests."),
-                HumanMessage(content=app_prompt),
             ]
+            if memory_context:
+                app_messages.append(SystemMessage(content=memory_context))
+            app_messages.extend(format_chat_history_messages(chat_history, query))
+            app_messages.append(HumanMessage(content=app_prompt))
             async for chunk in chat_model.astream(app_messages):
                 token = chunk.content if hasattr(chunk, "content") else str(chunk)
                 accumulated_answer += token
@@ -269,6 +275,7 @@ async def stream_rag_agent(
             greeting_messages = [SystemMessage(content=GREETING_SYSTEM_PROMPT)]
             if memory_context:
                 greeting_messages.append(SystemMessage(content=memory_context))
+            greeting_messages.extend(format_chat_history_messages(chat_history, query))
             greeting_messages.append(HumanMessage(content=query))
 
             async for chunk in chat_model.astream(greeting_messages):
@@ -292,13 +299,7 @@ async def stream_rag_agent(
                 ]
                 if memory_context:
                     ungrounded_messages.append(SystemMessage(content=memory_context))
-                for hist in chat_history[-4:]:
-                    r = hist.get("role")
-                    c = hist.get("content", "")
-                    if r == "user":
-                        ungrounded_messages.append(HumanMessage(content=c))
-                    elif r == "assistant":
-                        ungrounded_messages.append(SystemMessage(content=f"Previous assistant answer: {c}"))
+                ungrounded_messages.extend(format_chat_history_messages(chat_history, query))
                 ungrounded_messages.append(HumanMessage(content=f"User Query:\n{query}\n\nProvide a comprehensive, sensible, and structured response:"))
 
                 async for chunk in chat_model.astream(ungrounded_messages):
@@ -343,11 +344,7 @@ async def stream_rag_agent(
             if memory_context:
                 messages.append(SystemMessage(content=memory_context))
 
-            for hist in chat_history[-4:]:
-                if hist.get("role") == "user":
-                    messages.append(HumanMessage(content=hist.get("content", "")))
-                elif hist.get("role") == "assistant":
-                    messages.append(SystemMessage(content=f"Previous assistant answer: {hist.get('content', '')}"))
+            messages.extend(format_chat_history_messages(chat_history, query))
 
             user_prompt = GROUNDED_RAG_USER_PROMPT.format(query=query, context=context_str)
             messages.append(HumanMessage(content=user_prompt))
@@ -388,18 +385,17 @@ async def stream_rag_agent(
                     db.add(assistant_msg)
                     await db.commit()
 
-                    if user_id:
-                        try:
-                            await memory_manager.record_chat_turn_memory(
-                                user_id=user_id,
-                                room_id=room_id,
-                                conversation_id=conversation_id,
-                                query=query,
-                                answer=accumulated_answer,
-                                db=db,
-                            )
-                        except Exception as mem_err:
-                            logger.warning(f"Note during streaming chat STM/LTM persistence: {mem_err}")
+                    try:
+                        await memory_manager.record_chat_turn_memory(
+                            user_id=user_id,
+                            room_id=room_id,
+                            conversation_id=conversation_id,
+                            query=query,
+                            answer=accumulated_answer,
+                            db=db,
+                        )
+                    except Exception as mem_err:
+                        logger.warning(f"Note during streaming chat STM/LTM persistence: {mem_err}")
             except Exception as e:
                 logger.error(f"Failed to persist assistant message to database: {e}")
 
