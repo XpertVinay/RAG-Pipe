@@ -199,8 +199,12 @@ async def process_document_upload(
     user_agent: str,
     db: AsyncSession,
     is_shared: bool = False,
-) -> Document:
-    """Validate, persist on disk, and create DB records for an uploaded document."""
+) -> Tuple[Document, bool, str]:
+    """Validate, deduplicate, persist on disk, and create or reuse DB records for an uploaded document.
+    
+    Returns:
+        Tuple[Document, should_enqueue: bool, reason: str]
+    """
     content = await file.read()
     content_length = len(content)
 
@@ -210,6 +214,43 @@ async def process_document_upload(
         raise FileValidationError(f"File '{file.filename}' is empty.")
 
     file_hash = hashlib.sha256(content).hexdigest()
+
+    # Deduplication check: verify if identical file (same hash, size, and extension) already exists for this user
+    existing_res = await db.execute(
+        select(Document)
+        .where(
+            Document.file_hash == file_hash,
+            Document.file_size == content_length,
+            Document.file_type == extension,
+            Document.user_id == current_user.id,
+        )
+        .order_by(Document.created_at.desc())
+    )
+    existing_doc = existing_res.scalars().first()
+
+    if existing_doc:
+        # Case A: Document is already completed and indexed
+        if existing_doc.status == "completed":
+            return existing_doc, False, "duplicate_completed"
+
+        # Case B: Document is currently queued or actively processing in worker container
+        if existing_doc.status in ("processing", "queued"):
+            return existing_doc, False, "duplicate_processing"
+
+        # Case C: Previous ingestion failed; reuse record and re-queue cleanly
+        if existing_doc.status == "failed":
+            existing_doc.status = "queued"
+            existing_doc.error_message = None
+            existing_doc.filename = sanitized_name
+            existing_doc.updated_at = utc_now()
+            target_path = Path(existing_doc.storage_path)
+            try:
+                with open(target_path, "wb") as f:
+                    f.write(content)
+            except Exception:
+                pass
+            await db.flush()
+            return existing_doc, True, "requeued"
 
     doc_id = str(uuid.uuid4())
     target_filename = f"{doc_id}_{sanitized_name}"
@@ -270,4 +311,4 @@ async def process_document_upload(
         },
     )
     db.add(audit_entry)
-    return doc
+    return doc, True, "new"

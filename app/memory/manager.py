@@ -6,12 +6,15 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import database
+from app.config import get_settings
 from app.core.logging import logger
 from app.memory.context_ranker import memory_context_ranker
 from app.memory.distiller import memory_distiller
 from app.memory.l1_cache import CachedMemoryEntry, LowMemoryLRUCache
 from app.memory.schemas import MemoryDistributionStats
 from app.models.memory import MemoryItem, MemoryType
+
+settings = get_settings()
 
 
 def utc_now() -> datetime:
@@ -22,9 +25,11 @@ def utc_now() -> datetime:
 class MemoryManager:
     """Orchestrator for Low-Memory Two-Tier STM/LTM with automatic expiry and document revaluation."""
 
-    def __init__(self, max_l1_items: int = 512, max_l1_bytes: int = 2 * 1024 * 1024):
-        # L1 In-Memory LRU Cache with strict 2MB ceiling
-        self.l1_cache = LowMemoryLRUCache(max_items=max_l1_items, max_bytes=max_l1_bytes)
+    def __init__(self, max_l1_items: Optional[int] = None, max_l1_bytes: Optional[int] = None):
+        items = max_l1_items if max_l1_items is not None else getattr(settings, "MEMORY_L1_MAX_ITEMS", 512)
+        bytes_limit = max_l1_bytes if max_l1_bytes is not None else getattr(settings, "MEMORY_L1_MAX_BYTES", 2 * 1024 * 1024)
+        # L1 In-Memory LRU Cache with strict ceiling
+        self.l1_cache = LowMemoryLRUCache(max_items=items, max_bytes=bytes_limit)
         self.ranker = memory_context_ranker
         self.distiller = memory_distiller
 
@@ -36,10 +41,11 @@ class MemoryManager:
         content: str,
         user_id: Optional[str] = None,
         room_id: Optional[str] = None,
+        project_id: Optional[str] = None,
         document_id: Optional[str] = None,
         document_hash: Optional[str] = None,
         ttl_seconds: Optional[int] = None,
-        revaluation_interval_seconds: int = 86400,
+        revaluation_interval_seconds: Optional[int] = None,
         importance: float = 0.5,
         metadata_payload: Optional[Dict[str, Any]] = None,
         db: Optional[AsyncSession] = None,
@@ -48,14 +54,17 @@ class MemoryManager:
         content_clean = content.strip()[:800]
         meta = metadata_payload or {}
         now = utc_now()
+        reval_interval = revaluation_interval_seconds or getattr(settings, "MEMORY_REVALUATION_INTERVAL_SECONDS", 86400)
 
         expires_at: Optional[datetime] = None
         if ttl_seconds is not None and ttl_seconds > 0:
             expires_at = now + timedelta(seconds=ttl_seconds)
         elif memory_type == MemoryType.SHORT_TERM.value:
-            expires_at = now + timedelta(hours=2)
+            stm_hours = getattr(settings, "MEMORY_STM_TTL_HOURS", 2)
+            expires_at = now + timedelta(hours=stm_hours)
         elif memory_type == MemoryType.LONG_TERM.value and ttl_seconds is None:
-            expires_at = now + timedelta(days=90)
+            ltm_days = getattr(settings, "MEMORY_LTM_TTL_DAYS", 90)
+            expires_at = now + timedelta(days=ltm_days)
 
         async def _do_upsert(session: AsyncSession) -> MemoryItem:
             stmt = select(MemoryItem).where(
@@ -75,11 +84,12 @@ class MemoryManager:
                 existing.memory_type = memory_type
                 existing.importance = importance
                 existing.room_id = room_id or existing.room_id
+                existing.project_id = project_id or existing.project_id
                 existing.document_id = document_id or existing.document_id
                 existing.document_hash = document_hash or existing.document_hash
                 existing.metadata_payload = meta
                 existing.expires_at = expires_at
-                existing.revaluation_interval_seconds = revaluation_interval_seconds
+                existing.revaluation_interval_seconds = reval_interval
                 existing.updated_at = now
                 mem_item = existing
             else:
@@ -91,12 +101,13 @@ class MemoryManager:
                     importance=importance,
                     user_id=user_id,
                     room_id=room_id,
+                    project_id=project_id,
                     document_id=document_id,
                     document_hash=document_hash,
                     metadata_payload=meta,
                     expires_at=expires_at,
                     revaluated_at=now if document_id else None,
-                    revaluation_interval_seconds=revaluation_interval_seconds,
+                    revaluation_interval_seconds=reval_interval,
                     created_at=now,
                     updated_at=now,
                 )
@@ -268,6 +279,7 @@ class MemoryManager:
         conversation_id: str,
         query: str,
         answer: str,
+        project_id: Optional[str] = None,
         db: Optional[AsyncSession] = None,
     ) -> None:
         """Automatically distill and persist Short-Term and Long-Term memory for the user's chat."""
@@ -278,6 +290,7 @@ class MemoryManager:
             conversation_id=conversation_id,
             query=query,
             answer=answer,
+            project_id=project_id,
             db=db,
         )
 

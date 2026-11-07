@@ -1,6 +1,6 @@
-<!-- Workspace Sharing and RBAC Members Modal -->
+<!-- Workspace Sharing, Revocation, RBAC Members & PII Breach Protection Modal -->
 <div id="share-room-modal" class="modal-overlay">
-  <div class="modal-card" style="max-width: 520px;">
+  <div class="modal-card" style="max-width: 560px;">
     <div class="modal-header">
       <h3 style="display: flex; align-items: center; gap: 8px;">
         <span>👥</span>
@@ -9,13 +9,13 @@
       <button id="close-share-room-btn" class="modal-close">&times;</button>
     </div>
 
-    <div style="padding: 16px 0;">
+    <div style="padding: 16px 0; max-height: 75vh; overflow-y: auto;">
       <!-- Public vs Private toggle -->
-      <div style="background: var(--bg-tertiary); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 20px;">
+      <div style="background: var(--bg-tertiary); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 16px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <div>
             <div style="font-weight: 600; font-size: 0.88rem; color: var(--text-primary); margin-bottom: 4px;">Public Workspace</div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">Allow all authenticated users to view this workspace and its documents.</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">Allow authenticated and link-holder users to view this workspace and its documents.</div>
           </div>
           <label style="position: relative; display: inline-block; width: 44px; height: 24px; margin: 0; cursor: pointer;">
             <input type="checkbox" id="room-is-public-checkbox" style="opacity: 0; width: 0; height: 0;">
@@ -24,8 +24,70 @@
         </div>
       </div>
 
+      <!-- Shareable Link & Revoke Sharing Section -->
+      <div style="background: var(--bg-tertiary); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin: 0;">Shareable Web Link</label>
+          <span id="share-link-status-badge" class="badge-pill" style="font-size: 0.65rem; background: rgba(16, 185, 129, 0.15); color: #34d399;">Active</span>
+        </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <input type="text" id="room-share-url-input" class="form-control" readonly placeholder="Generating share link..." style="flex: 1; font-size: 0.8rem; font-family: monospace; background: var(--bg-primary);">
+          <button type="button" class="btn btn-outline" id="copy-share-link-btn" style="font-size: 0.78rem; padding: 6px 12px; white-space: nowrap;">
+            📋 Copy
+          </button>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.08);">
+          <span style="font-size: 0.72rem; color: var(--text-muted);">Accidentally shared private data? Instantly terminate external access.</span>
+          <button type="button" id="revoke-share-link-btn" class="btn btn-outline" style="font-size: 0.75rem; padding: 4px 10px; color: #ef4444; border-color: rgba(239, 68, 68, 0.4); white-space: nowrap;">
+            🛑 Revoke Share Link
+          </button>
+        </div>
+      </div>
+
+      <!-- PII Breach & Privacy Guard Section -->
+      <div id="pii-breach-section" style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.1rem;">🛡️</span>
+            <div>
+              <div style="font-weight: 600; font-size: 0.85rem; color: #f87171;">Privacy &amp; PII Breach Protection</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted);">AI automatically scans for personal information and contextually masks it.</div>
+            </div>
+          </div>
+          <button type="button" id="scan-pii-btn" class="btn btn-outline" style="font-size: 0.7rem; padding: 3px 8px;">
+            🔍 Re-Scan
+          </button>
+        </div>
+
+        <!-- Alert Container -->
+        <div id="pii-alert-box" style="display: none; background: rgba(239, 68, 68, 0.12); border-left: 3px solid #ef4444; padding: 8px 10px; border-radius: 4px; font-size: 0.76rem; color: #fca5a5; margin-bottom: 10px;">
+          <!-- Injected via JS -->
+        </div>
+
+        <!-- Contextual Masking Preview -->
+        <div id="pii-mask-preview-container" style="display: none; margin-bottom: 12px;">
+          <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Contextual Masking Pattern:</div>
+          <div id="pii-mask-preview" style="font-size: 0.74rem; font-family: monospace; background: var(--bg-primary); padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border-color); color: #38bdf8;">
+            (*****, [Email Context: personal contact email detected])
+          </div>
+        </div>
+
+        <!-- User Consent Actions -->
+        <div id="pii-consent-actions" style="display: none; background: var(--bg-tertiary); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+          <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">Sharing Consent Required:</div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" id="consent-mask-btn" class="btn btn-primary" style="font-size: 0.74rem; padding: 5px 12px; background: #059669; border-color: #059669;">
+              🛡️ Share with Masked PII (Recommended)
+            </button>
+            <button type="button" id="consent-unmask-btn" class="btn btn-outline" style="font-size: 0.74rem; padding: 5px 10px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);">
+              ⚠️ Explicit Consent to Share Unmasked
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Add Member Section -->
-      <div style="margin-bottom: 18px;">
+      <div style="margin-bottom: 16px;">
         <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Invite Team Member</label>
         <form id="add-room-member-form" novalidate style="display: flex; gap: 8px;">
           <input type="text" id="member-identifier-input" class="form-control" placeholder="Enter username or email..." style="flex: 1; font-size: 0.82rem;">
@@ -40,7 +102,7 @@
       <!-- Members List -->
       <div>
         <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">Members with Access</label>
-        <div id="room-members-list" style="max-height: 200px; overflow-y: auto; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 6px;">
+        <div id="room-members-list" style="max-height: 160px; overflow-y: auto; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 6px;">
           <!-- Injected via JS -->
         </div>
       </div>

@@ -29,13 +29,18 @@ from app.schemas.auth import (
     UserResponse,
 )
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+from app.config import get_settings
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+settings = get_settings()
 
 # Rate limiters for authentication endpoints to prevent brute-force attacks and abuse
-login_rate_limiter = RateLimiter(max_requests=30, window_seconds=60)
-register_rate_limiter = RateLimiter(max_requests=30, window_seconds=60)
-refresh_rate_limiter = RateLimiter(max_requests=60, window_seconds=60)
+login_rate_limiter = RateLimiter(max_requests=getattr(settings, "RATE_LIMIT_LOGIN_MAX", 100), window_seconds=60)
+register_rate_limiter = RateLimiter(max_requests=getattr(settings, "RATE_LIMIT_REGISTER_MAX", 100), window_seconds=60)
+refresh_rate_limiter = RateLimiter(max_requests=getattr(settings, "RATE_LIMIT_REFRESH_MAX", 200), window_seconds=60)
 
+
+from app.models.organization import Organization, OrganizationInvite, OrganizationMember
 
 @router.post(
     "/register",
@@ -62,8 +67,40 @@ async def register(request: UserRegisterRequest, db: AsyncSession = Depends(get_
                 detail="An account with this username already exists.",
             )
 
-    valid_roles = ("user", "staff", "staffs", "admin")
-    assigned_role = request.role.lower().strip() if request.role and request.role.lower().strip() in valid_roles else "user"
+    invite = None
+    if request.invite_token:
+        invite_query = await db.execute(
+            select(OrganizationInvite).where(OrganizationInvite.token == request.invite_token.strip())
+        )
+        invite = invite_query.scalar_one_or_none()
+        if not invite:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid invitation link or token.",
+            )
+        if invite.is_used:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This invitation link has already been used.",
+            )
+        now = utc_now()
+        invite_exp = invite.expires_at
+        if invite_exp.tzinfo is None:
+            invite_exp = invite_exp.replace(tzinfo=timezone.utc)
+        if invite_exp < now:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This invitation link has expired.",
+            )
+        if invite.email and invite.email.strip().lower() != request.email.lower().strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This invitation link was issued exclusively for {invite.email}.",
+            )
+        assigned_role = invite.assigned_role
+    else:
+        valid_roles = ("user", "staff", "staffs", "admin")
+        assigned_role = request.role.lower().strip() if request.role and request.role.lower().strip() in valid_roles else "user"
 
     new_user = User(
         id=str(uuid.uuid4()),
@@ -75,6 +112,36 @@ async def register(request: UserRegisterRequest, db: AsyncSession = Depends(get_
         is_active=True,
     )
     db.add(new_user)
+    await db.flush()
+
+    if invite:
+        invite.is_used = True
+        invite.used_by_user_id = new_user.id
+        invite.used_at = utc_now()
+        if invite.organization_id:
+            member = OrganizationMember(
+                organization_id=invite.organization_id,
+                user_id=new_user.id,
+                role=assigned_role,
+            )
+            db.add(member)
+    elif assigned_role == "admin":
+        org_slug = f"{new_user.username.lower()}-{uuid.uuid4().hex[:6]}"
+        admin_org = Organization(
+            name=f"{new_user.full_name or new_user.username}'s Organization",
+            slug=org_slug,
+            owner_id=new_user.id,
+            plan_tier="starter",
+        )
+        db.add(admin_org)
+        await db.flush()
+        member = OrganizationMember(
+            organization_id=admin_org.id,
+            user_id=new_user.id,
+            role="admin",
+        )
+        db.add(member)
+
     await db.commit()
     await db.refresh(new_user)
 

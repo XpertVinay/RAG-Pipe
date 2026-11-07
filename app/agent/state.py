@@ -32,3 +32,7 @@ class AgentState(TypedDict):
     answer: str
     error: Optional[str]
     status_update: Optional[str]
+    needs_visualization: bool
+    visualization: Optional[Dict[str, Any]]
+    is_app_creation: Optional[bool]
+    suggested_app_name: Optional[str]

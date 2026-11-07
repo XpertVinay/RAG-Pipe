@@ -7,6 +7,7 @@ from httpx import AsyncClient
 @pytest.mark.asyncio
 async def test_health_check(client: AsyncClient):
     """Verify system health endpoint returns 200 and component statuses."""
+    # Test legacy and versioned health endpoints
     res = await client.get("/api/health")
     assert res.status_code == 200
     data = res.json()
@@ -14,6 +15,18 @@ async def test_health_check(client: AsyncClient):
     assert "components" in data
     assert "database" in data["components"]
     assert "vector_store" in data["components"]
+
+    # Test root-level /health endpoint (required for Docker, Nginx, ALB)
+    root_res = await client.get("/health")
+    assert root_res.status_code == 200
+    assert root_res.json()["status"] in ["healthy", "degraded"]
+
+    # Test ultra-fast liveness probes
+    assert (await client.get("/healthz")).status_code == 200
+    assert (await client.get("/ping")).status_code == 200
+    assert (await client.get("/health/ping")).status_code == 200
+    assert (await client.get("/health/ready")).status_code == 200
+    assert (await client.get("/health/liveness")).status_code == 200
 
 
 @pytest.mark.asyncio

@@ -82,6 +82,7 @@ class DocumentListResponse(BaseModel):
     """Paginated or listed documents response."""
     total: int
     items: List[DocumentResponse]
+    documents: List[DocumentResponse] = Field(default_factory=list)
 
 
 class DocumentUploadResult(BaseModel):

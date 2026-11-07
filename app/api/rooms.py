@@ -6,16 +6,28 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Qu
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.auth import get_current_user, get_optional_user
 from app.core.logging import logger
 from app.core.rate_limit import RateLimiter
 from app.database import get_db
 from app.ingestion.pipeline import ingestion_pipeline
-from app.models.conversation import Message
+from app.services.queue_service import queue_service
+from app.services.event_broadcaster import event_broadcaster
+from app.models.conversation import Conversation, Message
 from app.models.document import Document
+from app.models.project import Project
 from app.models.room import Room, RoomDocument, RoomMember
 from app.models.user import User
 from app.schemas.document import DocumentResponse
+from app.schemas.project import (
+    PIIConsentRequest,
+    PIIConsentResponse,
+    RoomItemResponse,
+    RoomItemsFilterResponse,
+    RoomPIIScanResponse,
+    ShareLinkResponse,
+)
 from app.schemas.room import (
     RoomCreateRequest,
     RoomDetailResponse,
@@ -27,28 +39,31 @@ from app.schemas.room import (
     RoomUpdateRequest,
 )
 from app.services.document_service import verify_document_access
+from app.services.pii_service import pii_service
 from app.services.room_service import (
     check_room_access,
     extract_room_references,
     fetch_room_summary_counts,
     get_or_create_room_conversation,
+    get_room_active_conversation,
     process_room_file_upload,
 )
 
-router = APIRouter(prefix="/api/rooms", tags=["rooms"])
-room_upload_rate_limiter = RateLimiter(max_requests=15, window_seconds=60)
+router = APIRouter(prefix="/rooms", tags=["rooms"])
+settings = get_settings()
+room_upload_rate_limiter = RateLimiter(max_requests=getattr(settings, "RATE_LIMIT_UPLOAD_MAX", 5), window_seconds=60)
 
 
 @router.post("", response_model=RoomDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_room(
     request: RoomCreateRequest,
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new multi-file room workspace."""
     room = Room(
         id=str(uuid.uuid4()),
-        user_id=current_user.id if current_user else None,
+        user_id=current_user.id,
         name=request.name.strip(),
         description=request.description.strip() if request.description else None,
         is_public=request.is_public,
@@ -57,7 +72,7 @@ async def create_room(
     await db.commit()
     await db.refresh(room)
 
-    conv = await get_or_create_room_conversation(db, room)
+    conv = await get_room_active_conversation(db, room, create_if_absent=False)
 
     return RoomDetailResponse(
         id=room.id,
@@ -70,7 +85,7 @@ async def create_room(
         documents=[],
         references=[],
         members=[],
-        active_conversation_id=conv.id,
+        active_conversation_id=conv.id if conv else None,
         message_count=0,
     )
 
@@ -172,12 +187,17 @@ async def get_room_details(
         docs_res = await db.execute(select(Document).where(Document.id.in_(doc_ids)))
         docs = docs_res.scalars().all()
 
-    conv = await get_or_create_room_conversation(db, room)
+    conv = await get_room_active_conversation(db, room, create_if_absent=False)
+    if conv:
+        msg_count_res = await db.execute(
+            select(func.count(Message.id)).where(Message.conversation_id == conv.id)
+        )
+        message_count = msg_count_res.scalar_one()
+        active_conversation_id = conv.id
+    else:
+        message_count = 0
+        active_conversation_id = None
 
-    msg_count_res = await db.execute(
-        select(func.count(Message.id)).where(Message.conversation_id == conv.id)
-    )
-    message_count = msg_count_res.scalar_one()
     references = await extract_room_references(db, doc_ids)
 
     # Fetch room members
@@ -213,7 +233,7 @@ async def get_room_details(
         documents=[DocumentResponse.model_validate(d) for d in docs],
         references=references,
         members=members_resp,
-        active_conversation_id=conv.id,
+        active_conversation_id=active_conversation_id,
         message_count=message_count,
     )
 
@@ -249,7 +269,7 @@ async def update_room(
 @router.delete("/{room_id}", status_code=status.HTTP_200_OK)
 async def delete_room(
     room_id: str,
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a room and its room-document mappings (owner or admin only)."""
@@ -295,9 +315,13 @@ async def upload_files_to_room(
     uploaded_docs: List[DocumentResponse] = []
     failed_files: List[dict] = []
 
+    any_duplicate_completed = False
+    any_duplicate_processing = False
+    docs_to_enqueue: List[str] = []
+
     for file in files:
         try:
-            doc = await process_room_file_upload(
+            doc, should_enqueue, reason = await process_room_file_upload(
                 file=file,
                 room=room,
                 current_user=current_user,
@@ -305,16 +329,44 @@ async def upload_files_to_room(
                 user_agent=user_agent,
                 db=db,
             )
-            background_tasks.add_task(ingestion_pipeline.process_document, doc.id)
+            if should_enqueue:
+                docs_to_enqueue.append(doc.id)
+            if reason in ("duplicate_completed", "attached_existing_completed"):
+                any_duplicate_completed = True
+            elif reason in ("duplicate_processing", "attached_existing_processing"):
+                any_duplicate_processing = True
             uploaded_docs.append(DocumentResponse.model_validate(doc))
         except Exception as e:
             logger.warning(f"Upload to room {room_id} failed for file '{file.filename}': {e}")
             failed_files.append({"filename": file.filename or "unknown", "error": str(e)})
 
+    # CRITICAL: Commit to database FIRST before publishing to RabbitMQ!
     await db.commit()
 
+    for doc_id in docs_to_enqueue:
+        await queue_service.enqueue_document_job(doc_id, background_tasks=background_tasks)
+        await event_broadcaster.broadcast_document_status(
+            document_id=doc_id,
+            status="queued",
+            user_id=current_user.id,
+            extra={"room_id": str(room_id)},
+        )
+
+    if any_duplicate_completed and len(uploaded_docs) == 1:
+        message = f"File '{files[0].filename}' is already indexed. Attached to room '{room.name}' (skipped duplicate embedding)."
+    elif any_duplicate_processing and len(uploaded_docs) == 1:
+        message = f"File '{files[0].filename}' is already actively being processed by the worker."
+    else:
+        message = f"Uploaded {len(uploaded_docs)} file(s) to room '{room.name}'."
+        if any_duplicate_completed:
+            message += " (Reused existing indexed vectors to prevent duplicate processing)"
+        if any_duplicate_processing:
+            message += " (Active background jobs monitored)"
+    if failed_files:
+        message += f" ({len(failed_files)} file(s) failed)"
+
     return {
-        "message": f"Uploaded {len(uploaded_docs)} file(s) to room '{room.name}'.",
+        "message": message,
         "room_id": room_id,
         "uploaded": uploaded_docs,
         "failed": failed_files,
@@ -572,4 +624,304 @@ async def get_room_references(
     rd_res = await db.execute(select(RoomDocument.document_id).where(RoomDocument.room_id == room_id))
     doc_ids = [r[0] for r in rd_res.all()]
     return await extract_room_references(db, doc_ids)
+
+
+@router.get("/{room_id}/items", response_model=RoomItemsFilterResponse)
+async def list_room_items(
+    room_id: str,
+    filter_type: str = Query("all", description="'all', 'projects', or 'chats'"),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List projects and/or chats belonging to a room workspace according to the selected filter value."""
+    r_res = await db.execute(select(Room).where(Room.id == room_id))
+    room = r_res.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+
+    await check_room_access(room, current_user, db, required_role="viewer")
+
+    # 1. Fetch Projects in room
+    p_res = await db.execute(
+        select(Project).where(Project.room_id == room_id).order_by(Project.updated_at.desc())
+    )
+    projects = p_res.scalars().all()
+
+    # 2. Fetch Conversations in room
+    c_res = await db.execute(
+        select(Conversation).where(Conversation.room_id == room_id).order_by(Conversation.updated_at.desc())
+    )
+    conversations = c_res.scalars().all()
+
+    # Message counts for conversations
+    conv_ids = [c.id for c in conversations]
+    msg_counts = {}
+    if conv_ids:
+        mc_res = await db.execute(
+            select(Message.conversation_id, func.count(Message.id))
+            .where(Message.conversation_id.in_(conv_ids))
+            .group_by(Message.conversation_id)
+        )
+        msg_counts = dict(mc_res.all())
+
+    project_map = {p.id: p.name for p in projects}
+
+    items: List[RoomItemResponse] = []
+
+    # Map projects to polymorphic item response
+    if filter_type in ("all", "projects"):
+        for p in projects:
+            items.append(
+                RoomItemResponse(
+                    id=p.id,
+                    item_type="project",
+                    title=p.name,
+                    description=p.description,
+                    room_id=room_id,
+                    project_id=p.id,
+                    project_name=p.name,
+                    status=p.status,
+                    request_type=getattr(p, "request_type", "standard"),
+                    communication_channel=getattr(p, "communication_channel", None),
+                    client_name=getattr(p, "client_name", None),
+                    tags=p.tags or [],
+                    message_count=0,
+                    created_at=p.created_at,
+                    updated_at=p.updated_at,
+                )
+            )
+
+    # Map chats to polymorphic item response
+    if filter_type in ("all", "chats"):
+        for c in conversations:
+            items.append(
+                RoomItemResponse(
+                    id=c.id,
+                    item_type="chat",
+                    title=c.title or "Chat Session",
+                    description=f"{msg_counts.get(c.id, 0)} message(s)",
+                    room_id=room_id,
+                    project_id=c.project_id,
+                    project_name=project_map.get(c.project_id) if c.project_id else None,
+                    status="active",
+                    tags=["chat"],
+                    message_count=msg_counts.get(c.id, 0),
+                    created_at=c.created_at,
+                    updated_at=c.updated_at,
+                )
+            )
+
+    # Sort items by updated_at descending
+    items.sort(key=lambda x: x.updated_at, reverse=True)
+
+    return RoomItemsFilterResponse(
+        room_id=room_id,
+        filter_type=filter_type if filter_type in ("all", "projects", "chats") else "all",
+        total_projects=len(projects),
+        total_chats=len(conversations),
+        items=items,
+    )
+
+
+@router.post("/{room_id}/share-link/generate", response_model=ShareLinkResponse)
+async def generate_room_share_link(
+    room_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate or retrieve a secure public share link for a room workspace (owner or editor)."""
+    res = await db.execute(select(Room).where(Room.id == room_id))
+    room = res.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+
+    await check_room_access(room, current_user, db, required_role="editor")
+
+    if not room.share_token or room.share_revoked:
+        room.share_token = uuid.uuid4().hex
+        room.share_revoked = False
+
+    room.is_public = True
+    await db.commit()
+    await db.refresh(room)
+
+    base_url = str(request.base_url).rstrip("/")
+    share_url = f"{base_url}/shared/room/{room.share_token}"
+
+    return ShareLinkResponse(
+        room_id=room.id,
+        share_token=room.share_token,
+        share_url=share_url,
+        is_public=room.is_public,
+        is_revoked=room.share_revoked,
+        pii_consent_status=room.pii_consent_status,
+        created_at=room.updated_at,
+    )
+
+
+@router.post("/{room_id}/share-link/revoke", status_code=status.HTTP_200_OK)
+async def revoke_room_share_link(
+    room_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Revoke share linking immediately, blocking external access (owner or admin only)."""
+    res = await db.execute(select(Room).where(Room.id == room_id))
+    room = res.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+
+    await check_room_access(room, current_user, db, required_role="owner")
+
+    room.share_revoked = True
+    room.is_public = False
+    await db.commit()
+    await db.refresh(room)
+
+    logger.info(f"Share link for room {room_id} revoked by user {current_user.id}")
+    return {
+        "message": "Share link has been revoked. External users can no longer access this workspace.",
+        "room_id": room_id,
+        "is_revoked": True,
+        "is_public": False,
+    }
+
+
+@router.post("/{room_id}/pii/scan", response_model=RoomPIIScanResponse)
+async def scan_room_pii(
+    room_id: str,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Scan all discussions and room content for accidental PII breaches."""
+    res = await db.execute(select(Room).where(Room.id == room_id))
+    room = res.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+
+    await check_room_access(room, current_user, db, required_role="viewer")
+
+    # Collect room text corpus
+    text_corpus = [room.name or "", room.description or ""]
+
+    # Recent messages
+    m_res = await db.execute(
+        select(Message.content)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .where(Conversation.room_id == room_id)
+        .limit(40)
+    )
+    for row in m_res.all():
+        if row[0]:
+            text_corpus.append(row[0])
+
+    combined_text = "\n".join(text_corpus)
+    scan_res = pii_service.scan_and_mask(combined_text)
+
+    categories = list(sorted(set(d.category for d in scan_res.detections)))
+    masked_snippets = [d.masked_representation for d in scan_res.detections[:5]]
+
+    if scan_res.has_pii and room.pii_consent_status == "clean":
+        room.pii_consent_status = "breach_detected"
+        await db.commit()
+
+    return RoomPIIScanResponse(
+        room_id=room.id,
+        has_pii_breach=scan_res.has_pii,
+        breach_count=scan_res.breach_count,
+        risk_level=scan_res.risk_level,
+        alert_message=scan_res.alert_message,
+        pii_consent_status=room.pii_consent_status,
+        detected_categories=categories,
+        preview_masked_snippets=masked_snippets,
+    )
+
+
+@router.post("/{room_id}/pii/consent", response_model=PIIConsentResponse)
+async def submit_pii_consent(
+    room_id: str,
+    req: PIIConsentRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Capture explicit user consent for PII sharing (mask or unmasked) before making available to others."""
+    res = await db.execute(select(Room).where(Room.id == room_id))
+    room = res.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+
+    await check_room_access(room, current_user, db, required_role="editor")
+
+    if not req.confirm_acknowledgment:
+        raise HTTPException(status_code=400, detail="Consent confirmation acknowledgment is required.")
+
+    if req.consent_mode == "mask":
+        room.pii_consent_status = "consent_masked"
+        msg = "Consent recorded: Sensitive data will remain securely masked with contextual descriptors for other users."
+    else:
+        room.pii_consent_status = "consent_unmasked"
+        msg = "Explicit consent recorded: Room content has been authorized for unmasked sharing."
+
+    await db.commit()
+    await db.refresh(room)
+
+    return PIIConsentResponse(
+        room_id=room.id,
+        pii_consent_status=room.pii_consent_status,
+        message=msg,
+        updated_at=room.updated_at,
+    )
+
+
+@router.get("/shared/{share_token}", response_model=RoomDetailResponse)
+async def get_shared_room_by_token(
+    share_token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public access endpoint for shared rooms with enforced revocation and contextual PII masking."""
+    res = await db.execute(select(Room).where(Room.share_token == share_token))
+    room = res.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Shared workspace not found.")
+
+    if room.share_revoked:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This share link has been revoked by the workspace owner.",
+        )
+
+    # If consent is not explicitly unmasked, apply contextual masking to description
+    display_desc = room.description
+    if room.pii_consent_status != "consent_unmasked" and display_desc:
+        scan = pii_service.scan_and_mask(display_desc)
+        display_desc = scan.masked_text
+
+    rd_res = await db.execute(select(RoomDocument).where(RoomDocument.room_id == room.id))
+    room_docs = rd_res.scalars().all()
+    doc_ids = [rd.document_id for rd in room_docs]
+
+    docs: List[Document] = []
+    if doc_ids:
+        docs_res = await db.execute(select(Document).where(Document.id.in_(doc_ids)))
+        docs = docs_res.scalars().all()
+
+    conv = await get_room_active_conversation(db, room, create_if_absent=False)
+    references = await extract_room_references(db, doc_ids)
+
+    return RoomDetailResponse(
+        id=room.id,
+        name=room.name,
+        description=display_desc,
+        is_public=room.is_public,
+        user_role="viewer",
+        created_at=room.created_at,
+        updated_at=room.updated_at,
+        documents=[DocumentResponse.model_validate(d) for d in docs],
+        references=references,
+        members=[],
+        active_conversation_id=conv.id if conv else None,
+        message_count=0,
+    )
+
 

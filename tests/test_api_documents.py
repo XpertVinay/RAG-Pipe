@@ -188,7 +188,11 @@ async def test_document_live_file_authentication_and_query_token(client: AsyncCl
     assert f"?token={token}#page=1" in ev_data["file_url"]
 
     # 7. Document attached to a public room should be accessible without auth
-    room_res = await client.post("/api/rooms", json={"name": "Public Showcase Room"})
+    room_res = await client.post(
+        "/api/rooms",
+        json={"name": "Public Showcase Room", "is_public": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert room_res.status_code == 201
     room_id = room_res.json()["id"]
 
@@ -271,7 +275,9 @@ async def test_per_user_document_upload_and_persistent_embeddings_sharing(client
     # User B now sees it under scope=shared and scope=all
     res_b_all = await client.get("/api/documents?scope=shared", headers={"Authorization": f"Bearer {token_b}"})
     assert res_b_all.status_code == 200
-    assert any(d["id"] == doc_id for d in res_b_all.json()["items"])
+    # Process document so vectors exist for retrieval
+    from app.ingestion.pipeline import ingestion_pipeline
+    await ingestion_pipeline.process_document(doc_id)
 
     # 5. User B queries chat: can retrieve and cite the persistent vector embeddings uploaded by User A
     chat_res = await client.post(

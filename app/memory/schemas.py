@@ -29,16 +29,18 @@ class MemoryItemBase(BaseModel):
             raise ValueError("Memory type must be 'short_term' or 'long_term'.")
         return cleaned
 
-    @field_validator("key")
+    @field_validator("key", mode="before")
     @classmethod
-    def validate_key(cls, v: str) -> str:
+    def validate_key(cls, v: Any) -> str:
+        if not isinstance(v, str):
+            v = str(v)
         cleaned = v.strip()
+        # Automatically normalize commas, spaces, and non-standard characters to underscores
+        cleaned = re.sub(r"[^a-zA-Z0-9_.:-]+", "_", cleaned).strip("_")
         if len(cleaned) < 2:
-            raise ValueError("Semantic key must be at least 2 characters.")
+            cleaned = f"key_{cleaned}" if cleaned else "key_item"
         if len(cleaned) > 120:
-            raise ValueError("Semantic key cannot exceed 120 characters.")
-        if not re.match(r"^[a-zA-Z0-9_.:-]+$", cleaned):
-            raise ValueError("Semantic key can only contain letters, numbers, colons (:), underscores (_), hyphens (-), and periods (.).")
+            cleaned = cleaned[:120].rstrip("_")
         return cleaned
 
     @field_validator("content")

@@ -1,0 +1,196 @@
+# ==============================================================================
+# GITHUB ACTIONS WORKFLOW: POST-MERGE CONTINUOUS DEPLOYMENT (CD)
+# Purpose:
+#   - Automatically triggers on merge (push) to 'main' or 'development'.
+#   - Dynamically selects target deployment environment (Staging vs. Production).
+#   - Replaces all service & database configuration variables at runtime.
+#   - Deploys application containers via SSH & Docker Compose, runs migrations,
+#     and verifies health probes with automated retry.
+# ==============================================================================
+name: CD - Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+      - development
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Server (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Resolve Environment Configuration
+        id: config
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          echo "Target Branch: ${BRANCH}"
+          
+          if [ "${BRANCH}" = "main" ]; then
+            echo "env_name=production" >> $GITHUB_OUTPUT
+            echo "server_host=${{ secrets.PROD_SERVER_HOST }}" >> $GITHUB_OUTPUT
+            echo "server_user=${{ secrets.PROD_SERVER_USER || 'ubuntu' }}" >> $GITHUB_OUTPUT
+            echo "server_key=${{ secrets.PROD_SSH_PRIVATE_KEY }}" >> $GITHUB_OUTPUT
+            echo "server_port=${{ secrets.PROD_SSH_PORT || '22' }}" >> $GITHUB_OUTPUT
+            echo "deploy_path=${{ vars.PROD_DEPLOY_PATH || '/opt/rag-agent' }}" >> $GITHUB_OUTPUT
+            echo "healthcheck_url=${{ vars.PROD_HEALTHCHECK_URL || 'https://api.yourdomain.com/api/health' }}" >> $GITHUB_OUTPUT
+          else
+            echo "env_name=staging" >> $GITHUB_OUTPUT
+            echo "server_host=${{ secrets.STAGING_SERVER_HOST }}" >> $GITHUB_OUTPUT
+            echo "server_user=${{ secrets.STAGING_SERVER_USER || 'ubuntu' }}" >> $GITHUB_OUTPUT
+            echo "server_key=${{ secrets.STAGING_SSH_PRIVATE_KEY }}" >> $GITHUB_OUTPUT
+            echo "server_port=${{ secrets.STAGING_SSH_PORT || '22' }}" >> $GITHUB_OUTPUT
+            echo "deploy_path=${{ vars.STAGING_DEPLOY_PATH || '/opt/rag-agent-staging' }}" >> $GITHUB_OUTPUT
+            echo "healthcheck_url=${{ vars.STAGING_HEALTHCHECK_URL || 'https://staging.yourdomain.com/api/health' }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy Application & Replace Variables on Remote Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.config.outputs.server_host }}
+          username: ${{ steps.config.outputs.server_user }}
+          key: ${{ steps.config.outputs.server_key }}
+          port: ${{ steps.config.outputs.server_port }}
+          envs: BRANCH,DEPLOY_PATH
+          script: |
+            set -euo pipefail
+            
+            BRANCH="${{ github.ref_name }}"
+            DEPLOY_PATH="${{ steps.config.outputs.deploy_path }}"
+            
+            echo "=========================================================="
+            echo "🚀 Starting Automated Deployment for Branch: ${BRANCH}"
+            echo "📂 Deployment Path: ${DEPLOY_PATH}"
+            echo "=========================================================="
+            
+            mkdir -p "${DEPLOY_PATH}"
+            cd "${DEPLOY_PATH}"
+            
+            # 1. Synchronize Git Repository
+            if [ -d ".git" ]; then
+              echo "🔄 Fetching latest updates from git..."
+              git fetch origin "${BRANCH}"
+              git checkout "${BRANCH}"
+              git reset --hard "origin/${BRANCH}"
+            else
+              echo "📥 Initializing repository clone..."
+              git clone -b "${BRANCH}" "https://${{ github.token }}@github.com/${{ github.repository }}.git" .
+            fi
+            
+            # 2. Dynamically Inject Runtime Variables into .env (Zero Hardcoding)
+            echo "🔒 Generating runtime .env configuration..."
+            cat << 'EOF' > .env
+            APP_NAME="${{ vars.APP_NAME || 'Production RAG Agent' }}"
+            APP_ENV="${{ steps.config.outputs.env_name }}"
+            DEBUG=false
+            HOST=0.0.0.0
+            PORT=8000
+            SECRET_KEY="${{ secrets.APP_SECRET_KEY }}"
+            ALLOWED_ORIGINS="${{ vars.ALLOWED_ORIGINS || '*' }}"
+            
+            # Database Configuration & Dynamic Connection Pooling
+            DATABASE_URL="${{ secrets.DATABASE_URL }}"
+            POSTGRES_USER="${{ secrets.POSTGRES_USER || 'postgres' }}"
+            POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+            POSTGRES_HOST="${{ secrets.POSTGRES_HOST || 'postgres' }}"
+            POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}"
+            POSTGRES_DB="${{ secrets.POSTGRES_DB || 'rag_agent' }}"
+            POSTGRES_MAX_CONNECTIONS="${{ vars.POSTGRES_MAX_CONNECTIONS || '300' }}"
+            POSTGRES_SHARED_BUFFERS="${{ vars.POSTGRES_SHARED_BUFFERS || '256MB' }}"
+            POSTGRES_WORK_MEM="${{ vars.POSTGRES_WORK_MEM || '16MB' }}"
+            
+            # Worker Connection Pool Sizing
+            WORKERS="${{ vars.WORKERS || '4' }}"
+            DB_POOL_SIZE="${{ vars.DB_POOL_SIZE || '15' }}"
+            DB_MAX_OVERFLOW="${{ vars.DB_MAX_OVERFLOW || '15' }}"
+            DB_POOL_TIMEOUT="${{ vars.DB_POOL_TIMEOUT || '20.0' }}"
+            DB_POOL_RECYCLE="${{ vars.DB_POOL_RECYCLE || '1800' }}"
+            
+            # RabbitMQ Message Broker
+            RABBITMQ_ENABLED=true
+            RABBITMQ_USER="${{ secrets.RABBITMQ_USER || 'rag_admin' }}"
+            RABBITMQ_PASSWORD="${{ secrets.RABBITMQ_PASSWORD }}"
+            RABBITMQ_URL="${{ secrets.RABBITMQ_URL }}"
+            RABBITMQ_QUEUE_NAME="${{ vars.RABBITMQ_QUEUE_NAME || 'document_processing_queue' }}"
+            RABBITMQ_CHUNK_QUEUE_NAME="${{ vars.RABBITMQ_CHUNK_QUEUE_NAME || 'document_chunks_queue' }}"
+            
+            # External Provider Credentials
+            GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY || '' }}"
+            OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY || '' }}"
+            ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY || '' }}"
+            
+            # Payment Gateway
+            RAZORPAY_KEY="${{ secrets.RAZORPAY_KEY || '' }}"
+            RAZORPAY_SECRET="${{ secrets.RAZORPAY_SECRET || '' }}"
+            
+            # Proxy & Load Balancer
+            PROXY_PORT="${{ vars.PROXY_PORT || '8181' }}"
+            ENABLE_LB_DEBUG_HEADERS=false
+
+            # Identity-Aware Rate Limiting & Corporate NAT Protection
+            RATE_LIMIT_PUBLIC_RATE="${{ vars.RATE_LIMIT_PUBLIC_RATE || '20r/s' }}"
+            RATE_LIMIT_PUBLIC_BURST="${{ vars.RATE_LIMIT_PUBLIC_BURST || '30' }}"
+            RATE_LIMIT_API_RATE="${{ vars.RATE_LIMIT_API_RATE || '10r/s' }}"
+            RATE_LIMIT_API_BURST="${{ vars.RATE_LIMIT_API_BURST || '15' }}"
+            RATE_LIMIT_AUTH_RATE="${{ vars.RATE_LIMIT_AUTH_RATE || '5r/s' }}"
+            RATE_LIMIT_AUTH_BURST="${{ vars.RATE_LIMIT_AUTH_BURST || '10' }}"
+            RATE_LIMIT_STREAM_RATE="${{ vars.RATE_LIMIT_STREAM_RATE || '5r/s' }}"
+            RATE_LIMIT_STREAM_BURST="${{ vars.RATE_LIMIT_STREAM_BURST || '10' }}"
+            RATE_LIMIT_DEVICE_STREAM_MAX_CONNS="${{ vars.RATE_LIMIT_DEVICE_STREAM_MAX_CONNS || '3' }}"
+            RATE_LIMIT_IP_STREAM_FLOOD="${{ vars.RATE_LIMIT_IP_STREAM_FLOOD || '100' }}"
+            RATE_LIMIT_PUBLIC_MAX="${{ vars.RATE_LIMIT_PUBLIC_MAX || '120' }}"
+            RATE_LIMIT_API_MAX="${{ vars.RATE_LIMIT_API_MAX || '60' }}"
+            RATE_LIMIT_LOGIN_MAX="${{ vars.RATE_LIMIT_LOGIN_MAX || '10' }}"
+            RATE_LIMIT_REGISTER_MAX="${{ vars.RATE_LIMIT_REGISTER_MAX || '5' }}"
+            RATE_LIMIT_REFRESH_MAX="${{ vars.RATE_LIMIT_REFRESH_MAX || '30' }}"
+            RATE_LIMIT_UPLOAD_MAX="${{ vars.RATE_LIMIT_UPLOAD_MAX || '5' }}"
+            RATE_LIMIT_CHAT_MAX="${{ vars.RATE_LIMIT_CHAT_MAX || '15' }}"
+            EOF
+            chmod 600 .env
+            echo "✅ .env configured with runtime secrets."
+            
+            # 3. Build & Restart Docker Containers
+            echo "🐳 Deploying containers via Docker Compose..."
+            docker compose --env-file .env down --remove-orphans || true
+            docker compose --env-file .env up -d --build
+            
+            # 4. Execute Zero-Downtime Database Migrations
+            echo "🗄️ Executing database initialization & migrations..."
+            docker compose --env-file .env exec -T rag-agent python -c "import asyncio; from app.database import init_db; asyncio.run(init_db())"
+            
+            # 5. Clean Dangling Images
+            docker image prune -f || true
+            echo "✅ Server container restart and migrations completed."
+
+      - name: Verify Live Service Health Probe
+        run: |
+          HEALTH_URL="${{ steps.config.outputs.healthcheck_url }}"
+          echo "Probing endpoint: ${HEALTH_URL}"
+          
+          MAX_RETRIES=20
+          SLEEP_SECONDS=5
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_CODE=$(curl -s -k -o /dev/null -w "%{http_code}" "$HEALTH_URL" || true)
+            echo "Attempt $i/$MAX_RETRIES - Status: $HTTP_CODE"
+            if [ "$HTTP_CODE" -eq 200 ]; then
+              echo "🎉 Service is LIVE and HEALTHY! Deployment verified."
+              exit 0
+            fi
+            sleep $SLEEP_SECONDS
+          done
+          
+          echo "❌ Deployment verification failed: Probe timed out without HTTP 200."
+          exit 1
+

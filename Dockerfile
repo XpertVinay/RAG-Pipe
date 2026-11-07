@@ -31,7 +31,8 @@ RUN groupadd -g 1001 appgroup && \
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     HOST=0.0.0.0 \
-    PORT=8000
+    PORT=8000 \
+    WORKERS=4
 
 # Expose port
 EXPOSE 8000
@@ -42,4 +43,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 # Start container through entrypoint to guarantee runtime volume permissions
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WORKERS:-4} --loop uvloop --http httptools --backlog 2048"]

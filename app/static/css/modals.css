@@ -4,22 +4,29 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 50;
+  z-index: 2000 !important;
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--transition-normal);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 16px;
+  box-sizing: border-box;
 }
 
 .modal-overlay.active {
   opacity: 1;
   pointer-events: auto;
+  z-index: 2000 !important;
 }
 
 #delete-confirm-modal {
-  z-index: 1000 !important;
+  z-index: 2100 !important;
 }
 
 .modal-card {
@@ -28,10 +35,29 @@
   border-radius: var(--radius-lg);
   width: 90%;
   max-width: 520px;
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 24px;
   box-shadow: var(--shadow-lg);
   transform: translateY(10px);
   transition: transform var(--transition-normal);
+  box-sizing: border-box;
+  margin: auto;
+}
+
+.modal-card::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-card::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-card::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
 }
 
 .modal-overlay.active .modal-card {
@@ -94,7 +120,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 100;
+  z-index: 3000 !important;
 }
 
 .toast {

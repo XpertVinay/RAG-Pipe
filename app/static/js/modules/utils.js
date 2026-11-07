@@ -73,22 +73,119 @@
     }
   }
 
-  // RequestAnimationFrame Smooth Scrolling
+  // Smart User-Aware Auto-Scroll Manager
+  let isUserScrolledUp = false;
   let scrollScheduled = false;
-  function scheduleScrollToBottom(immediate = false) {
+  let scrollAttached = false;
+  const SCROLL_BOTTOM_THRESHOLD = 80; // px threshold from bottom
+
+  function isScrolledNearBottom(container, threshold = SCROLL_BOTTOM_THRESHOLD) {
+    if (!container) return true;
+    const distance = container.scrollHeight - container.clientHeight - container.scrollTop;
+    return distance <= threshold;
+  }
+
+  function updateScrollBottomButton(show, hasNewContent = false) {
+    const btn = document.getElementById('scroll-bottom-btn');
+    if (!btn) return;
+    if (show) {
+      btn.classList.add('visible');
+      const pulse = document.getElementById('scroll-bottom-pulse');
+      if (pulse) pulse.style.display = hasNewContent ? 'inline-block' : 'none';
+    } else {
+      btn.classList.remove('visible');
+      const pulse = document.getElementById('scroll-bottom-pulse');
+      if (pulse) pulse.style.display = 'none';
+    }
+  }
+
+  function initScrollManager() {
+    const container = document.getElementById('messages-container');
+    if (!container || scrollAttached) return;
+    scrollAttached = true;
+
+    // Detect user scroll position changes
+    container.addEventListener('scroll', () => {
+      const atBottom = isScrolledNearBottom(container);
+      if (atBottom) {
+        isUserScrolledUp = false;
+        updateScrollBottomButton(false);
+      } else {
+        isUserScrolledUp = true;
+        updateScrollBottomButton(true);
+      }
+    }, { passive: true });
+
+    // Explicit user wheel/touch events scrolling upwards
+    container.addEventListener('wheel', (e) => {
+      if (e.deltaY < 0) {
+        isUserScrolledUp = true;
+        updateScrollBottomButton(true);
+      }
+    }, { passive: true });
+
+    container.addEventListener('touchmove', () => {
+      if (!isScrolledNearBottom(container)) {
+        isUserScrolledUp = true;
+        updateScrollBottomButton(true);
+      }
+    }, { passive: true });
+
+    // Wire floating scroll to bottom button
+    const scrollBottomBtn = document.getElementById('scroll-bottom-btn');
+    if (scrollBottomBtn && !scrollBottomBtn._wired) {
+      scrollBottomBtn._wired = true;
+      scrollBottomBtn.addEventListener('click', () => {
+        isUserScrolledUp = false;
+        updateScrollBottomButton(false);
+        if (container.scrollTo) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        } else {
+          container.scrollTop = container.scrollHeight;
+        }
+      });
+    }
+  }
+
+  function scheduleScrollToBottom(force = false) {
     const container = document.getElementById('messages-container');
     if (!container) return;
-    if (immediate) {
+
+    if (!scrollAttached) {
+      initScrollManager();
+    }
+
+    if (force) {
+      isUserScrolledUp = false;
+      updateScrollBottomButton(false);
       container.scrollTop = container.scrollHeight;
       return;
     }
+
+    // If the user has scrolled up to read previous or initial content, DO NOT force scroll!
+    if (isUserScrolledUp) {
+      updateScrollBottomButton(true, true);
+      return;
+    }
+
     if (!scrollScheduled) {
       scrollScheduled = true;
       requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
+        if (!isUserScrolledUp) {
+          container.scrollTop = container.scrollHeight;
+        }
         scrollScheduled = false;
       });
     }
+  }
+
+  function getIsUserScrolledUp() {
+    return isUserScrolledUp;
+  }
+
+  function setIsUserScrolledUp(val) {
+    isUserScrolledUp = Boolean(val);
+    updateScrollBottomButton(isUserScrolledUp);
   }
 
   // Mobile Navigation Drawer Helpers
@@ -226,6 +323,9 @@
     escapeHtml,
     parseJwtPayload,
     scheduleScrollToBottom,
+    initScrollManager,
+    getIsUserScrolledUp,
+    setIsUserScrolledUp,
     openMobileSidebar,
     closeMobileSidebar,
     showConfirmModal,
@@ -238,6 +338,9 @@
   global.escapeHtml = escapeHtml;
   global.parseJwtPayload = parseJwtPayload;
   global.scheduleScrollToBottom = scheduleScrollToBottom;
+  global.initScrollManager = initScrollManager;
+  global.getIsUserScrolledUp = getIsUserScrolledUp;
+  global.setIsUserScrolledUp = setIsUserScrolledUp;
   global.openMobileSidebar = openMobileSidebar;
   global.closeMobileSidebar = closeMobileSidebar;
   global.showConfirmModal = showConfirmModal;

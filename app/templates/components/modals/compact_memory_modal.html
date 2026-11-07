@@ -1,0 +1,71 @@
+<!-- Compact Memory Evaluation Modal (Quick context inspection for next chats & rooms) -->
+<div id="compact-memory-modal" class="modal-overlay">
+  <div class="modal-card" style="max-width: 620px;">
+    <div class="modal-header">
+      <h3 style="display: flex; align-items: center; gap: 8px;">
+        <span>🧠</span>
+        <span>Compact Memory Evaluation</span>
+      </h3>
+      <button id="close-compact-memory-btn" class="modal-close">&times;</button>
+    </div>
+
+    <div style="padding: 16px 0; max-height: 75vh; overflow-y: auto;">
+      <!-- Compaction Metrics Ribbon -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px;">
+        <div style="background: var(--bg-tertiary); padding: 10px; border-radius: var(--radius-md); border: 1px solid var(--border-color); text-align: center;">
+          <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Raw Volume</div>
+          <div id="eval-raw-tokens" style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-top: 2px;">0 tok</div>
+        </div>
+        <div style="background: var(--bg-tertiary); padding: 10px; border-radius: var(--radius-md); border: 1px solid var(--border-color); text-align: center;">
+          <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Compact</div>
+          <div id="eval-compact-tokens" style="font-size: 1.05rem; font-weight: 700; color: #38bdf8; margin-top: 2px;">0 tok</div>
+        </div>
+        <div style="background: var(--bg-tertiary); padding: 10px; border-radius: var(--radius-md); border: 1px solid var(--border-color); text-align: center;">
+          <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Token Savings</div>
+          <div id="eval-tokens-saved" style="font-size: 1.05rem; font-weight: 700; color: #34d399; margin-top: 2px;">0%</div>
+        </div>
+        <div style="background: var(--bg-tertiary); padding: 10px; border-radius: var(--radius-md); border: 1px solid var(--border-color); text-align: center;">
+          <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Context Readiness</div>
+          <div id="eval-readiness-score" style="font-size: 1.05rem; font-weight: 700; color: #a78bfa; margin-top: 2px;">100%</div>
+        </div>
+      </div>
+
+      <!-- Compact Semantic Synthesis Card -->
+      <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px;">
+        <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+          <span>High-Density Semantic Synthesis</span>
+          <span class="badge-pill" style="font-size: 0.62rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8;">Prompt-Ready</span>
+        </div>
+        <p id="eval-compact-synthesis" style="font-size: 0.82rem; line-height: 1.5; color: var(--text-primary); margin: 0; font-style: italic;">
+          Loading compact memory context...
+        </p>
+      </div>
+
+      <!-- Short-Term Memory (STM) Active Focus -->
+      <div style="margin-bottom: 16px;">
+        <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+          <span>Short-Term Working Memory (Active Goals &amp; Inquiries)</span>
+          <span id="eval-stm-count" class="badge-pill" style="font-size: 0.62rem; background: rgba(99, 102, 241, 0.15); color: #818cf8;">0 items</span>
+        </div>
+        <div id="eval-stm-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto;">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+
+      <!-- Long-Term Memory (LTM) Enduring Constraints -->
+      <div>
+        <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+          <span>Long-Term Memory (User Preferences &amp; Constraints)</span>
+          <span id="eval-ltm-count" class="badge-pill" style="font-size: 0.62rem; background: rgba(16, 185, 129, 0.15); color: #34d399;">0 items</span>
+        </div>
+        <div id="eval-ltm-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto;">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+      <button type="button" class="btn btn-outline" id="done-compact-memory-btn">Close</button>
+    </div>
+  </div>
+</div>
