@@ -35,18 +35,34 @@ jobs:
 
       - name: Validate Deployment Secrets
         env:
-          TARGET_HOST: ${{ secrets.VPS_HOST || secrets.SERVER_HOST || secrets.PROD_SERVER_HOST || secrets.STAGING_SERVER_HOST }}
-          TARGET_KEY: ${{ secrets.VPS_SSH_KEY || secrets.SSH_KEY || secrets.PROD_SSH_PRIVATE_KEY || secrets.STAGING_SSH_PRIVATE_KEY }}
+          TARGET_HOST: ${{ vars.VPS_HOST || secrets.VPS_HOST || secrets.SERVER_HOST || secrets.PROD_SERVER_HOST || secrets.STAGING_SERVER_HOST }}
+          TARGET_KEY: ${{ vars.VPS_SSH_KEY || secrets.VPS_SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.SSH_KEY || secrets.PROD_SSH_PRIVATE_KEY || secrets.STAGING_SSH_PRIVATE_KEY }}
+          TARGET_USER: ${{ secrets.VPS_USER || secrets.SERVER_USER || (github.ref_name == 'main' && (secrets.PROD_SERVER_USER || 'xpertvinay') || (secrets.STAGING_SERVER_USER || 'xpertvinay')) }}
         run: |
           if [ -z "${TARGET_HOST}" ]; then
-            echo "::error title=Missing Server Host::Secret 'VPS_HOST' (or 'SERVER_HOST' / 'PROD_SERVER_HOST') is empty or not configured in GitHub Secrets! Please add it in your repository under Settings -> Secrets and variables -> Actions."
+            echo "::error title=Missing Server Host::Secret 'VPS_HOST' is empty or not configured in GitHub Secrets! Please add it under Settings -> Secrets and variables -> Actions."
             exit 1
           fi
-          if [ -z "${TARGET_KEY}" ]; then
-            echo "::error title=Missing SSH Key::Secret 'VPS_SSH_KEY' (or 'PROD_SSH_PRIVATE_KEY' / 'SSH_KEY') is empty or not configured in GitHub Secrets! Please add it in your repository under Settings -> Secrets and variables -> Actions."
-            exit 1
+
+          if [ -n "${TARGET_KEY}" ]; then
+            # Verify if it's accidentally a public key
+            if echo "${TARGET_KEY}" | grep -qE "^(ssh-rsa|ssh-ed25519|ecdsa-sha2)"; then
+              echo "::error title=Public Key Detected Instead of Private Key::The secret appears to contain a PUBLIC key (starts with ssh-rsa / ssh-ed25519). You must provide the PRIVATE key (which starts with '-----BEGIN OPENSSH PRIVATE KEY-----' or '-----BEGIN RSA PRIVATE KEY-----')!"
+              exit 1
+            fi
+
+            # Verify it contains standard private key headers
+            if ! echo "${TARGET_KEY}" | grep -q -- "-----BEGIN"; then
+              echo "::error title=Malformed Private Key::The SSH key does NOT contain '-----BEGIN'. Please ensure you copy the entire private key including the BEGIN and END lines."
+              exit 1
+            fi
+            echo "✅ Private key format verified (contains valid PEM/OpenSSH header)."
           fi
-          echo "✅ Target host and SSH credentials detected."
+
+          if [ -n "${TARGET_PASS}" ]; then
+            echo "✅ SSH password secret detected."
+          fi
+          echo "✅ Target Host: ${TARGET_HOST} | User: ${TARGET_USER}"
 
       - name: Resolve Environment Configuration
         id: config
@@ -69,7 +85,9 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST || secrets.SERVER_HOST || (github.ref_name == 'main' && secrets.PROD_SERVER_HOST || secrets.STAGING_SERVER_HOST) }}
           username: ${{ secrets.VPS_USER || secrets.SERVER_USER || (github.ref_name == 'main' && (secrets.PROD_SERVER_USER || 'xpertvinay') || (secrets.STAGING_SERVER_USER || 'xpertvinay')) }}
-          key: ${{ secrets.VPS_SSH_KEY || secrets.SSH_KEY || (github.ref_name == 'main' && secrets.PROD_SSH_PRIVATE_KEY || secrets.STAGING_SSH_PRIVATE_KEY) }}
+          key: ${{ secrets.VPS_SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.SSH_KEY || secrets.PROD_SSH_PRIVATE_KEY || secrets.STAGING_SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE || secrets.SSH_PASSPHRASE || '' }}
+          password: ${{ secrets.VPS_PASSWORD || secrets.SSH_PASSWORD || secrets.SERVER_PASSWORD || '' }}
           port: ${{ secrets.VPS_PORT || secrets.SERVER_PORT || (github.ref_name == 'main' && (secrets.PROD_SSH_PORT || '22') || (secrets.STAGING_SSH_PORT || '22')) }}
           script: |
             set -euo pipefail
